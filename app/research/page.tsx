@@ -14,10 +14,10 @@ function NetworkBackground() {
   const edgesRef = useRef([]);
 
   // Build initial node set and edges based on current dimensions
-  const buildNetwork = useCallback((w, h) => {
+  const buildNetwork = useCallback((w: number, h: number) => {
     const nodeCount = 20;
-    const nodes = [];
-    const edges = [];
+    const nodes: any[] = [];
+    const edges: any[] = [];
 
     for (let i = 0; i < nodeCount; i++) {
       nodes.push({
