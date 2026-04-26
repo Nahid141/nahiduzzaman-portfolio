@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 /*  Subtle interactive network background (canvas)                    */
 /* ------------------------------------------------------------------ */
 function NetworkBackground() {
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animRef = useRef(0);
   const mouseRef = useRef({ x: -500, y: -500 });
   const dimsRef = useRef({ width: 0, height: 0 });
