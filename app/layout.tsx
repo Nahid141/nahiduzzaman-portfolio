@@ -23,7 +23,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-slate-950 text-white">
-        <header className="fixed left-0 top-0 z-50 w-full border-b border-white/10 bg-slate-950/85 backdrop-blur-xl">
+        {/* Transparent header: no background, no borders – only text visible */}
+        <header className="fixed left-0 top-0 z-50 w-full">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-6">
             <a href="/" className="shrink-0">
               <div className="text-lg font-black text-cyan-300 md:text-xl">
@@ -47,12 +48,13 @@ export default function RootLayout({
             </nav>
           </div>
 
-          <nav className="flex gap-3 overflow-x-auto border-t border-white/10 px-4 py-3 text-sm font-bold text-slate-200 md:hidden">
+          {/* Mobile navigation – transparent, no background or borders */}
+          <nav className="flex gap-3 overflow-x-auto px-4 py-3 text-sm font-bold text-slate-200 md:hidden">
             {navItems.map((item) => (
               <a
                 key={item.name}
                 href={item.href}
-                className="shrink-0 rounded-full border border-white/10 bg-white/5 px-4 py-2 transition hover:border-cyan-300 hover:text-cyan-300"
+                className="shrink-0 px-4 py-2 transition hover:text-cyan-300"
               >
                 {item.name}
               </a>
