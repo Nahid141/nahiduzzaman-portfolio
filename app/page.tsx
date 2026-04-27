@@ -3,41 +3,47 @@
 import Image from "next/image";
 import { useEffect, useRef, useCallback } from "react";
 
-/* ---------- interactive phylogenetic network + fixed large DNA with sequences + viruses + bacteria ---------- */
+/* -------------------------------------------------------------------------- */
+/*   Interactive Phylogenetic Network Background                              */
+/*   – responsive canvas with mouse-reactive tree, DNA network lines,         */
+/*     viruses, bacteria, particles, and clickable phylogenetic pop‑up       */
+/* -------------------------------------------------------------------------- */
 function PhylogeneticBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
   const mouseRef = useRef({ x: -1000, y: -1000, active: false });
   const dimensions = useRef({ width: 0, height: 0 });
+  const scaleRef = useRef(1); // mobile scale factor
 
-  // --- background tree data ---
+  // --- background tree ---
   const treeNodesRef = useRef<any[]>([]);
   const treeEdgesRef = useRef<[number, number][]>([]);
-  // --- top-level network (three fixed DNA molecules) ---
-  const dnaNodesRef = useRef<any[]>([]); // large DNA strands as network nodes
-  const networkEdgesRef = useRef<[number, number][]>([]); // edges between them
-  // --- virus & bacteria ---
+  // --- three DNA network nodes (now drawn as light connection lines) ---
+  const dnaNodesRef = useRef<any[]>([]);
+  const networkEdgesRef = useRef<[number, number][]>([]);
+  // --- viruses & bacteria ---
   const virusesRef = useRef<any[]>([]);
   const bacteriaRef = useRef<any[]>([]);
   // --- ambient particles ---
   const particlesRef = useRef<any[]>([]);
-  // --- interactive phylogenetic tree on DNA click ---
+  // --- click phylogenetic tree ---
   const clickTreeNodesRef = useRef<any[]>([]);
   const clickTreeEdgesRef = useRef<[number, number][]>([]);
   const showClickTreeRef = useRef(false);
   const clickTreeTimerRef = useRef(0);
 
   const globalTimeRef = useRef(0);
+  const dashOffsetRef = useRef(0); // for flowing dash effect on DNA lines
 
   // ==================== BUILD FUNCTIONS ====================
   const buildBackgroundTree = useCallback((width: number, height: number) => {
     const nodes: any[] = [];
     const edges: [number, number][] = [];
-    const root = { id: 0, x: width * 0.5, y: height * 0.15, vx: 0, vy: 0, radius: 5 };
+    const root = { id: 0, x: width * 0.5, y: height * 0.15, vx: 0, vy: 0, radius: 5 * scaleRef.current };
     nodes.push(root);
     const maxDepth = 5;
     const branchAngle = Math.PI / 4;
-    const lengthBase = Math.min(width, height) * 0.09;
+    const lengthBase = Math.min(width, height) * 0.09 * scaleRef.current;
 
     const addChildren = (parentId: number, depth: number, angle: number, centerX: number, centerY: number) => {
       if (depth >= maxDepth) return;
@@ -56,62 +62,52 @@ function PhylogeneticBackground() {
     };
     addChildren(0, 0, -Math.PI / 2, root.x, root.y);
     return { nodes, edges };
-  }, []);
+  }, [scaleRef]);
 
   const buildNetworkDNA = useCallback((width: number, height: number) => {
-    const nucleotideOptions = ["A", "T", "G", "C"];
-    // positions of the three DNA molecules (triangle)
+    // Three fixed DNA points arranged in a triangle
     const centerX = width / 2;
     const centerY = height / 2;
     const radiusOuter = Math.min(width, height) * 0.25;
-    const angles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3]; // 0°, 120°, 240°
-    // shift so one is top
-    const startAngle = -Math.PI / 2; // first node at top
+    const angles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
+    const startAngle = -Math.PI / 2;
     const positions = angles.map(a => ({
       x: centerX + radiusOuter * Math.cos(a + startAngle),
       y: centerY + radiusOuter * Math.sin(a + startAngle)
     }));
 
     const strands = positions.map((pos, idx) => {
-      // axisAngle points toward the center (opposite to outward radial)
       const angleToCenter = Math.atan2(centerY - pos.y, centerX - pos.x);
-      const seqLength = 40;
-      const sequence = Array.from({ length: seqLength }, () =>
-        nucleotideOptions[Math.floor(Math.random() * 4)]
-      );
       return {
         id: idx,
         centerX: pos.x,
         centerY: pos.y,
         axisAngle: angleToCenter,
-        length: 240,
-        amplitude: 14,
-        numTwists: 3.5,
+        length: 260 * scaleRef.current,
+        amplitude: 18 * scaleRef.current,
+        numTwists: 5.5,
         phase: Math.random() * Math.PI * 2,
-        twistSpeed: 0.4,
-        opacity: 0.5,
-        sequence,
-        mutationTimer: 3 + Math.random() * 4,
-        flashIndices: [] as number[],
-        flashTimer: 0,
+        twistSpeed: 0.3,
+        opacity: 0.3,           // base opacity (will increase on hover)
+        hoverOpacity: 0.8,
       };
     });
 
-    // network edges between DNA nodes (undirected, for drawing)
     const edges: [number, number][] = [[0, 1], [1, 2], [2, 0]];
     return { nodes: strands, edges };
-  }, []);
+  }, [scaleRef]);
 
   const buildViruses = useCallback((width: number, height: number) => {
     const viruses = [];
     const count = 5;
     for (let i = 0; i < count; i++) {
+      const baseRadius = 12 + Math.random() * 10;
       viruses.push({
         x: Math.random() * width,
         y: Math.random() * height,
         vx: (Math.random() - 0.5) * 0.8,
         vy: (Math.random() - 0.5) * 0.8,
-        radius: 12 + Math.random() * 10,
+        radius: baseRadius * scaleRef.current,
         spikes: 8 + Math.floor(Math.random() * 8),
         rotation: Math.random() * Math.PI * 2,
         rotSpeed: (Math.random() - 0.5) * 0.05,
@@ -119,19 +115,21 @@ function PhylogeneticBackground() {
       });
     }
     return viruses;
-  }, []);
+  }, [scaleRef]);
 
   const buildBacteria = useCallback((width: number, height: number) => {
     const bacteria = [];
     const count = 3;
     for (let i = 0; i < count; i++) {
+      const baseLength = 30 + Math.random() * 40;
+      const baseWidth = 8 + Math.random() * 12;
       bacteria.push({
         x: Math.random() * width,
         y: Math.random() * height,
         vx: (Math.random() - 0.5) * 0.6,
         vy: (Math.random() - 0.5) * 0.6,
-        length: 30 + Math.random() * 40,
-        width: 8 + Math.random() * 12,
+        length: baseLength * scaleRef.current,
+        width: baseWidth * scaleRef.current,
         rotation: Math.random() * Math.PI * 2,
         rotSpeed: (Math.random() - 0.5) * 0.03,
         flagellumPhase: Math.random() * Math.PI * 2,
@@ -140,7 +138,7 @@ function PhylogeneticBackground() {
       });
     }
     return bacteria;
-  }, []);
+  }, [scaleRef]);
 
   const buildParticles = useCallback((width: number, height: number) => {
     const particles = [];
@@ -151,21 +149,21 @@ function PhylogeneticBackground() {
         y: Math.random() * height,
         vx: (Math.random() - 0.5) * 0.4,
         vy: (Math.random() - 0.5) * 0.4,
-        radius: 1.5 + Math.random() * 2.5,
-        glow: 3 + Math.random() * 6,
+        radius: (1.5 + Math.random() * 2.5) * scaleRef.current,
+        glow: (3 + Math.random() * 6) * scaleRef.current,
       });
     }
     return particles;
-  }, []);
+  }, [scaleRef]);
 
   const buildClickTree = useCallback((rootX: number, rootY: number) => {
     const nodes: any[] = [];
     const edges: [number, number][] = [];
-    const root = { id: 0, x: rootX, y: rootY, vx: 0, vy: 0, radius: 5 };
+    const root = { id: 0, x: rootX, y: rootY, vx: 0, vy: 0, radius: 5 * scaleRef.current };
     nodes.push(root);
     const maxDepth = 3;
     const branchAngle = Math.PI / 3;
-    const lengthBase = 55;
+    const lengthBase = 55 * scaleRef.current;
 
     const addChildren = (parentId: number, depth: number, angle: number) => {
       if (depth >= maxDepth) return;
@@ -184,7 +182,6 @@ function PhylogeneticBackground() {
       }
     };
 
-    // three main branches from root
     const startAngles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
     for (const ang of startAngles) {
       const firstChildX = rootX + Math.cos(ang) * lengthBase;
@@ -195,7 +192,7 @@ function PhylogeneticBackground() {
       addChildren(id, 1, ang);
     }
     return { nodes, edges };
-  }, []);
+  }, [scaleRef]);
 
   // ==================== RESIZE ====================
   const resize = useCallback(() => {
@@ -206,6 +203,9 @@ function PhylogeneticBackground() {
     canvas.width = w;
     canvas.height = h;
     dimensions.current = { width: w, height: h };
+
+    const scale = Math.min(1, w / 800);
+    scaleRef.current = scale;
 
     const { nodes, edges } = buildBackgroundTree(w, h);
     treeNodesRef.current = nodes;
@@ -262,7 +262,7 @@ function PhylogeneticBackground() {
         const along = dx * Math.cos(dna.axisAngle) + dy * Math.sin(dna.axisAngle);
         const perp = Math.abs(-dx * Math.sin(dna.axisAngle) + dy * Math.cos(dna.axisAngle));
         const halfLen = dna.length / 2;
-        if (Math.abs(along) < halfLen && perp < 30) {
+        if (Math.abs(along) < halfLen && perp < 40) { // slightly wider hit area
           hitID = dna.id;
           break;
         }
@@ -273,7 +273,7 @@ function PhylogeneticBackground() {
         clickTreeNodesRef.current = nodes;
         clickTreeEdgesRef.current = edges;
         showClickTreeRef.current = true;
-        clickTreeTimerRef.current = 6; // seconds
+        clickTreeTimerRef.current = 6;
       }
     };
     canvas.addEventListener("click", handleClick);
@@ -293,8 +293,10 @@ function PhylogeneticBackground() {
       const dt = Math.min((time - lastTime) / 1000, 0.1);
       lastTime = time;
       globalTimeRef.current += dt;
+      dashOffsetRef.current += dt * 30; // flowing dash effect
 
       const { width, height } = dimensions.current;
+      const responsiveScale = Math.min(1, width / 800);
       if (!width || !height) {
         animationRef.current = requestAnimationFrame(animate);
         return;
@@ -312,7 +314,7 @@ function PhylogeneticBackground() {
       const mouseY = mouse.y;
       const mouseActive = mouse.active;
 
-      // ---- update background tree nodes ----
+      // ---- update background tree ----
       const homeX = new Float32Array(treeNodes.length);
       const homeY = new Float32Array(treeNodes.length);
       for (let i = 0; i < treeNodes.length; i++) {
@@ -330,7 +332,7 @@ function PhylogeneticBackground() {
           const dx = treeNodes[i].x - mouseX;
           const dy = treeNodes[i].y - mouseY;
           const dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
-          if (dist < 180) {
+          if (dist < 180 * responsiveScale) {
             const force = repulsionStrength / (dist * 0.8);
             fx += (dx / dist) * force;
             fy += (dy / dist) * force;
@@ -340,7 +342,7 @@ function PhylogeneticBackground() {
           const dx = treeNodes[i].x - treeNodes[j].x;
           const dy = treeNodes[i].y - treeNodes[j].y;
           const dist = Math.sqrt(dx * dx + dy * dy) + 0.01;
-          if (dist < 60) {
+          if (dist < 60 * responsiveScale) {
             const force = 15 / dist;
             fx += (dx / dist) * force;
             fy += (dy / dist) * force;
@@ -358,12 +360,10 @@ function PhylogeneticBackground() {
 
       // ---- update viruses & bacteria ----
       for (const v of viruses) {
-        let dx = 0, dy = 0;
         if (mouseActive) {
-          dx = v.x - mouseX;
-          dy = v.y - mouseY;
+          const dx = v.x - mouseX, dy = v.y - mouseY;
           const dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
-          if (dist < 150) {
+          if (dist < 150 * responsiveScale) {
             const force = 50 / (dist * 0.5);
             v.vx += (dx / dist) * force * dt;
             v.vy += (dy / dist) * force * dt;
@@ -378,10 +378,8 @@ function PhylogeneticBackground() {
         if (v.y > height + 30) v.y = -30;
       }
       for (const b of bacteria) {
-        let dx = 0, dy = 0;
         if (mouseActive) {
-          dx = b.x - mouseX;
-          dy = b.y - mouseY;
+          const dx = b.x - mouseX, dy = b.y - mouseY;
           const dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
           if (dist < 150) {
             const force = 40 / (dist * 0.5);
@@ -393,105 +391,68 @@ function PhylogeneticBackground() {
         b.flagellumPhase += b.flagellumSpeed * dt;
         b.x += b.vx * dt;
         b.y += b.vy * dt;
-        if (b.x < -50) b.x = width + 50;
-        if (b.x > width + 50) b.x = -50;
-        if (b.y < -50) b.y = height + 50;
-        if (b.y > height + 50) b.y = -50;
+        if (b.x < -50 * responsiveScale) b.x = width + 50 * responsiveScale;
+        if (b.x > width + 50 * responsiveScale) b.x = -50 * responsiveScale;
+        if (b.y < -50 * responsiveScale) b.y = height + 50 * responsiveScale;
+        if (b.y > height + 50 * responsiveScale) b.y = -50 * responsiveScale;
       }
 
-      // ---- DNA mutations (fixed positions, only sequences change) ----
-      const globalT = globalTimeRef.current;
-      const baseColors: Record<string, string> = {
-        A: "#4ade80", T: "#f87171", G: "#60a5fa", C: "#fbbf24"
-      };
-      for (const dna of dnaNodes) {
-        dna.mutationTimer -= dt;
-        dna.flashTimer -= dt;
-        if (dna.mutationTimer <= 0) {
-          dna.mutationTimer = 3 + Math.random() * 4;
-          const newFlash: number[] = [];
-          for (let i = 0; i < dna.sequence.length; i++) {
-            if (Math.random() < 0.1) {
-              const options = ["A", "T", "G", "C"];
-              const current = dna.sequence[i];
-              const others = options.filter(c => c !== current);
-              dna.sequence[i] = others[Math.floor(Math.random() * others.length)];
-              newFlash.push(i);
-            }
+      // ---- determine DNA hover state (interactive glow) ----
+      const hoveredDNA = new Set<number>();
+      if (mouseActive) {
+        for (const dna of dnaNodes) {
+          const dx = mouseX - dna.centerX;
+          const dy = mouseY - dna.centerY;
+          const along = dx * Math.cos(dna.axisAngle) + dy * Math.sin(dna.axisAngle);
+          const perp = Math.abs(-dx * Math.sin(dna.axisAngle) + dy * Math.cos(dna.axisAngle));
+          if (Math.abs(along) < dna.length / 2 && perp < 50 * responsiveScale) {
+            hoveredDNA.add(dna.id);
           }
-          dna.flashIndices = newFlash;
-          dna.flashTimer = 0.6;
         }
       }
 
-      // ---- update click tree if active ----
+      // ---- update click tree ----
       if (showClickTreeRef.current) {
         clickTreeTimerRef.current -= dt;
         if (clickTreeTimerRef.current <= 0) {
           showClickTreeRef.current = false;
           clickTreeNodesRef.current = [];
           clickTreeEdgesRef.current = [];
-        } else {
-          const cNodes = clickTreeNodesRef.current;
-          const springStr = 0.01;
-          const damp = 0.91;
-          for (let i = 0; i < cNodes.length; i++) {
-            let fx = 0, fy = 0;
-            // home position is stored at creation; we keep a copy of original positions
-            // We'll use the initial position as home, but we need to store it.
-            // For simplicity, we avoid physics for the click tree (static display),
-            // just draw as-is. We'll keep the original positions unchanged.
-            // Instead of dynamic update, we just let the tree be static during the timer.
-            // So we skip physics and keep positions as set.
-          }
-          // No physics update, just leave nodes as they were created.
-          // Optionally add slight drift if needed, but static is fine.
         }
       }
 
       // ---- DRAW ----
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Background tree edges
+      // 1. Background tree
       ctx.beginPath();
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.1)";
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.08)";
       ctx.lineWidth = 1;
       for (const [a, b] of treeEdges) {
-        const na = treeNodes[a];
-        const nb = treeNodes[b];
-        if (na && nb) {
-          ctx.moveTo(na.x, na.y);
-          ctx.lineTo(nb.x, nb.y);
-        }
+        const na = treeNodes[a], nb = treeNodes[b];
+        if (na && nb) { ctx.moveTo(na.x, na.y); ctx.lineTo(nb.x, nb.y); }
       }
       ctx.stroke();
-      // highlighted edges near mouse
       if (mouseActive) {
         ctx.beginPath();
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.5)";
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
         ctx.lineWidth = 1.4;
         for (const [a, b] of treeEdges) {
-          const na = treeNodes[a];
-          const nb = treeNodes[b];
+          const na = treeNodes[a], nb = treeNodes[b];
           if (!na || !nb) continue;
-          const midX = (na.x + nb.x) / 2;
-          const midY = (na.y + nb.y) / 2;
-          const dx = midX - mouseX;
-          const dy = midY - mouseY;
-          if (dx * dx + dy * dy < 120 * 120) {
-            ctx.moveTo(na.x, na.y);
-            ctx.lineTo(nb.x, nb.y);
+          const midX = (na.x + nb.x) / 2, midY = (na.y + nb.y) / 2;
+          if ((midX - mouseX) ** 2 + (midY - mouseY) ** 2 < 120 * 120) {
+            ctx.moveTo(na.x, na.y); ctx.lineTo(nb.x, nb.y);
           }
         }
         ctx.stroke();
       }
-      // tree nodes
       for (const node of treeNodes) {
         ctx.beginPath();
-        const gradient = ctx.createRadialGradient(node.x - 2, node.y - 2, 0, node.x, node.y, node.radius * 2.5);
-        gradient.addColorStop(0, "rgba(125, 211, 252, 0.9)");
-        gradient.addColorStop(1, "rgba(14, 165, 233, 0.1)");
-        ctx.fillStyle = gradient;
+        const g = ctx.createRadialGradient(node.x - 2, node.y - 2, 0, node.x, node.y, node.radius * 2.5);
+        g.addColorStop(0, "rgba(125, 211, 252, 0.9)");
+        g.addColorStop(1, "rgba(14, 165, 233, 0.1)");
+        ctx.fillStyle = g;
         ctx.arc(node.x, node.y, node.radius * 2.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
@@ -500,101 +461,77 @@ function PhylogeneticBackground() {
         ctx.fill();
       }
 
-      // 2. Network edges between DNA molecules (dashed, with glow)
-      ctx.save();
-      ctx.setLineDash([6, 8]);
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.25)";
-      ctx.lineWidth = 2;
-      ctx.shadowColor = "#38bdf8";
-      ctx.shadowBlur = 10;
+      // 2. Network edges between DNA (base: subtle, glow on hover)
       for (const [a, b] of networkEdges) {
-        const na = dnaNodes[a];
-        const nb = dnaNodes[b];
+        const na = dnaNodes[a], nb = dnaNodes[b];
+        if (!na || !nb) continue;
+        const isHovered = hoveredDNA.has(a) || hoveredDNA.has(b);
         ctx.beginPath();
+        ctx.setLineDash([8, 10]);
+        ctx.lineDashOffset = -dashOffsetRef.current;
+        ctx.strokeStyle = isHovered ? "rgba(56, 189, 248, 0.9)" : "rgba(56, 189, 248, 0.25)";
+        ctx.lineWidth = isHovered ? 2.5 : 1.8;
+        ctx.shadowColor = isHovered ? "#38bdf8" : "transparent";
+        ctx.shadowBlur = isHovered ? 12 : 0;
         ctx.moveTo(na.centerX, na.centerY);
         ctx.lineTo(nb.centerX, nb.centerY);
         ctx.stroke();
       }
       ctx.setLineDash([]);
       ctx.shadowBlur = 0;
-      ctx.restore();
 
-      // 3. Draw each large fixed DNA with nucleotide sequences
-      const fontSize = 14;
+      // 3. Draw DNA molecules as flowing network lines (double helix reduced to two wavy lines)
       for (const dna of dnaNodes) {
-        const { centerX, centerY, axisAngle, length, amplitude, numTwists, phase, twistSpeed, opacity, sequence, flashIndices, flashTimer } = dna;
+        const isHovered = hoveredDNA.has(dna.id);
+        const opacity = isHovered ? dna.hoverOpacity : dna.opacity;
         ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate(axisAngle);
+        ctx.translate(dna.centerX, dna.centerY);
+        ctx.rotate(dna.axisAngle);
+        // NO spinAngle rotation – DNA no longer rotates
 
         const steps = 100;
-        const points1: [number, number][] = [];
-        const points2: [number, number][] = [];
+        const pts1: [number, number][] = [];
+        const pts2: [number, number][] = [];
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
-          const px = t * length - length / 2;
-          const py1 = amplitude * Math.sin(2 * Math.PI * numTwists * t + phase + globalT * twistSpeed);
-          const py2 = amplitude * Math.sin(2 * Math.PI * numTwists * t + phase + Math.PI + globalT * twistSpeed);
-          points1.push([px, py1]);
-          points2.push([px, py2]);
+          const px = t * dna.length - dna.length / 2;
+          const py1 = dna.amplitude * Math.sin(2 * Math.PI * dna.numTwists * t + dna.phase + globalTimeRef.current * dna.twistSpeed);
+          const py2 = dna.amplitude * Math.sin(2 * Math.PI * dna.numTwists * t + dna.phase + Math.PI + globalTimeRef.current * dna.twistSpeed);
+          pts1.push([px, py1]);
+          pts2.push([px, py2]);
         }
 
-        // backbones
+        // draw backbones as dashed network lines
+        ctx.setLineDash([10, 6]);
+        ctx.lineDashOffset = -dashOffsetRef.current * 1.2; // flowing movement
+        ctx.lineWidth = isHovered ? 2.2 : 1.4;
         ctx.strokeStyle = `rgba(56, 189, 248, ${opacity})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(points1[0][0], points1[0][1]);
-        for (let i = 1; i < points1.length; i++) ctx.lineTo(points1[i][0], points1[i][1]);
+        ctx.beginPath(); ctx.moveTo(pts1[0][0], pts1[0][1]);
+        for (let i = 1; i < pts1.length; i++) ctx.lineTo(pts1[i][0], pts1[i][1]);
         ctx.stroke();
-        ctx.strokeStyle = `rgba(56, 189, 248, ${opacity * 0.8})`;
-        ctx.beginPath();
-        ctx.moveTo(points2[0][0], points2[0][1]);
-        for (let i = 1; i < points2.length; i++) ctx.lineTo(points2[i][0], points2[i][1]);
+        ctx.beginPath(); ctx.moveTo(pts2[0][0], pts2[0][1]);
+        for (let i = 1; i < pts2.length; i++) ctx.lineTo(pts2[i][0], pts2[i][1]);
         ctx.stroke();
 
-        // rungs
-        const rungCount = 20;
-        ctx.strokeStyle = `rgba(125, 211, 252, ${opacity * 0.4})`;
-        ctx.lineWidth = 0.6;
-        for (let i = 0; i <= rungCount; i++) {
-          const t = i / rungCount;
-          const idx = Math.floor(t * steps);
-          if (idx < points1.length) {
-            const [x1, y1] = points1[idx];
-            const [x2, y2] = points2[idx];
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
+        // faint rungs only when hovered
+        if (isHovered) {
+          ctx.strokeStyle = `rgba(125, 211, 252, ${opacity * 0.5})`;
+          ctx.lineWidth = 0.5;
+          const rungCount = 14;
+          for (let i = 0; i <= rungCount; i++) {
+            const t = i / rungCount;
+            const idx = Math.floor(t * steps);
+            if (idx < pts1.length) {
+              const [x1, y1] = pts1[idx], [x2, y2] = pts2[idx];
+              ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            }
           }
         }
-
-        // nucleotide sequence along midpoint
-        const seqLen = sequence.length;
-        ctx.font = `bold ${fontSize}px monospace`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        for (let i = 0; i < seqLen; i++) {
-          const t = i / (seqLen - 1);
-          const idx = Math.floor(t * steps);
-          const [px1, py1] = points1[idx];
-          const [px2, py2] = points2[idx];
-          const midX = (px1 + px2) / 2;
-          const midY = (py1 + py2) / 2;
-          const base = sequence[i];
-          const isFlashing = flashIndices.includes(i) && flashTimer > 0;
-          if (isFlashing) {
-            ctx.shadowColor = "#ffffff";
-            ctx.shadowBlur = 10;
-          }
-          ctx.fillStyle = isFlashing ? "#ffffff" : baseColors[base] || "#ccc";
-          ctx.fillText(base, midX, midY);
-          ctx.shadowBlur = 0;
-        }
+        ctx.setLineDash([]);
         ctx.restore();
       }
 
-      // 4. Draw viruses
+      // 4. Viruses
       for (const v of viruses) {
         ctx.save();
         ctx.translate(v.x, v.y);
@@ -607,8 +544,7 @@ function PhylogeneticBackground() {
         ctx.lineWidth = 2;
         for (let i = 0; i < v.spikes; i++) {
           const angle = (i / v.spikes) * Math.PI * 2;
-          const inner = v.radius * 0.7;
-          const outer = v.radius * 1.4;
+          const inner = v.radius * 0.7, outer = v.radius * 1.4;
           ctx.beginPath();
           ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
           ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
@@ -617,7 +553,7 @@ function PhylogeneticBackground() {
         ctx.restore();
       }
 
-      // 5. Draw bacteria
+      // 5. Bacteria
       for (const b of bacteria) {
         ctx.save();
         ctx.translate(b.x, b.y);
@@ -630,17 +566,13 @@ function PhylogeneticBackground() {
         ctx.strokeStyle = "#fff5";
         ctx.lineWidth = 1.5;
         ctx.stroke();
-        // flagellum
         ctx.beginPath();
-        const waveAmp = 5;
-        const waveLen = 30;
-        const steps = 20;
-        for (let i = 0; i <= steps; i++) {
-          const t = i / steps;
+        const waveAmp = 5, waveLen = 30, stepsFlag = 20;
+        for (let i = 0; i <= stepsFlag; i++) {
+          const t = i / stepsFlag;
           const px = halfLen + t * waveLen;
           const py = waveAmp * Math.sin(t * Math.PI * 6 + b.flagellumPhase);
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
         ctx.strokeStyle = b.color;
         ctx.lineWidth = 2;
@@ -648,31 +580,24 @@ function PhylogeneticBackground() {
         ctx.restore();
       }
 
-      // 6. Draw click phylogenetic tree (if visible)
+      // 6. Click phylogenetic tree
       if (showClickTreeRef.current) {
-        const cNodes = clickTreeNodesRef.current;
-        const cEdges = clickTreeEdgesRef.current;
+        const cNodes = clickTreeNodesRef.current, cEdges = clickTreeEdgesRef.current;
         const alpha = Math.min(1, clickTreeTimerRef.current / 2);
-        // edges
         ctx.beginPath();
         ctx.strokeStyle = `rgba(192, 38, 211, ${0.8 * alpha})`;
         ctx.lineWidth = 2;
         for (const [a, b] of cEdges) {
-          const na = cNodes[a];
-          const nb = cNodes[b];
-          if (na && nb) {
-            ctx.moveTo(na.x, na.y);
-            ctx.lineTo(nb.x, nb.y);
-          }
+          const na = cNodes[a], nb = cNodes[b];
+          if (na && nb) { ctx.moveTo(na.x, na.y); ctx.lineTo(nb.x, nb.y); }
         }
         ctx.stroke();
-        // nodes
         for (const node of cNodes) {
           ctx.beginPath();
-          const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.radius * 2.5);
-          gradient.addColorStop(0, `rgba(192, 38, 211, ${0.9 * alpha})`);
-          gradient.addColorStop(1, `rgba(192, 38, 211, 0)`);
-          ctx.fillStyle = gradient;
+          const g = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.radius * 2.5);
+          g.addColorStop(0, `rgba(192, 38, 211, ${0.9 * alpha})`);
+          g.addColorStop(1, "rgba(192, 38, 211, 0)");
+          ctx.fillStyle = g;
           ctx.arc(node.x, node.y, node.radius * 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.beginPath();
@@ -684,17 +609,14 @@ function PhylogeneticBackground() {
 
       // 7. Particles
       for (const p of particles) {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < -20) p.x = width + 20;
-        if (p.x > width + 20) p.x = -20;
-        if (p.y < -20) p.y = height + 20;
-        if (p.y > height + 20) p.y = -20;
-        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.glow);
-        gradient.addColorStop(0, "rgba(56, 189, 248, 0.7)");
-        gradient.addColorStop(1, "rgba(56, 189, 248, 0)");
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < -20) p.x = width + 20; if (p.x > width + 20) p.x = -20;
+        if (p.y < -20) p.y = height + 20; if (p.y > height + 20) p.y = -20;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.glow);
+        g.addColorStop(0, "rgba(56, 189, 248, 0.7)");
+        g.addColorStop(1, "rgba(56, 189, 248, 0)");
         ctx.beginPath();
-        ctx.fillStyle = gradient;
+        ctx.fillStyle = g;
         ctx.arc(p.x, p.y, p.glow, 0, Math.PI * 2);
         ctx.fill();
       }
@@ -709,38 +631,34 @@ function PhylogeneticBackground() {
   return <canvas ref={canvasRef} className="fixed inset-0 z-0" />;
 }
 
-/* ---------- homepage ---------- */
+/* -------------------------------------------------------------------------- */
+/*   Homepage Content                                                         */
+/* -------------------------------------------------------------------------- */
 export default function Home() {
   const stats = [
     { value: "4+", label: "Journal Articles" },
     { value: "10+", label: "NCBI Contributions" },
-    { value: "2023", label: "Research Journey Started" },
-    { value: "EGStat-N", label: "Upcoming Tool" },
+    { value: "12+", label: "Research Projects" },
+    { value: "14+", label: "Conferences" },
   ];
 
   const focus = [
-    "Infectious Disease",
-    "Zoonosis",
-    "Vaccine Development",
-    "Microbial Genomics",
-    "AMR",
-    "Public Health",
-    "Epidemiology",
-    "Machine Learning",
+    "Infectious Disease", "Zoonosis", "Vaccine Development", "Microbial Genomics",
+    "AMR", "Public Health", "Epidemiology", "Machine Learning","Quantum Machine Learning",
   ];
 
   const highlights = [
     {
       title: "Genomics & Bioinformatics",
-      text: "Genome analysis, pathogen characterization, phylogenetics, and data-driven biological interpretation.",
+      text: "Genome analysis, pathogen characterization, evolutionary dynamics, phylogenetics, and data-driven biological interpretation.",
     },
     {
       title: "Public Health & Epidemiology",
-      text: "Research focused on zoonoses, foodborne pathogens, antimicrobial resistance, and disease dynamics.",
+      text: "Research focused on zoonoses, food animal associated pathogens (Cattle, Swine, Poultry), foodborne pathogens, antimicrobial resistance, and disease dynamics.",
     },
     {
       title: "Tool Development",
-      text: "Building Python-based tools for epidemiology, genomics, machine learning, and biological data analysis.",
+      text: "Building computational tools for epidemiology, genomics, machine learning, and biological data analysis.",
     },
   ];
 
@@ -753,53 +671,39 @@ export default function Home() {
         <section className="min-h-screen px-6 py-24">
           <div className="mx-auto grid max-w-7xl items-center gap-16 lg:grid-cols-2">
             <div>
-              <div className="mb-6 inline-flex rounded-full border border-cyan-300/30 bg-cyan-300/10 px-5 py-2 text-sm font-bold text-cyan-200 shadow-lg shadow-cyan-900/20 backdrop-blur-sm">
+              <div className="mb-6 inline-flex rounded-full border border-cyan-300/30 bg-cyan-300/10 px-5 py-2 text-xs md:text-sm font-bold text-cyan-200 shadow-lg shadow-cyan-900/20 backdrop-blur-sm">
                 Microbiology • Epidemiology • Bioinformatics
               </div>
 
-              <h1 className="mb-6 text-6xl font-black leading-tight tracking-tight md:text-8xl">
+              <h1 className="mb-6 text-5xl md:text-8xl font-black leading-tight tracking-tight">
                 Nahiduzzaman
               </h1>
 
-              <p className="mb-8 max-w-2xl text-xl leading-9 text-slate-300">
-                Microbiology, genomics, epidemiology, and AI-driven
-                bioinformatics research focused on infectious diseases, vaccine
-                development, antimicrobial resistance, and global public health.
+              <h3 className="text-xl md:text-2xl font-bold text-cyan-200 mb-4">Research Interest</h3>
+              <p className="mb-8 max-w-2xl text-base md:text-xl leading-7 md:leading-9 text-slate-300">
+                I integrate microbiology, epidemiology, and bioinformatics, with over three years research experience in infectious and zoonotic diseases. My work spans vaccine development, microbial genomics, foodborne pathogen surveillance, and data-driven disease dynamics modeling. Proficient in Python, R, Julia, MATLAB, and Linux, I develop bioinformatics and epidemiological tools. I am particularly interested in host-pathogen interactions, genomic evolution, and epidemiological modeling, and I seek to apply machine learning and quantum machine learning (QML) approaches to understand pathogen adaptation in livestock systems.
               </p>
 
               <div className="mb-10 flex flex-wrap gap-4">
-                <a
-                  href="/research"
-                  className="rounded-2xl bg-blue-500 px-7 py-4 font-bold text-white shadow-xl shadow-blue-900/30 transition hover:-translate-y-1 hover:bg-cyan-400 hover:text-slate-950"
-                >
+                <a href="/research" className="rounded-2xl bg-blue-500 px-7 py-4 font-bold text-white shadow-xl shadow-blue-900/30 transition hover:-translate-y-1 hover:bg-cyan-400 hover:text-slate-950">
                   Explore Research
                 </a>
-                <a
-                  href="/publications"
-                  className="rounded-2xl border border-white/20 bg-white/5 px-7 py-4 font-bold text-white backdrop-blur transition hover:-translate-y-1 hover:border-cyan-300 hover:text-cyan-300"
-                >
+                <a href="/publications" className="rounded-2xl border border-white/20 bg-white/5 px-7 py-4 font-bold text-white backdrop-blur transition hover:-translate-y-1 hover:border-cyan-300 hover:text-cyan-300">
                   Publications
                 </a>
-                <a
-                  href="/tools"
-                  className="rounded-2xl border border-white/20 px-7 py-4 font-bold text-white transition hover:-translate-y-1 hover:border-blue-400 hover:bg-blue-500/10"
-                >
+                <a href="/tools" className="rounded-2xl border border-white/20 px-7 py-4 font-bold text-white transition hover:-translate-y-1 hover:border-blue-400 hover:bg-blue-500/10">
                   Tools
                 </a>
               </div>
 
-              <div className="grid max-w-3xl grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="grid max-w-lg grid-cols-2 gap-4">
                 {stats.map((item) => (
                   <div
                     key={item.label}
                     className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-center backdrop-blur-md transition hover:-translate-y-1 hover:border-cyan-300 hover:bg-cyan-300/10"
                   >
-                    <p className="text-2xl font-black text-cyan-300">
-                      {item.value}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-slate-400">
-                      {item.label}
-                    </p>
+                    <p className="text-2xl font-black text-cyan-300">{item.value}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-400">{item.label}</p>
                   </div>
                 ))}
               </div>
@@ -816,17 +720,9 @@ export default function Home() {
                     width={360}
                     height={360}
                     priority
-                    className="h-[320px] w-[320px] rounded-full object-cover md:h-[360px] md:w-[360px]"
+                    className="h-[280px] w-[280px] md:h-[360px] md:w-[360px] rounded-full object-cover"
                   />
                 </div>
-              </div>
-
-              <div className="absolute -bottom-8 left-6 rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur-xl shadow-xl">
-                <p className="text-sm font-bold text-cyan-200">
-                  Current Focus
-                </p>
-                <p className="mt-1 text-lg font-black">EGStat-N</p>
-                <p className="text-xs text-slate-300">Python research tool</p>
               </div>
             </div>
           </div>
@@ -839,7 +735,7 @@ export default function Home() {
               <p className="text-sm font-black uppercase tracking-[0.3em] text-cyan-300">
                 Research Ecosystem
               </p>
-              <h2 className="mt-3 text-4xl font-black md:text-5xl">
+              <h2 className="mt-3 text-3xl md:text-5xl font-black">
                 Integrated Laboratory + Computational Research
               </h2>
             </div>
@@ -848,11 +744,11 @@ export default function Home() {
               {highlights.map((card) => (
                 <div
                   key={card.title}
-                  className="group rounded-[2rem] border border-white/10 bg-white/[0.06] p-8 backdrop-blur-xl transition duration-300 hover:-translate-y-3 hover:border-cyan-300 hover:bg-cyan-300/10 hover:shadow-2xl hover:shadow-cyan-950/40"
+                  className="group rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 md:p-8 backdrop-blur-xl transition duration-300 hover:-translate-y-3 hover:border-cyan-300 hover:bg-cyan-300/10 hover:shadow-2xl hover:shadow-cyan-950/40"
                 >
-                  <div className="mb-6 h-14 w-14 rounded-2xl bg-blue-500/20 ring-1 ring-blue-300/30 transition group-hover:bg-cyan-300 group-hover:text-slate-950" />
-                  <h3 className="mb-3 text-2xl font-black">{card.title}</h3>
-                  <p className="leading-8 text-slate-300">{card.text}</p>
+                  <div className="mb-6 h-12 w-12 md:h-14 md:w-14 rounded-2xl bg-blue-500/20 ring-1 ring-blue-300/30 transition group-hover:bg-cyan-300 group-hover:text-slate-950" />
+                  <h3 className="mb-3 text-xl md:text-2xl font-black">{card.title}</h3>
+                  <p className="leading-7 md:leading-8 text-slate-300">{card.text}</p>
                 </div>
               ))}
             </div>
@@ -861,16 +757,16 @@ export default function Home() {
 
         {/* expertise */}
         <section className="px-6 pb-24">
-          <div className="mx-auto max-w-7xl rounded-[2.5rem] border border-white/10 bg-slate-900/70 p-8 backdrop-blur-xl md:p-12">
+          <div className="mx-auto max-w-7xl rounded-[2.5rem] border border-white/10 bg-slate-900/70 p-6 md:p-12 backdrop-blur-xl">
             <div className="grid gap-10 lg:grid-cols-2">
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.3em] text-cyan-300">
                   Expertise
                 </p>
-                <h2 className="mt-3 text-4xl font-black">
+                <h2 className="mt-3 text-3xl md:text-4xl font-black">
                   Multidisciplinary Research Areas
                 </h2>
-                <p className="mt-5 leading-8 text-slate-300">
+                <p className="mt-5 leading-7 md:leading-8 text-slate-300">
                   My work connects microbiology, molecular biology, public
                   health, epidemiology, genomics, and computational tool
                   development.
@@ -881,7 +777,7 @@ export default function Home() {
                 {focus.map((item) => (
                   <span
                     key={item}
-                    className="rounded-full border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-bold text-slate-200 transition hover:-translate-y-1 hover:border-cyan-300 hover:bg-cyan-300 hover:text-slate-950"
+                    className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 md:px-5 md:py-3 text-xs md:text-sm font-bold text-slate-200 transition hover:-translate-y-1 hover:border-cyan-300 hover:bg-cyan-300 hover:text-slate-950"
                   >
                     {item}
                   </span>
@@ -896,22 +792,22 @@ export default function Home() {
           <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-2">
             <a
               href="/about"
-              className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-blue-600/30 to-cyan-500/10 p-8 transition hover:-translate-y-2 hover:border-cyan-300"
+              className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-blue-600/30 to-cyan-500/10 p-6 md:p-8 transition hover:-translate-y-2 hover:border-cyan-300"
             >
               <p className="mb-3 text-sm font-black text-cyan-300">ABOUT</p>
-              <h3 className="text-3xl font-black">My academic journey</h3>
-              <p className="mt-4 leading-8 text-slate-300">
+              <h3 className="text-2xl md:text-3xl font-black">My academic journey</h3>
+              <p className="mt-4 leading-7 md:leading-8 text-slate-300">
                 Learn about my background, training, research path, and goals.
               </p>
             </a>
 
             <a
               href="/blog"
-              className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-indigo-600/30 to-blue-500/10 p-8 transition hover:-translate-y-2 hover:border-cyan-300"
+              className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-indigo-600/30 to-blue-500/10 p-6 md:p-8 transition hover:-translate-y-2 hover:border-cyan-300"
             >
               <p className="mb-3 text-sm font-black text-cyan-300">BLOG</p>
-              <h3 className="text-3xl font-black">Articles & tutorials</h3>
-              <p className="mt-4 leading-8 text-slate-300">
+              <h3 className="text-2xl md:text-3xl font-black">Articles & tutorials</h3>
+              <p className="mt-4 leading-7 md:leading-8 text-slate-300">
                 Bioinformatics workflows, research notes, and scientific
                 writing.
               </p>
