@@ -194,6 +194,17 @@ function NetworkBackground() {
 }
 
 const projects: Project[] = [
+  // Meta-analysis project placed first
+  {
+    id: 8,
+    title:
+      "Meta-Analysis on the Efficacy of Current PRRSV Vaccines in the United States",
+    status: "running",
+    lead: false,
+    lab: "Dr. Kimberly VanderWaal's Lab, CVM, UMN",
+    description:
+      "Ongoing systematic review and meta-analysis to quantify the effectiveness of commercially available PRRSV vaccines in U.S. swine herds.",
+  },
   {
     id: 1,
     title:
@@ -264,16 +275,7 @@ const projects: Project[] = [
     description:
       "Led a study combining whole-genome sequencing and epidemiological analysis to characterize Staphylococcus haemolyticus from retail chicken.",
   },
-  {
-    id: 8,
-    title:
-      "Meta-Analysis on the Efficacy of Current PRRSV Vaccines in the United States",
-    status: "running",
-    lead: false,
-    lab: "Dr. Kimberly VanderWaal's Lab, CVM, UMN",
-    description:
-      "Ongoing systematic review and meta-analysis to quantify the effectiveness of commercially available PRRSV vaccines in U.S. swine herds.",
-  },
+  // Note: id 8 already moved to top
   {
     id: 9,
     title:
