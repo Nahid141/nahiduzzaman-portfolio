@@ -444,9 +444,9 @@ export default function About() {
 
           <div className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-xl leading-relaxed text-slate-300 backdrop-blur-sm transition-all duration-300 hover:border-cyan-400/20 hover:shadow-cyan-500/5">
             <p>
-              Hello, I'm a Doctor of Veterinary Medicine (DVM) graduate with an
-              unwavering passion for research and innovation in microbiology,
-              epidemiology, and bioinformatics.
+              He is a Doctor of Veterinary Medicine (DVM) graduate with a strong focus on microbiology, epidemiology, and bioinformatics. His work integrates animal and public health, with experience in whole-genome sequencing, pathogen genomics, antimicrobial resistance, and infectious disease analysis.
+
+He has contributed to research on vaccine development, zoonotic diseases, and food safety, and is skilled in data analysis using R, Python, SPSS, and MATLAB, as well as bioinformatics pipelines. He also has expertise in epidemiological study design, systematic reviews, and scientific writing, aiming to advance research-driven solutions in health and disease.
             </p>
 
             <p>
