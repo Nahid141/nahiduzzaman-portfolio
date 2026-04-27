@@ -473,7 +473,7 @@ export default function About() {
               Beyond the bench, I'm proficient in biological data analysis and
               computational tools:{" "}
               <span className="font-semibold text-white">
-                R, Python, SPSS, MATLAB, Linux
+                R, Python, Julia, Linux, MATLAB
               </span>
               , and numerous bioinformatics platforms.
             </p>
