@@ -73,11 +73,63 @@ const socialLinks = [
       </svg>
     ),
   },
+  {
+    name: "ORCID",
+    url: "https://orcid.org/0009-0000-1970-9480",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.372 0 0 5.372 0 12s5.372 12 12 12 12-5.372 12-12S18.628 0 12 0zM7.369 4.933c.525 0 .947.431.947.947s-.422.947-.947.947a.95.95 0 0 1-.947-.947c0-.516.422-.947.947-.947zm-.722 3.028h1.444v10.111H6.647V7.961zm3.561 0h1.359v1.566h.028c.188-.316.503-.622.947-.881.444-.259.919-.384 1.425-.384.872 0 1.575.3 2.109.9.534.6.8 1.425.8 2.475v5.706h-1.444v-5.153c0-1.05-.253-1.869-.753-2.453-.5-.584-1.181-.878-2.044-.878-.544 0-1.025.159-1.444.478-.419.319-.622.753-.622 1.303v5.703H10.21V7.961z" />
+      </svg>
+    ),
+  },
 ];
 
 const emails = [
   "nahiduzzaman.2001055@bau.edu.bd",
   "nahid007@umn.edu",
+];
+
+const educationData = [
+  {
+    degree: "Doctor of Veterinary Medicine (DVM)",
+    session: "2019-20",
+    gpa: "CGPA: 3.154",
+    institution: "Bangladesh Agricultural University",
+    location: "Mymensingh, Bangladesh",
+    icon: "🎓",
+  },
+  {
+    degree: "Higher Secondary School Certificate (Science)",
+    session: "2017-2019",
+    gpa: "GPA: 5.00 out of 5",
+    institution: "Shahid Syed Nazrul Islam College",
+    location: "Mymensingh, Bangladesh",
+    icon: "📘",
+  },
+  {
+    degree: "Secondary School Certificate (Science)",
+    session: "2015-2017",
+    gpa: "GPA: 5.00 out of 5",
+    institution: "Hazrabari High School",
+    location: "Melandah, Jamalpur, Mymensingh, Bangladesh",
+    icon: "📗",
+  },
+  {
+    degree: "Junior School Certificate",
+    session: "2012-2014",
+    gpa: "GPA: 5.00 out of 5",
+    institution: "Hazrabari High School",
+    location: "Hazrabari, Melandah, Jamalpur, Mymensingh, Bangladesh",
+    icon: "📙",
+  },
+  {
+    degree: "Primary School Certificate",
+    session: "2007-2011",
+    gpa: "GPA: 5.00 out of 5",
+    institution: "Hazrabari Kinder Garden and Precadet School",
+    location: "Hazrabari, Melandah, Jamalpur, Mymensingh, Bangladesh",
+    icon: "📕",
+  },
 ];
 
 // ---------- Components ----------
@@ -415,11 +467,69 @@ function SmallJournalRankGraph() {
   );
 }
 
+function EducationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div
+        className="relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-slate-900/90 p-8 shadow-2xl backdrop-blur-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/20 hover:text-white"
+          aria-label="Close"
+        >
+          ✕
+        </button>
+
+        <h2 className="mb-8 text-3xl font-black text-white">
+          <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+            Educational Timeline
+          </span>
+        </h2>
+
+        <div className="relative ml-4 border-l-2 border-cyan-500/30 pl-8">
+          {educationData.map((entry, idx) => (
+            <div key={idx} className="relative mb-10 last:mb-0">
+              {/* Timeline dot */}
+              <div className="absolute -left-[2.35rem] top-1 h-4 w-4 rounded-full border-2 border-cyan-400 bg-slate-900 shadow-lg shadow-cyan-500/20" />
+
+              <div className="group rounded-xl border border-white/10 bg-white/[0.02] p-5 transition-all hover:border-cyan-400/40 hover:bg-cyan-500/5 hover:shadow-lg">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-lg font-bold text-white">{entry.degree}</h3>
+                  <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-300">
+                    {entry.session}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-medium text-emerald-400">{entry.gpa}</p>
+                <p className="text-sm text-slate-300">{entry.institution}</p>
+                <p className="text-xs text-slate-500">{entry.location}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-4 text-xs text-slate-500">
+          Click outside or press ✕ to close.
+        </p>
+      </div>
+      {/* Backdrop click to close */}
+      <div className="absolute inset-0 z-[-1]" onClick={onClose} />
+    </div>
+  );
+}
+
 // ---------- Main Page ----------
 export default function About() {
+  const [showEducation, setShowEducation] = useState(false);
+
   return (
     <main className="relative min-h-screen overflow-x-hidden bg-slate-950 text-white">
       <NetworkBackground />
+      <EducationModal isOpen={showEducation} onClose={() => setShowEducation(false)} />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 py-24">
         {/* Section 1: Image + Introduction */}
@@ -463,6 +573,26 @@ export default function About() {
               epidemiology, environmental microbiology, and AI-driven
               bioinformatics.
             </p>
+
+            <div className="flex flex-wrap gap-4 pt-4">
+              <button
+                onClick={() => setShowEducation(true)}
+                className="rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-500/25 transition-all hover:scale-105 hover:shadow-cyan-500/40 active:scale-95"
+              >
+                🎓 View Education
+              </button>
+              <a
+                href="https://orcid.org/0009-0000-1970-9480"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-6 py-3 text-sm font-bold text-cyan-200 transition-all hover:scale-105 hover:bg-cyan-500/20 hover:shadow-lg hover:shadow-cyan-500/20"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.372 0 0 5.372 0 12s5.372 12 12 12 12-5.372 12-12S18.628 0 12 0zM7.369 4.933c.525 0 .947.431.947.947s-.422.947-.947.947a.95.95 0 0 1-.947-.947c0-.516.422-.947.947-.947zm-.722 3.028h1.444v10.111H6.647V7.961zm3.561 0h1.359v1.566h.028c.188-.316.503-.622.947-.881.444-.259.919-.384 1.425-.384.872 0 1.575.3 2.109.9.534.6.8 1.425.8 2.475v5.706h-1.444v-5.153c0-1.05-.253-1.869-.753-2.453-.5-.584-1.181-.878-2.044-.878-.544 0-1.025.159-1.444.478-.419.319-.622.753-.622 1.303v5.703H10.21V7.961z" />
+                </svg>
+                ORCID Profile
+              </a>
+            </div>
           </div>
         </section>
 
