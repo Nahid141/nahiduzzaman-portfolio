@@ -1,0 +1,110 @@
+column,dtype,missing_values,unique_values
+Timestamp,datetime64[ns],0,608
+Please write your name below to provide consent to participate in this study-,object,0,579
+Please write your email address below (optional) to be eligible for lucky winners prize.,object,162,437
+What is your age (years)?,int64,0,44
+Age Category,int64,0,2
+2.  What is your gender?,object,0,2
+Gender Category,int64,0,2
+3.  What is your marital status?,object,0,4
+Maritial Category,int64,0,2
+4.  What is your highest level of education?,object,0,6
+Study Category,float64,88,3
+5. What is your occupation?,object,0,7
+Occupation ,int64,0,4
+6.  What is your monthly family income?,object,0,5
+Income,int64,0,3
+7.  What is your place of residence?,object,0,3
+Area,int64,0,3
+8.  Do you have any known health issues?,object,0,2
+Health,int64,0,2
+9.  How frequently do you experience stress in daily life?,object,0,4
+Self-rated stress,int64,0,4
+10.  Have you ever sought professional help for mental health issues?,object,0,2
+Taken Help,int64,0,2
+1. Have you ever experienced excessive pressure from your parents or guardians to excel academically?,int64,0,2
+2. Have you ever failed to get admission to your preferred academic institution?,int64,0,2
+3.  Have you begun or completed your university education?,int64,0,2
+4. Have you experienced harsh behavior or criticism from teachers?,int64,0,2
+5.   Have you experienced changing academic institutions?,int64,0,2
+6.  Have you ever changed your academic subject or branch?,int64,0,2
+7. Have you been frequently absent from your university classes?,int64,0,2
+8. Have you experienced an increase in academic workload or pressure to meet academic demands? ,int64,0,2
+9. Have you received lower grades in examinations than you expected?,int64,0,2
+10. Have you ever failed any of your examinations? ,int64,0,2
+11. Do you have any upcoming examinations?,int64,0,2
+12. Did you face the loss of an academic year?,int64,0,2
+13. Did you face dropping out of study?,int64,0,2
+14. Do you feel you have accomplished any exceptional personal goals?,int64,0,2
+15. Did you face trouble with bullying?,int64,0,2
+16. Have you experienced the death of a parent/spouse/child/a close friend/a close family member recently?,int64,0,2
+17. Have you/your siblings/your friends/any of your family members experienced becoming involved with drug addiction ?,int64,0,2
+18. Have you had to adjust to living with a step parent?,int64,0,2
+19. Did you face parental separation?,int64,0,2
+20. Did you have discord with your parents?,int64,0,2
+21. Did you have any occurrences of parental discord?,int64,0,2
+22. Has your mother started working to earn?,int64,0,2
+23. Has your parent lost their job?,int64,0,2
+24. Did you face your parent’s absence from home for changing their profession?,int64,0,2
+25. Did you experience any changes in your family role and responsibilities?,int64,0,2
+26. Did you face the relocation of your family to a new place?,int64,0,2
+27. Have your parents divorced or separated?,int64,0,2
+"28. Have you experienced changes in your personal habits (sleeping, eating etc.)?",int64,0,2
+29.  Do you have a visible congenital deformity? ,int64,0,2
+30.  Did you acquire any visible deformity?,int64,0,2
+31. Did you face any serious illness of a family member/friends/siblings/ yourself?,int64,0,2
+32. Did you/ your siblings/parents/friends/any of your family members face a serious illness that required hospitalization?,int64,0,2
+33. Did your parents/spouse/child/siblings/friends/family member experience the imprisonment or jail sentence?,int64,0,2
+34. Have you experienced the theft of personal belongings?,int64,0,2
+"35. Have you ever been involved in any minor violations of the law? (e.g., traffic tickets, minor fines)?",int64,0,2
+36. Did you have any marriage related issues?,int64,0,2
+37.Did you have discord with your peer?,int64,0,2
+38. Have you ever experienced unwanted pregnancy?,int64,0,2
+39. Have you or someone you know faced challenges related to pregnancy?,int64,0,2
+40. Do you perceive a lack of recreational opportunities?,int64,0,2
+41.  Have you experienced any romantic relationships or falling in love?,int64,0,2
+42. Have you experienced a breakup with a romantic partner?,int64,0,2
+43. Did you feel the lack of a girlfriend or boyfriend?,int64,0,2
+44. Did you find any extramarital relationship of your parents?,int64,0,2
+45. Have you ever experienced sexual harassment/physical abuse?,int64,0,2
+46. Do you have any sexual problem?,int64,0,2
+47. Did you experience the birth of a sibling?,int64,0,2
+48. Did you have discord with your siblings/friends/family members?,int64,0,2
+49. Have any of your siblings left home?,int64,0,2
+"50.Did any of your siblings/friends/family members achieve something outstanding (e.g., academic success, career milestones)?",int64,0,2
+51. Did you/ your siblings/your friends/any of your family members face the excessive abuse of internet or mobile?,int64,0,2
+Total,int64,0,505
+DSS Stress Catagory,int64,0,2
+1. I found it hard to wind down,int64,0,4
+2. I was aware of dryness of my mouth,int64,0,4
+3. I couldn't seem to experience any positive feeling at all,int64,0,4
+"4. I experienced breathing difficulty (e.g. excessively rapid breathing, breathlessness in the absence of physical exertion)",int64,0,4
+5. I found it difficult to work up the initiative to do things,int64,0,4
+6. I tended to over-react to situations,int64,0,4
+7. I experienced trembling (e.g. in the hands),int64,0,4
+8. I felt that I was using a lot of nervous energy,int64,0,4
+9. I was worried about situations in which I might panic and make a fool of myself,int64,0,4
+10. I felt that I had nothing to look forward to,int64,0,4
+11. I found myself getting agitated,int64,0,4
+12. I found it difficult to relax,int64,0,4
+13. I felt down-hearted and blue,int64,0,4
+14. I was intolerant of anything that kept me from getting on with what I was doing,int64,0,4
+15. I felt I was close to panic,int64,0,4
+16. I was unable to become enthusiastic about anything,int64,0,4
+17. I felt I wasn’t worth much as a person,int64,0,4
+18. I felt that I was rather touchy,int64,0,4
+"19. I was aware of the action of my heart in the absence of physical exertion (e.g. sense of heart rate increase, heart missing a beat)",int64,0,4
+20. I felt scared without any good reason,int64,0,4
+21. I felt that life was meaningless,int64,0,4
+Depression Score,int64,0,22
+Anxiety Score,int64,0,22
+Stress Score,int64,0,22
+Depr. Level,int64,0,5
+Anxiety Level,int64,0,5
+Stress level,int64,0,5
+Dep. Combined,int64,0,3
+Anxiety combined,int64,0,3
+DASS-21 Stress (combined groups),int64,0,3
+"Please do not change anything in this portion.
+This section is auto filled [For Researchers purpose only]",object,0,1
+8.  In which division do you work/study?,object,0,8

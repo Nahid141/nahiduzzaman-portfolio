@@ -92,8 +92,8 @@ const emails = [
 const educationData = [
   {
     degree: "Doctor of Veterinary Medicine (DVM)",
-    session: "2019-20",
-    gpa: "CGPA: 3.154",
+    session: "2020-2026",
+    gpa: "CGPA: 3.155",
     institution: "Bangladesh Agricultural University",
     location: "Mymensingh, Bangladesh",
     icon: "🎓",
