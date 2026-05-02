@@ -1,58 +1,380 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+type ObsRow = {
+  Farm_ID: string;
+  Location: string;
+  Latitude: number;
+  Longitude: number;
+  Date: string;
+  Observation: number;
+  Total_Animals: number;
+  S: number;
+  E: number;
+  I: number;
+  R: number;
+  RBPT_Positive: number;
+  iELISA_Positive: number;
+  Abortion_Count: number;
+  Pending_Culled: number;
+  Culled: number;
+  Pending_Quarantined: number;
+  Quarantined: number;
+  New_Animals_Moved_In: number;
+  New_Animals_Moved_Out: number;
+  Susceptible_In_From_MovedIn: number;
+  Susceptible_Out_From_MovedOut: number;
+};
+
+type Step = "choose" | "setup" | "observe" | "table" | "analysis";
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function num(value: string | number, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function percent(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "NA";
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function valueText(value: any) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "NA";
+  if (typeof value === "number") return value.toFixed(4);
+  return String(value);
+}
 
 export default function Tools() {
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [fileName, setFileName] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [log, setLog] = useState<string[]>([
-    "> EGStat-N web engine initialized...",
-    "> Waiting for input dataset...",
-  ]);
-  const [downloadUrl, setDownloadUrl] = useState("");
+  const [mode, setMode] = useState<"import" | "logic">("logic");
+  const [step, setStep] = useState<Step>("choose");
 
-  async function runAnalysis() {
-    if (!file) {
-      setLog((old) => [...old, "> ERROR: Please upload a file first."]);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileName, setFileName] = useState("");
+
+  const [infectiousPeriodDays, setInfectiousPeriodDays] = useState("14");
+  const [rows, setRows] = useState<ObsRow[]>([]);
+  const [result, setResult] = useState<any>(null);
+
+  const [log, setLog] = useState<string[]>([
+    "> EGStat-N transmission module initialized.",
+    "> Select direct import or logic-wise observation entry.",
+  ]);
+
+  const [setup, setSetup] = useState({
+    Farm_ID: "Farm_1",
+    Location: "",
+    Latitude: "0",
+    Longitude: "0",
+    Date: today(),
+    Total_Animals: "100",
+    E: "0",
+    I: "0",
+    R: "0",
+    RBPT_Positive: "0",
+    iELISA_Positive: "0",
+    Pending_Culled: "0",
+  });
+
+  const [obs, setObs] = useState({
+    Date: today(),
+    E: "0",
+    RBPT_Positive: "0",
+    iELISA_Positive: "0",
+    Abortion_Count: "0",
+    New_Animals_Moved_In: "0",
+    New_Animals_Moved_Out: "0",
+    Susceptible_In_From_MovedIn: "0",
+    Susceptible_Out_From_MovedOut: "0",
+    Pending_Culled: "0",
+  });
+
+  const currentFarm = rows.length > 0 ? rows[0].Farm_ID : "";
+  const last = rows.length > 0 ? rows[rows.length - 1] : null;
+
+  const nextPreview = useMemo(() => {
+    if (!last) return null;
+
+    const movedIn = num(obs.New_Animals_Moved_In);
+    const movedOut = num(obs.New_Animals_Moved_Out);
+    const appliedCulled = last.Pending_Culled;
+    const appliedQuarantined = last.Pending_Quarantined;
+    const Nnew = last.Total_Animals - appliedCulled + movedIn - movedOut;
+    const Enew = num(obs.E, last.E);
+    const Inew = num(obs.iELISA_Positive);
+    const Rnew = last.R;
+    const pendingCulled = num(obs.Pending_Culled);
+    const pendingQuarantined = Math.max(0, Inew - pendingCulled);
+    const Snew = Nnew - (Enew + Inew + Rnew);
+
+    return {
+      Observation: last.Observation + 1,
+      Nnew,
+      Snew,
+      Enew,
+      Inew,
+      Rnew,
+      appliedCulled,
+      appliedQuarantined,
+      pendingCulled,
+      pendingQuarantined,
+    };
+  }, [last, obs]);
+
+  function resetTool() {
+    setRows([]);
+    setResult(null);
+    setFile(null);
+    setFileName("");
+    setStep("choose");
+    setLog([
+      "> EGStat-N transmission module reset.",
+      "> Select direct import or logic-wise observation entry.",
+    ]);
+  }
+
+  function createInitialObservation() {
+    const N = num(setup.Total_Animals);
+    const E = num(setup.E);
+    const I = num(setup.I);
+    const R = num(setup.R);
+    const pendingCulled = num(setup.Pending_Culled);
+    const pendingQuarantined = Math.max(0, I - pendingCulled);
+    const S = N - (E + I + R);
+
+    if (!setup.Farm_ID.trim()) {
+      setLog((old) => [...old, "> ERROR: Farm ID is required."]);
       return;
     }
 
-    setLog((old) => [...old, `> Uploading ${file.name}...`, "> Running backend analysis..."]);
+    if (N < 0 || S < 0) {
+      setLog((old) => [
+        ...old,
+        `> ERROR: Invalid initial values. Calculated S=${S}. Check N, E, I, and R.`,
+      ]);
+      return;
+    }
+
+    const initial: ObsRow = {
+      Farm_ID: setup.Farm_ID,
+      Location: setup.Location,
+      Latitude: num(setup.Latitude),
+      Longitude: num(setup.Longitude),
+      Date: setup.Date || today(),
+      Observation: 1,
+      Total_Animals: N,
+      S,
+      E,
+      I,
+      R,
+      RBPT_Positive: num(setup.RBPT_Positive),
+      iELISA_Positive: num(setup.iELISA_Positive, I),
+      Abortion_Count: 0,
+      Pending_Culled: pendingCulled,
+      Culled: 0,
+      Pending_Quarantined: pendingQuarantined,
+      Quarantined: 0,
+      New_Animals_Moved_In: 0,
+      New_Animals_Moved_Out: 0,
+      Susceptible_In_From_MovedIn: 0,
+      Susceptible_Out_From_MovedOut: 0,
+    };
+
+    setRows([initial]);
+    setResult(null);
+    setStep("observe");
+
+    setObs({
+      Date: today(),
+      E: String(E),
+      RBPT_Positive: "0",
+      iELISA_Positive: "0",
+      Abortion_Count: "0",
+      New_Animals_Moved_In: "0",
+      New_Animals_Moved_Out: "0",
+      Susceptible_In_From_MovedIn: "0",
+      Susceptible_Out_From_MovedOut: "0",
+      Pending_Culled: "0",
+    });
+
+    setLog((old) => [
+      ...old,
+      `> Farm created: ${setup.Farm_ID}.`,
+      `> Initial observation added: N=${N}, S=${S}, E=${E}, I=${I}, R=${R}.`,
+      `> Pending culled=${pendingCulled}, pending quarantined=${pendingQuarantined}.`,
+      "> Observation Entry window opened for the next observation.",
+    ]);
+  }
+
+  function addNextObservation() {
+    if (!last || !nextPreview) {
+      setLog((old) => [...old, "> ERROR: Create initial farm observation first."]);
+      return;
+    }
+
+    if (nextPreview.Nnew < 0) {
+      setLog((old) => [
+        ...old,
+        `> ERROR: Calculated total animals is negative: ${nextPreview.Nnew}.`,
+      ]);
+      return;
+    }
+
+    if (nextPreview.Snew < 0) {
+      setLog((old) => [
+        ...old,
+        `> ERROR: Calculated susceptible animals is negative: ${nextPreview.Snew}.`,
+      ]);
+      return;
+    }
+
+    const movedIn = num(obs.New_Animals_Moved_In);
+    const movedOut = num(obs.New_Animals_Moved_Out);
+    const susIn = num(obs.Susceptible_In_From_MovedIn);
+    const susOut = num(obs.Susceptible_Out_From_MovedOut);
+
+    if (susIn > movedIn) {
+      setLog((old) => [
+        ...old,
+        "> ERROR: Susceptible moved-in cannot be greater than total moved-in.",
+      ]);
+      return;
+    }
+
+    if (susOut > movedOut) {
+      setLog((old) => [
+        ...old,
+        "> ERROR: Susceptible moved-out cannot be greater than total moved-out.",
+      ]);
+      return;
+    }
+
+    const newRow: ObsRow = {
+      Farm_ID: last.Farm_ID,
+      Location: last.Location,
+      Latitude: last.Latitude,
+      Longitude: last.Longitude,
+      Date: obs.Date || today(),
+      Observation: nextPreview.Observation,
+      Total_Animals: nextPreview.Nnew,
+      S: nextPreview.Snew,
+      E: nextPreview.Enew,
+      I: nextPreview.Inew,
+      R: nextPreview.Rnew,
+      RBPT_Positive: num(obs.RBPT_Positive),
+      iELISA_Positive: nextPreview.Inew,
+      Abortion_Count: num(obs.Abortion_Count),
+      Pending_Culled: nextPreview.pendingCulled,
+      Culled: nextPreview.appliedCulled,
+      Pending_Quarantined: nextPreview.pendingQuarantined,
+      Quarantined: nextPreview.appliedQuarantined,
+      New_Animals_Moved_In: movedIn,
+      New_Animals_Moved_Out: movedOut,
+      Susceptible_In_From_MovedIn: susIn,
+      Susceptible_Out_From_MovedOut: susOut,
+    };
+
+    setRows((old) => [...old, newRow]);
+    setResult(null);
+
+    setObs({
+      Date: today(),
+      E: String(newRow.E),
+      RBPT_Positive: "0",
+      iELISA_Positive: "0",
+      Abortion_Count: "0",
+      New_Animals_Moved_In: "0",
+      New_Animals_Moved_Out: "0",
+      Susceptible_In_From_MovedIn: "0",
+      Susceptible_Out_From_MovedOut: "0",
+      Pending_Culled: "0",
+    });
+
+    setStep("observe");
+
+    setLog((old) => [
+      ...old,
+      `> Observation ${newRow.Observation} added for ${newRow.Farm_ID}.`,
+      `> Applied previous pending: culled=${newRow.Culled}, quarantined=${newRow.Quarantined}.`,
+      `> Auto-calculated: N=${newRow.Total_Animals}, S=${newRow.S}, E=${newRow.E}, I=${newRow.I}, R=${newRow.R}.`,
+      `> New pending: culled=${newRow.Pending_Culled}, quarantined=${newRow.Pending_Quarantined}.`,
+      "> New observation entry window is ready.",
+    ]);
+  }
+
+  async function runAnalysis() {
+    setResult(null);
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("mode", mode);
+    formData.append("infectiousPeriodDays", infectiousPeriodDays);
+
+    if (mode === "import") {
+      if (!file) {
+        setLog((old) => [...old, "> ERROR: Upload a CSV file first."]);
+        return;
+      }
+
+      formData.append("file", file);
+      setLog((old) => [...old, `> Uploading ${file.name}...`]);
+    } else {
+      if (rows.length === 0) {
+        setLog((old) => [...old, "> ERROR: Create initial observation first."]);
+        return;
+      }
+
+      formData.append("rows", JSON.stringify(rows));
+      setLog((old) => [...old, "> Sending logic-wise observation table to analysis engine..."]);
+    }
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/analyze", {
+      const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error("Backend analysis failed.");
-      }
-
       const data = await response.json();
 
-      setLog((old) => [
-        ...old,
-        "> Analysis completed successfully.",
-        `> Rows: ${data.rows}`,
-        `> Columns: ${data.columns}`,
-        `> Output file ready: ${data.output_file}`,
-      ]);
+      if (!response.ok) {
+        throw new Error(data.error || "Analysis failed.");
+      }
 
-      setDownloadUrl(`http://127.0.0.1:8000/download/${data.output_file}`);
-    } catch (error) {
+      setResult(data);
+      setStep("analysis");
+
       setLog((old) => [
         ...old,
-        "> ERROR: Could not connect to Python backend.",
-        "> Make sure FastAPI backend is running on port 8000.",
+        "> Transmission analysis completed.",
+        `> Rows analyzed: ${data.rows}.`,
+        `> Farms detected: ${data.analysis.totalFarms}.`,
       ]);
+    } catch (error: any) {
+      setLog((old) => [...old, `> ERROR: ${error.message}`]);
     }
   }
+
+  function downloadJSON() {
+    if (!result) return;
+
+    const blob = new Blob([JSON.stringify(result, null, 2)], {
+      type: "application/json",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "egstat_n_transmission_analysis.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const farmSummary = result?.analysis?.farmSummaries?.[0];
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-20 text-white">
@@ -61,11 +383,13 @@ export default function Tools() {
           <p className="mb-3 text-sm font-black uppercase tracking-[0.3em] text-cyan-300">
             Research Tools
           </p>
+
           <h1 className="mb-6 text-5xl font-black">EGStat-N</h1>
+
           <p className="mx-auto max-w-3xl text-lg leading-8 text-slate-300">
-            Epidemiological Graphics and Statistics Tool for Networks — an online
-            Python-powered platform for statistical analysis, epidemiology,
-            network analysis, and bioinformatics workflows.
+            Epidemiological Graphics and Statistics Tool for Networks — logic-wise
+            transmission dynamics, SEIR bookkeeping, animal movement correction,
+            prevalence, attack rate, and R0 estimation.
           </p>
         </div>
 
@@ -73,17 +397,20 @@ export default function Tools() {
           <div className="grid gap-8 md:grid-cols-2">
             <div>
               <h2 className="mb-4 text-3xl font-black text-cyan-300">
-                Launch EGStat-N Web Engine
+                Launch Transmission Dynamics
               </h2>
 
               <p className="mb-6 leading-8 text-slate-300">
-                Upload your dataset, run Python backend analysis, preview the
-                analysis log, and download processed output files directly from
-                the browser.
+                Enter the first observation, then the next observation window opens
+                automatically. Each added observation applies the previous pending
+                culled and quarantined animals and recalculates N, S, E, I, and R.
               </p>
 
               <button
-                onClick={() => setOpen(true)}
+                onClick={() => {
+                  setOpen(true);
+                  setStep("choose");
+                }}
                 className="rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white"
               >
                 Open Tool Window
@@ -92,15 +419,15 @@ export default function Tools() {
 
             <div className="rounded-3xl border border-cyan-300/20 bg-slate-900/80 p-6">
               <p className="mb-3 text-sm font-bold text-cyan-300">
-                Analysis Modules
+                Main Functions
               </p>
 
               <div className="grid gap-3 text-sm font-semibold text-slate-300">
-                <div className="rounded-xl bg-white/5 p-3">Data Summary</div>
-                <div className="rounded-xl bg-white/5 p-3">Statistical Tests</div>
-                <div className="rounded-xl bg-white/5 p-3">Risk Factor Analysis</div>
-                <div className="rounded-xl bg-white/5 p-3">Network Analysis</div>
-                <div className="rounded-xl bg-white/5 p-3">Bioinformatics Input Support</div>
+                <div className="rounded-xl bg-white/5 p-3">Direct CSV Import</div>
+                <div className="rounded-xl bg-white/5 p-3">Logic-wise Observation Entry</div>
+                <div className="rounded-xl bg-white/5 p-3">Automatic N and S Calculation</div>
+                <div className="rounded-xl bg-white/5 p-3">Pending Culling and Quarantine Logic</div>
+                <div className="rounded-xl bg-white/5 p-3">Prevalence, Attack Rate, R0</div>
               </div>
             </div>
           </div>
@@ -113,20 +440,27 @@ export default function Tools() {
             className={`border border-white/10 bg-slate-950 shadow-2xl ${
               fullscreen
                 ? "h-full w-full rounded-none"
-                : "h-[84vh] w-full max-w-6xl rounded-[2rem]"
+                : "h-[92vh] w-full max-w-7xl rounded-[2rem]"
             }`}
           >
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div>
                 <h2 className="text-2xl font-black text-cyan-300">
-                  EGStat-N Analysis Window
+                  EGStat-N Transmission Dynamics
                 </h2>
                 <p className="text-sm text-slate-400">
-                  Upload data → run Python backend → download output
+                  Farm setup → observation entry → data table → analysis
                 </p>
               </div>
 
               <div className="flex gap-3">
+                <button
+                  onClick={() => setStep("choose")}
+                  className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold hover:border-cyan-300 hover:text-cyan-300"
+                >
+                  Home
+                </button>
+
                 <button
                   onClick={() => setFullscreen(!fullscreen)}
                   className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold hover:border-cyan-300 hover:text-cyan-300"
@@ -143,82 +477,509 @@ export default function Tools() {
               </div>
             </div>
 
-            <div className="grid h-[calc(100%-88px)] gap-6 overflow-auto p-6 lg:grid-cols-3">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6">
-                <h3 className="mb-4 text-xl font-black">Input Files</h3>
-
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-300/40 bg-cyan-300/5 p-8 text-center transition hover:bg-cyan-300/10">
-                  <span className="mb-2 text-lg font-bold text-cyan-300">
-                    Upload Dataset
-                  </span>
-                  <span className="text-sm text-slate-400">
-                    CSV, Excel, TXT, FASTA
-                  </span>
-
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".csv,.xlsx,.xls,.txt,.fasta,.fa"
-                    onChange={(e) => {
-                      const selected = e.target.files?.[0] || null;
-                      setFile(selected);
-                      setFileName(selected?.name || "");
-                      setDownloadUrl("");
-                      if (selected) {
-                        setLog((old) => [...old, `> File selected: ${selected.name}`]);
-                      }
-                    }}
-                  />
-                </label>
-
-                {fileName && (
-                  <p className="mt-4 rounded-xl bg-slate-900 p-3 text-sm text-cyan-200">
-                    Loaded: {fileName}
-                  </p>
-                )}
-
-                <button
-                  onClick={runAnalysis}
-                  className="mt-6 w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 transition hover:bg-white"
-                >
-                  Run Analysis
-                </button>
-
-                {downloadUrl && (
-                  <a
-                    href={downloadUrl}
-                    className="mt-4 block rounded-2xl bg-blue-500 px-5 py-3 text-center font-black text-white transition hover:bg-blue-600"
-                  >
-                    Download Output
-                  </a>
-                )}
+            <div className="h-[calc(100%-88px)] overflow-auto p-6">
+              <div className="mb-6 grid gap-3 md:grid-cols-5">
+                <StepButton label="1. Mode" active={step === "choose"} onClick={() => setStep("choose")} />
+                <StepButton label="2. Farm Setup" active={step === "setup"} onClick={() => setStep("setup")} />
+                <StepButton label="3. Observation" active={step === "observe"} onClick={() => rows.length > 0 && setStep("observe")} />
+                <StepButton label="4. Data Table" active={step === "table"} onClick={() => setStep("table")} />
+                <StepButton label="5. Analysis" active={step === "analysis"} onClick={() => setStep("analysis")} />
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 lg:col-span-2">
-                <h3 className="mb-4 text-xl font-black">Python Analysis Console</h3>
+              {step === "choose" && (
+                <div className="grid gap-6 lg:grid-cols-3">
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 lg:col-span-2">
+                    <h3 className="mb-4 text-2xl font-black text-cyan-300">
+                      Select Input Mode
+                    </h3>
 
-                <div className="h-80 overflow-auto rounded-2xl bg-black p-5 font-mono text-sm text-green-300">
-                  {log.map((line, index) => (
-                    <p key={index}>{line}</p>
-                  ))}
-                </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <button
+                        onClick={() => {
+                          setMode("logic");
+                          setStep(rows.length > 0 ? "observe" : "setup");
+                          setLog((old) => [...old, "> Logic-wise data input selected."]);
+                        }}
+                        className={`rounded-3xl border p-6 text-left transition ${
+                          mode === "logic"
+                            ? "border-cyan-300 bg-cyan-300/10"
+                            : "border-white/10 bg-white/5 hover:border-cyan-300"
+                        }`}
+                      >
+                        <h4 className="mb-3 text-xl font-black text-cyan-300">
+                          Logic-wise Data Input
+                        </h4>
+                        <p className="leading-7 text-slate-300">
+                          Create the initial farm observation, then add each next
+                          observation. The system automatically calculates applied
+                          culled, applied quarantined, total animals, susceptible
+                          animals, pending culling, and pending quarantine.
+                        </p>
+                      </button>
 
-                <div className="mt-6 grid gap-4 md:grid-cols-3">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-center font-bold">
-                    Upload
+                      <button
+                        onClick={() => {
+                          setMode("import");
+                          setLog((old) => [...old, "> Direct CSV import selected."]);
+                        }}
+                        className={`rounded-3xl border p-6 text-left transition ${
+                          mode === "import"
+                            ? "border-cyan-300 bg-cyan-300/10"
+                            : "border-white/10 bg-white/5 hover:border-cyan-300"
+                        }`}
+                      >
+                        <h4 className="mb-3 text-xl font-black text-cyan-300">
+                          Direct Data Import
+                        </h4>
+                        <p className="leading-7 text-slate-300">
+                          Upload a prepared CSV containing farm observations.
+                          Recommended columns include Farm_ID, Date, Observation,
+                          Total_Animals, S, E, I, R, iELISA_Positive,
+                          Pending_Culled, and Pending_Quarantined.
+                        </p>
+                      </button>
+                    </div>
+
+                    {mode === "import" && (
+                      <div className="mt-6 rounded-3xl border border-white/10 bg-slate-900 p-6">
+                        <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-300/40 bg-cyan-300/5 p-8 text-center transition hover:bg-cyan-300/10">
+                          <span className="mb-2 text-lg font-bold text-cyan-300">
+                            Upload CSV Dataset
+                          </span>
+                          <span className="text-sm text-slate-400">
+                            CSV only
+                          </span>
+
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept=".csv"
+                            onChange={(e) => {
+                              const selected = e.target.files?.[0] || null;
+                              setFile(selected);
+                              setFileName(selected?.name || "");
+                              setResult(null);
+
+                              if (selected) {
+                                setLog((old) => [
+                                  ...old,
+                                  `> File selected: ${selected.name}.`,
+                                ]);
+                              }
+                            }}
+                          />
+                        </label>
+
+                        {fileName && (
+                          <p className="mt-4 rounded-xl bg-black p-3 text-sm text-cyan-200">
+                            Loaded: {fileName}
+                          </p>
+                        )}
+
+                        <button
+                          onClick={runAnalysis}
+                          className="mt-5 w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 transition hover:bg-white"
+                        >
+                          Run Imported Data Analysis
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-center font-bold">
-                    Analyze
+
+                  <Console log={log} />
+                </div>
+              )}
+
+              {step === "setup" && (
+                <div className="grid gap-6 lg:grid-cols-3">
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 lg:col-span-2">
+                    <h3 className="mb-4 text-2xl font-black text-cyan-300">
+                      Farm Setup: Initial Observation
+                    </h3>
+
+                    <div className="mb-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4 text-sm leading-7 text-slate-300">
+                      First observation rule: Culled = 0, Quarantined = 0,
+                      Pending_Quarantined = I - Pending_Culled if positive, and
+                      S = N - (E + I + R).
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <Input label="Farm_ID" value={setup.Farm_ID} onChange={(v) => setSetup({ ...setup, Farm_ID: v })} />
+                      <Input label="Location" value={setup.Location} onChange={(v) => setSetup({ ...setup, Location: v })} />
+                      <Input label="Date" value={setup.Date} onChange={(v) => setSetup({ ...setup, Date: v })} />
+
+                      <Input label="Latitude" value={setup.Latitude} onChange={(v) => setSetup({ ...setup, Latitude: v })} />
+                      <Input label="Longitude" value={setup.Longitude} onChange={(v) => setSetup({ ...setup, Longitude: v })} />
+                      <Input label="Total_Animals / N" value={setup.Total_Animals} onChange={(v) => setSetup({ ...setup, Total_Animals: v })} />
+
+                      <Input label="Exposed / E" value={setup.E} onChange={(v) => setSetup({ ...setup, E: v })} />
+                      <Input label="Infected / I" value={setup.I} onChange={(v) => setSetup({ ...setup, I: v })} />
+                      <Input label="Recovered / R" value={setup.R} onChange={(v) => setSetup({ ...setup, R: v })} />
+
+                      <Input label="RBPT_Positive" value={setup.RBPT_Positive} onChange={(v) => setSetup({ ...setup, RBPT_Positive: v })} />
+                      <Input label="iELISA_Positive" value={setup.iELISA_Positive} onChange={(v) => setSetup({ ...setup, iELISA_Positive: v })} />
+                      <Input label="Pending_Culled" value={setup.Pending_Culled} onChange={(v) => setSetup({ ...setup, Pending_Culled: v })} />
+                    </div>
+
+                    <div className="mt-6 grid gap-4 md:grid-cols-4">
+                      <PreviewCard title="Calculated S" value={String(num(setup.Total_Animals) - (num(setup.E) + num(setup.I) + num(setup.R)))} />
+                      <PreviewCard title="Pending Quarantined" value={String(Math.max(0, num(setup.I) - num(setup.Pending_Culled)))} />
+                      <PreviewCard title="Culled" value="0" />
+                      <PreviewCard title="Quarantined" value="0" />
+                    </div>
+
+                    <button
+                      onClick={createInitialObservation}
+                      className="mt-6 rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 transition hover:bg-white"
+                    >
+                      Create Initial Observation and Open Next Observation
+                    </button>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-center font-bold">
-                    Export
+
+                  <Console log={log} />
+                </div>
+              )}
+
+              {step === "observe" && (
+                <div className="grid gap-6 lg:grid-cols-3">
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 lg:col-span-2">
+                    <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-2xl font-black text-cyan-300">
+                          Observation Entry Window
+                        </h3>
+                        <p className="text-sm text-slate-400">
+                          Farm: {currentFarm || "No farm created"} | Last observation:{" "}
+                          {last?.Observation ?? "NA"}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => setStep("table")}
+                        className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold hover:border-cyan-300 hover:text-cyan-300"
+                      >
+                        View Data Table
+                      </button>
+                    </div>
+
+                    {last && (
+                      <div className="mb-6 grid gap-4 md:grid-cols-4">
+                        <PreviewCard title="Last N" value={String(last.Total_Animals)} />
+                        <PreviewCard title="Last S" value={String(last.S)} />
+                        <PreviewCard title="Previous Pending Culled" value={String(last.Pending_Culled)} />
+                        <PreviewCard title="Previous Pending Quarantined" value={String(last.Pending_Quarantined)} />
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <Input label="Date" value={obs.Date} onChange={(v) => setObs({ ...obs, Date: v })} />
+                      <Input label="Exposed / E" value={obs.E} onChange={(v) => setObs({ ...obs, E: v })} />
+                      <Input label="RBPT_Positive" value={obs.RBPT_Positive} onChange={(v) => setObs({ ...obs, RBPT_Positive: v })} />
+
+                      <Input label="iELISA_Positive / I" value={obs.iELISA_Positive} onChange={(v) => setObs({ ...obs, iELISA_Positive: v })} />
+                      <Input label="Abortion_Count" value={obs.Abortion_Count} onChange={(v) => setObs({ ...obs, Abortion_Count: v })} />
+                      <Input label="Pending_Culled input" value={obs.Pending_Culled} onChange={(v) => setObs({ ...obs, Pending_Culled: v })} />
+
+                      <Input label="New_Animals_Moved_In" value={obs.New_Animals_Moved_In} onChange={(v) => setObs({ ...obs, New_Animals_Moved_In: v })} />
+                      <Input label="Susceptible_In_From_MovedIn" value={obs.Susceptible_In_From_MovedIn} onChange={(v) => setObs({ ...obs, Susceptible_In_From_MovedIn: v })} />
+                      <Input label="New_Animals_Moved_Out" value={obs.New_Animals_Moved_Out} onChange={(v) => setObs({ ...obs, New_Animals_Moved_Out: v })} />
+
+                      <Input label="Susceptible_Out_From_MovedOut" value={obs.Susceptible_Out_From_MovedOut} onChange={(v) => setObs({ ...obs, Susceptible_Out_From_MovedOut: v })} />
+                    </div>
+
+                    {nextPreview && (
+                      <div className="mt-6 rounded-3xl border border-cyan-300/20 bg-cyan-300/5 p-5">
+                        <h4 className="mb-4 text-lg font-black text-cyan-300">
+                          Auto-calculated Preview for Observation {nextPreview.Observation}
+                        </h4>
+
+                        <div className="grid gap-4 md:grid-cols-4">
+                          <PreviewCard title="Applied Culled" value={String(nextPreview.appliedCulled)} />
+                          <PreviewCard title="Applied Quarantined" value={String(nextPreview.appliedQuarantined)} />
+                          <PreviewCard title="New N" value={String(nextPreview.Nnew)} />
+                          <PreviewCard title="New S" value={String(nextPreview.Snew)} />
+                          <PreviewCard title="New E" value={String(nextPreview.Enew)} />
+                          <PreviewCard title="New I" value={String(nextPreview.Inew)} />
+                          <PreviewCard title="New R" value={String(nextPreview.Rnew)} />
+                          <PreviewCard title="New Pending Quarantined" value={String(nextPreview.pendingQuarantined)} />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <button
+                        onClick={addNextObservation}
+                        className="rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 transition hover:bg-white"
+                      >
+                        Add Observation and Open Next Window
+                      </button>
+
+                      <button
+                        onClick={runAnalysis}
+                        className="rounded-2xl bg-blue-500 px-7 py-4 font-black text-white transition hover:bg-blue-600"
+                      >
+                        Run Analysis
+                      </button>
+
+                      <button
+                        onClick={resetTool}
+                        className="rounded-2xl bg-red-500 px-7 py-4 font-black text-white transition hover:bg-red-600"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+
+                  <Console log={log} />
+                </div>
+              )}
+
+              {step === "table" && (
+                <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6">
+                  <div className="mb-5 flex flex-wrap justify-between gap-3">
+                    <div>
+                      <h3 className="text-2xl font-black text-cyan-300">
+                        Data Table and Trend
+                      </h3>
+                      <p className="text-sm text-slate-400">
+                        All observations created by logic-wise entry.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setStep("observe")}
+                        className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold hover:border-cyan-300 hover:text-cyan-300"
+                      >
+                        Add Next Observation
+                      </button>
+
+                      <button
+                        onClick={runAnalysis}
+                        className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-black text-slate-950 hover:bg-white"
+                      >
+                        Run Analysis
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-auto rounded-2xl border border-white/10">
+                    <table className="w-full min-w-[1200px] border-collapse text-sm">
+                      <thead className="bg-slate-900 text-cyan-300">
+                        <tr>
+                          {[
+                            "Farm_ID",
+                            "Date",
+                            "Obs",
+                            "N",
+                            "S",
+                            "E",
+                            "I",
+                            "R",
+                            "Pending_Culled",
+                            "Pending_Quarantined",
+                            "Culled",
+                            "Quarantined",
+                            "MovedIn",
+                            "MovedOut",
+                            "SusIn",
+                            "SusOut",
+                          ].map((h) => (
+                            <th key={h} className="border border-white/10 px-3 py-2 text-left">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {rows.map((r, i) => (
+                          <tr key={i} className="odd:bg-white/[0.03] even:bg-white/[0.06]">
+                            <td className="border border-white/10 px-3 py-2">{r.Farm_ID}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Date}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Observation}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Total_Animals}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.S}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.E}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.I}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.R}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Pending_Culled}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Pending_Quarantined}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Culled}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Quarantined}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.New_Animals_Moved_In}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.New_Animals_Moved_Out}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Susceptible_In_From_MovedIn}</td>
+                            <td className="border border-white/10 px-3 py-2">{r.Susceptible_Out_From_MovedOut}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {step === "analysis" && (
+                <div className="grid gap-6 lg:grid-cols-3">
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 lg:col-span-2">
+                    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-2xl font-black text-cyan-300">
+                          Analysis Results
+                        </h3>
+                        <p className="text-sm text-slate-400">
+                          Transmission dynamics summary.
+                        </p>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={runAnalysis}
+                          className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-black text-slate-950 hover:bg-white"
+                        >
+                          Re-run Analysis
+                        </button>
+
+                        {result && (
+                          <button
+                            onClick={downloadJSON}
+                            className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-black text-white hover:bg-blue-600"
+                          >
+                            Download JSON
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {farmSummary ? (
+                      <>
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <ResultCard title="Apparent Prevalence" value={percent(farmSummary.apparentPrevalence)} />
+                          <ResultCard title="Attack Rate" value={percent(farmSummary.attackRate)} />
+                          <ResultCard title="Abortion Rate" value={percent(farmSummary.abortionRate)} />
+                          <ResultCard title="Estimated R0" value={valueText(farmSummary.estimatedR0)} />
+                          <ResultCard title="Growth Rate r" value={valueText(farmSummary.growthRateR)} />
+                          <ResultCard title="Doubling Time" value={valueText(farmSummary.doublingTimeDays)} />
+                          <ResultCard title="Final Population" value={String(farmSummary.finalPopulation)} />
+                          <ResultCard title="Total Culled" value={String(farmSummary.totalCulled)} />
+                          <ResultCard title="Total Quarantined" value={String(farmSummary.totalQuarantined)} />
+                        </div>
+
+                        <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900 p-5">
+                          <h4 className="mb-3 text-lg font-black text-cyan-300">
+                            Interpretation
+                          </h4>
+                          <div className="space-y-2 text-sm leading-7 text-slate-300">
+                            <p>{farmSummary.interpretation.apparentPrevalence}</p>
+                            <p>{farmSummary.interpretation.attackRate}</p>
+                            <p>{farmSummary.interpretation.estimatedR0}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 rounded-2xl border border-white/10 bg-black p-5">
+                          <pre className="max-h-96 overflow-auto text-sm text-slate-300">
+                            {JSON.stringify(result.analysis, null, 2)}
+                          </pre>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-2xl border border-white/10 bg-slate-900 p-6 text-slate-300">
+                        No result yet. Run analysis first.
+                      </div>
+                    )}
+                  </div>
+
+                  <Console log={log} />
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
     </main>
+  );
+}
+
+function StepButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
+        active
+          ? "bg-cyan-400 text-slate-950"
+          : "border border-white/10 bg-white/5 text-slate-300 hover:border-cyan-300 hover:text-cyan-300"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </label>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-300"
+      />
+    </div>
+  );
+}
+
+function PreviewCard({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+      <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+        {title}
+      </p>
+      <p className="mt-2 text-xl font-black text-cyan-300">{value}</p>
+    </div>
+  );
+}
+
+function ResultCard({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+        {title}
+      </p>
+      <p className="mt-2 text-2xl font-black text-cyan-300">{value}</p>
+    </div>
+  );
+}
+
+function Console({ log }: { log: string[] }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6">
+      <h3 className="mb-4 text-xl font-black text-cyan-300">
+        Analysis Console
+      </h3>
+
+      <div className="h-96 overflow-auto rounded-2xl bg-black p-5 font-mono text-sm text-green-300">
+        {log.map((line, index) => (
+          <p key={index}>{line}</p>
+        ))}
+      </div>
+    </div>
   );
 }
