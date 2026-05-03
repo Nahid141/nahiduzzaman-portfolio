@@ -234,7 +234,7 @@ export default function Tools() {
   const [evoResult, setEvoResult] = useState<any>(null);
 
   const [log, setLog] = useState<string[]>([
-    "> Hello I'm Nahiduzzaman, the developer of this tool inviting you take some coffee with him.",
+    "> Hello I'm Nahiduzzaman, the developer of this tool inviting you take some coffee with me.",
     "> EGStat-N initialized.",
     "> Interactive Mapbox heatmap supports normal and satellite views.",
   ]);
