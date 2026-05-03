@@ -31,34 +31,37 @@ type FruitImageData = {
   position: string;
 };
 
+const articleLink =
+  "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0335979";
+
 const fruitImages: FruitImageData[] = [
   {
     src: "/cropped_circle_image.jpeg",
     label: "Fruit Sample 1",
     borderColor: "border-green-400",
     dotColor: "bg-green-400",
-    position: "left-3 top-8 sm:left-8",
+    position: "left-6 top-16 sm:left-10 sm:top-14",
   },
   {
     src: "/cropped_circle_image%20(2).jpeg",
     label: "Fruit Sample 2",
     borderColor: "border-yellow-400",
     dotColor: "bg-yellow-400",
-    position: "right-3 top-8 sm:right-8",
+    position: "right-6 top-16 sm:right-10 sm:top-14",
   },
   {
     src: "/cropped_circle_image%20(1).jpeg",
     label: "Fruit Sample 3",
     borderColor: "border-red-400",
     dotColor: "bg-red-400",
-    position: "bottom-12 left-3 sm:left-8",
+    position: "left-6 bottom-16 sm:left-10 sm:bottom-14",
   },
   {
     src: "/cropped_circle_imag.jpeg",
     label: "Fruit Sample 4",
     borderColor: "border-purple-400",
     dotColor: "bg-purple-400",
-    position: "bottom-12 right-3 sm:right-8",
+    position: "right-6 bottom-16 sm:right-10 sm:bottom-14",
   },
 ];
 
@@ -229,7 +232,9 @@ function NetworkBackground() {
 
 function FruitCircle({ fruit }: { fruit: FruitImageData }) {
   return (
-    <div className={`absolute ${fruit.position} z-20 flex flex-col items-center`}>
+    <div
+      className={`absolute ${fruit.position} z-20 flex flex-col items-center`}
+    >
       <div
         className={`relative h-24 w-24 overflow-hidden rounded-full border-4 ${fruit.borderColor} bg-gray-950 shadow-xl shadow-black/40 transition duration-500 hover:scale-110 sm:h-32 sm:w-32`}
       >
@@ -242,7 +247,7 @@ function FruitCircle({ fruit }: { fruit: FruitImageData }) {
         <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-black/20 via-transparent to-white/20" />
       </div>
 
-      <div className="mt-2 flex items-center gap-2 rounded-full bg-gray-950/90 px-3 py-1 text-xs font-bold text-white ring-1 ring-white/10 sm:text-sm">
+      <div className="mt-2 flex items-center gap-2 rounded-full bg-gray-950/95 px-3 py-1 text-xs font-bold text-white shadow-lg ring-1 ring-white/10 sm:text-sm">
         <span className={`h-2 w-2 rounded-full ${fruit.dotColor}`} />
         {fruit.label}
       </div>
@@ -254,7 +259,7 @@ function MovingFruitLines() {
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-      viewBox="0 0 1000 520"
+      viewBox="0 0 1000 620"
       preserveAspectRatio="none"
       aria-hidden="true"
     >
@@ -270,22 +275,22 @@ function MovingFruitLines() {
 
       <path
         id="fruitPath1"
-        d="M140 110 C260 120, 365 165, 455 240"
+        d="M150 155 C260 175, 360 230, 465 300"
         fill="none"
       />
       <path
         id="fruitPath2"
-        d="M860 110 C740 120, 635 165, 545 240"
+        d="M850 155 C740 175, 640 230, 535 300"
         fill="none"
       />
       <path
         id="fruitPath3"
-        d="M140 370 C260 355, 365 315, 455 280"
+        d="M150 465 C260 445, 360 390, 465 320"
         fill="none"
       />
       <path
         id="fruitPath4"
-        d="M860 370 C740 355, 635 315, 545 280"
+        d="M850 465 C740 445, 640 390, 535 320"
         fill="none"
       />
 
@@ -297,6 +302,7 @@ function MovingFruitLines() {
         fill="none"
         filter="url(#lineGlow)"
       />
+
       <use
         href="#fruitPath2"
         className="animated-dash stroke-yellow-400"
@@ -305,6 +311,7 @@ function MovingFruitLines() {
         fill="none"
         filter="url(#lineGlow)"
       />
+
       <use
         href="#fruitPath3"
         className="animated-dash stroke-red-400"
@@ -313,6 +320,7 @@ function MovingFruitLines() {
         fill="none"
         filter="url(#lineGlow)"
       />
+
       <use
         href="#fruitPath4"
         className="animated-dash stroke-purple-400"
@@ -399,7 +407,10 @@ function StatBar({
   const controlValue = Number(control.replace("%", ""));
 
   const treatmentWidth = Math.min(Math.max(treatmentValue * 3, 5), 100);
-  const controlWidth = Math.min(Math.max(controlValue * 3, controlValue === 0 ? 2 : 5), 100);
+  const controlWidth = Math.min(
+    Math.max(controlValue * 3, controlValue === 0 ? 2 : 5),
+    100
+  );
 
   return (
     <div className="rounded-2xl bg-gray-950/60 p-3 ring-1 ring-white/10">
@@ -407,29 +418,38 @@ function StatBar({
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/15 text-xl">
           {icon}
         </div>
+
         <h5 className="font-bold text-white">{label}</h5>
       </div>
 
       <div className="space-y-2">
         <div className="grid grid-cols-[74px_1fr_48px] items-center gap-2">
-          <span className="text-xs font-semibold text-green-300">Treatment</span>
+          <span className="text-xs font-semibold text-green-300">
+            Treatment
+          </span>
+
           <div className="h-2.5 overflow-hidden rounded-full bg-gray-800">
             <div
               className="h-full rounded-full bg-green-400"
               style={{ width: `${treatmentWidth}%` }}
             />
           </div>
-          <span className="text-xs font-black text-green-300">{treatment}</span>
+
+          <span className="text-xs font-black text-green-300">
+            {treatment}
+          </span>
         </div>
 
         <div className="grid grid-cols-[74px_1fr_48px] items-center gap-2">
           <span className="text-xs font-semibold text-purple-300">Control</span>
+
           <div className="h-2.5 overflow-hidden rounded-full bg-gray-800">
             <div
               className="h-full rounded-full bg-purple-400"
               style={{ width: `${controlWidth}%` }}
             />
           </div>
+
           <span className="text-xs font-black text-purple-300">{control}</span>
         </div>
       </div>
@@ -445,14 +465,20 @@ function FindingsPanel() {
           <h3 className="text-2xl font-black text-white">
             Graphical Health Effects After Consumption
           </h3>
+
           <p className="text-sm text-gray-400">
             Visual summary of the randomized controlled trial findings.
           </p>
         </div>
 
-        <div className="rounded-full bg-red-500/10 px-4 py-2 text-sm font-bold text-red-300 ring-1 ring-red-400/30">
-          Increased gastrointestinal symptom risk
-        </div>
+        <a
+          href={articleLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center rounded-full bg-cyan-400 px-4 py-2 text-sm font-black text-gray-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300"
+        >
+          View PLOS ONE Article
+        </a>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -461,6 +487,7 @@ function FindingsPanel() {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-400 text-sm font-black text-gray-950">
               1
             </span>
+
             <h4 className="font-bold text-cyan-200">Study Design</h4>
           </div>
 
@@ -507,6 +534,7 @@ function FindingsPanel() {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-400 text-sm font-black text-gray-950">
               2
             </span>
+
             <h4 className="font-bold text-green-200">
               Main Outcome Comparison
             </h4>
@@ -548,11 +576,13 @@ function FindingsPanel() {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-sm font-black text-white">
               3
             </span>
+
             <h4 className="font-bold text-red-200">Risk Modeling</h4>
           </div>
 
           <div className="rounded-xl bg-red-500/10 p-4 ring-1 ring-red-400/20">
             <div className="text-4xl font-black text-red-300">HR = 162.68</div>
+
             <p className="mt-2 text-sm leading-relaxed text-gray-300">
               Markedly higher hazard of symptom development in the Treatment
               group.
@@ -561,6 +591,7 @@ function FindingsPanel() {
 
           <div className="mt-3 rounded-xl bg-green-500/10 p-4 ring-1 ring-green-400/20">
             <div className="text-3xl font-black text-green-300">HR = 0.90</div>
+
             <p className="mt-2 text-sm leading-relaxed text-gray-300">
               Higher hygienic practice score modestly reduced risk.
             </p>
@@ -572,6 +603,7 @@ function FindingsPanel() {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-400 text-sm font-black text-gray-950">
               4
             </span>
+
             <h4 className="font-bold text-yellow-100">
               Microbial Contamination Findings
             </h4>
@@ -580,7 +612,9 @@ function FindingsPanel() {
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-xl bg-green-500/10 p-4 ring-1 ring-green-400/20">
               <div className="mb-2 text-3xl">🧫</div>
+
               <h5 className="font-bold text-green-300">Higher TVC</h5>
+
               <p className="mt-1 text-sm leading-relaxed text-gray-300">
                 5.78–5.86 log CFU/ml linked to weakness, abdominal cramps, and
                 diarrhea.
@@ -589,7 +623,9 @@ function FindingsPanel() {
 
             <div className="rounded-xl bg-purple-500/10 p-4 ring-1 ring-purple-400/20">
               <div className="mb-2 text-3xl">🦠</div>
+
               <h5 className="font-bold text-purple-300">E. coli</h5>
+
               <p className="mt-1 text-sm leading-relaxed text-gray-300">
                 6–10% prevalence; strongest correlation with abdominal cramps,
                 weakness, and diarrhea.
@@ -598,7 +634,9 @@ function FindingsPanel() {
 
             <div className="rounded-xl bg-orange-500/10 p-4 ring-1 ring-orange-400/20">
               <div className="mb-2 text-3xl">🔬</div>
+
               <h5 className="font-bold text-orange-300">S. aureus</h5>
+
               <p className="mt-1 text-sm leading-relaxed text-gray-300">
                 20–34% prevalence; linked mainly to weakness and abdominal
                 cramps.
@@ -612,6 +650,7 @@ function FindingsPanel() {
             <div className="rounded-xl bg-cyan-500/10 p-4 ring-1 ring-cyan-400/20">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-3xl">📈</span>
+
                 <h4 className="font-bold text-cyan-200">
                   Diagnostic / Sensitivity Insight
                 </h4>
@@ -666,7 +705,7 @@ function FruitRCTVisual() {
   const [active, setActive] = useState(false);
 
   return (
-    <div className="mt-5 overflow-hidden rounded-3xl border border-cyan-400/25 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-5 shadow-2xl shadow-cyan-500/10">
+    <div className="mt-5 overflow-hidden rounded-3xl border border-cyan-400/25 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-4 shadow-2xl shadow-cyan-500/10 sm:p-5">
       <style jsx>{`
         .animated-dash {
           stroke-dasharray: 12 14;
@@ -690,7 +729,7 @@ function FruitRCTVisual() {
           }
 
           50% {
-            transform: translateY(-12px);
+            transform: translateY(-10px);
           }
         }
 
@@ -710,44 +749,63 @@ function FruitRCTVisual() {
           animation: slideUp 0.55s ease-out both;
         }
 
-        .fruit-stage > .floating-fruit:nth-of-type(1) {
+        .fruit-float-1 {
           animation: floatSoft 4.2s ease-in-out infinite;
         }
 
-        .fruit-stage > .floating-fruit:nth-of-type(2) {
+        .fruit-float-2 {
           animation: floatSoft 4.7s ease-in-out infinite;
           animation-delay: 0.4s;
         }
 
-        .fruit-stage > .floating-fruit:nth-of-type(3) {
+        .fruit-float-3 {
           animation: floatSoft 4.4s ease-in-out infinite;
           animation-delay: 0.8s;
         }
 
-        .fruit-stage > .floating-fruit:nth-of-type(4) {
+        .fruit-float-4 {
           animation: floatSoft 4.9s ease-in-out infinite;
           animation-delay: 1.2s;
         }
       `}</style>
 
       <div className="mb-6 text-center">
-        <h3 className="text-2xl font-black text-white sm:text-3xl">
+        <h3 className="mx-auto max-w-4xl text-2xl font-black leading-tight text-white sm:text-3xl">
           Health Impacts of Consuming Street-vended Fresh-cut Fruits
         </h3>
 
-        <p className="mt-1 text-sm font-semibold text-green-300">
+        <p className="mt-2 text-sm font-semibold text-green-300">
           A Randomized Controlled Trial
         </p>
+
+        <a
+          href={articleLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center justify-center rounded-full bg-cyan-400 px-5 py-2 text-sm font-black text-gray-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300"
+        >
+          View Published Article
+        </a>
       </div>
 
-      <div className="fruit-stage relative mx-auto h-[520px] max-w-5xl rounded-3xl border border-white/10 bg-white/[0.03] shadow-inner">
+      <div className="relative mx-auto h-[620px] max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] shadow-inner">
         <MovingFruitLines />
 
-        {fruitImages.map((fruit) => (
-          <div key={fruit.src} className="floating-fruit">
-            <FruitCircle fruit={fruit} />
-          </div>
-        ))}
+        <div className="fruit-float-1">
+          <FruitCircle fruit={fruitImages[0]} />
+        </div>
+
+        <div className="fruit-float-2">
+          <FruitCircle fruit={fruitImages[1]} />
+        </div>
+
+        <div className="fruit-float-3">
+          <FruitCircle fruit={fruitImages[2]} />
+        </div>
+
+        <div className="fruit-float-4">
+          <FruitCircle fruit={fruitImages[3]} />
+        </div>
 
         <button
           type="button"
