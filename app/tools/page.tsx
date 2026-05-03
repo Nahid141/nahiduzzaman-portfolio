@@ -235,7 +235,6 @@ export default function Tools() {
 
   const [log, setLog] = useState<string[]>([
     "> EGStat-N initialized.",
-    "> RBPT removed from the UI.",
     "> Confirmatory Diagnosis automatically becomes I.",
     "> Interactive Mapbox heatmap supports normal and satellite views.",
   ]);
