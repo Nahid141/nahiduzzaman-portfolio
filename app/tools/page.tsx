@@ -2097,23 +2097,23 @@ function MapboxFarmMap({ points }: { points: any[] }) {
         const mapboxgl = (await import("mapbox-gl")).default;
         mapboxgl.accessToken = token;
 
-        const center =
-          points.length > 0
-            ? [Number(points[0].longitude), Number(points[0].latitude)]
-            : [90.4125, 23.8103];
+        const center: [number, number] =
+  points.length > 0
+    ? [Number(points[0].longitude), Number(points[0].latitude)]
+    : [90.4125, 23.8103];
 
-        map = new mapboxgl.Map({
-          container: containerRef.current,
-          style: "mapbox://styles/mapbox/dark-v11",
-          center,
-          zoom: points.length > 0 ? 7 : 5,
-        });
+map = new mapboxgl.Map({
+  container: containerRef.current,
+  style: "mapbox://styles/mapbox/dark-v11",
+  center,
+  zoom: points.length > 0 ? 7 : 5,
+});
 
         map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
         points.forEach((p) => {
           const marker = new mapboxgl.Marker()
-            .setLngLat([Number(p.longitude), Number(p.latitude)])
+            .setLngLat([Number(p.longitude), Number(p.latitude)] as [number, number])
             .setPopup(
               new mapboxgl.Popup().setHTML(
                 `<b>${p.farmId}</b><br/>${p.location || ""}<br/>N=${p.totalAnimals}<br/>I=${p.infected}<br/>Abortions=${p.totalAbortions ?? "NA"}<br/>Prev=${
