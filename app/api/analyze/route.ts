@@ -14,8 +14,7 @@ type ObsRow = {
   E: number;
   I: number;
   R: number;
-  RBPT_Positive: number;
-  iELISA_Positive: number;
+  Confirmatory_Diagnosis: number;
   Abortion_Count: number;
   Pending_Culled: number;
   Culled: number;
@@ -36,6 +35,11 @@ type NetworkEdge = {
   movements: number;
 };
 
+type SequenceRecord = {
+  id: string;
+  sequence: string;
+};
+
 function safeNumber(value: any, fallback = 0): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -51,7 +55,9 @@ function today(): string {
 }
 
 function sum(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0);
+  return values
+    .filter((v) => Number.isFinite(v))
+    .reduce((a, b) => a + b, 0);
 }
 
 function mean(values: number[]): number | null {
@@ -63,8 +69,12 @@ function mean(values: number[]): number | null {
 function median(values: number[]): number | null {
   const usable = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
   if (usable.length === 0) return null;
+
   const mid = Math.floor(usable.length / 2);
-  return usable.length % 2 === 0 ? (usable[mid - 1] + usable[mid]) / 2 : usable[mid];
+
+  return usable.length % 2 === 0
+    ? (usable[mid - 1] + usable[mid]) / 2
+    : usable[mid];
 }
 
 function variance(values: number[]): number | null {
@@ -162,26 +172,6 @@ function wilsonCI(k: number, n: number, z = 1.96) {
   };
 }
 
-function parseCSV(text: string): RawRow[] {
-  const lines = text.trim().split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return [];
-
-  const headers = splitCSVLine(lines[0]).map((h) => h.trim());
-
-  return lines.slice(1).map((line) => {
-    const values = splitCSVLine(line);
-    const row: RawRow = {};
-
-    headers.forEach((h, i) => {
-      const raw = values[i] ?? "";
-      const n = Number(raw);
-      row[h] = raw !== "" && Number.isFinite(n) ? n : raw;
-    });
-
-    return row;
-  });
-}
-
 function splitCSVLine(line: string): string[] {
   const out: string[] = [];
   let cur = "";
@@ -204,6 +194,29 @@ function splitCSVLine(line: string): string[] {
   return out;
 }
 
+function parseCSV(text: string): RawRow[] {
+  const clean = text.trim();
+  if (!clean) return [];
+
+  const lines = clean.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+
+  const headers = splitCSVLine(lines[0]).map((h) => h.trim());
+
+  return lines.slice(1).map((line) => {
+    const values = splitCSVLine(line);
+    const row: RawRow = {};
+
+    headers.forEach((h, i) => {
+      const raw = values[i] ?? "";
+      const n = Number(raw);
+      row[h] = raw !== "" && Number.isFinite(n) ? n : raw;
+    });
+
+    return row;
+  });
+}
+
 function isMissing(v: any) {
   return v === null || v === undefined || v === "";
 }
@@ -214,14 +227,14 @@ function uniqueValues(rows: RawRow[], col: string) {
   ).map(String);
 }
 
+function missingCount(rows: RawRow[], col: string) {
+  return rows.filter((r) => isMissing(r[col])).length;
+}
+
 function isNumericColumn(rows: RawRow[], col: string) {
   const vals = rows.map((r) => r[col]).filter((v) => !isMissing(v));
   if (vals.length === 0) return false;
   return vals.every((v) => Number.isFinite(Number(v)));
-}
-
-function missingCount(rows: RawRow[], col: string) {
-  return rows.filter((r) => isMissing(r[col])).length;
 }
 
 function pearsonCorrelation(x: number[], y: number[]) {
@@ -274,117 +287,6 @@ function haversineKm(
   return R * c;
 }
 
-function normalizeImportedRows(rows: RawRow[]): ObsRow[] {
-  const grouped = new Map<string, RawRow[]>();
-
-  rows.forEach((r) => {
-    const farm = safeText(r.Farm_ID ?? r.Farm ?? r.farm_id ?? "Farm_1");
-    if (!grouped.has(farm)) grouped.set(farm, []);
-    grouped.get(farm)!.push(r);
-  });
-
-  const output: ObsRow[] = [];
-
-  grouped.forEach((farmRows, farmId) => {
-    const orderedRaw = [...farmRows].sort(
-      (a, b) =>
-        safeNumber(a.Observation ?? a.Obs, 999999) -
-        safeNumber(b.Observation ?? b.Obs, 999999)
-    );
-
-    orderedRaw.forEach((r, index) => {
-      const N = safeNumber(
-        r.Total_Animals ?? r.N ?? r.Total ?? r.total_animals
-      );
-      const E = safeNumber(r.E ?? r.Exposed);
-      const I = safeNumber(
-        r.I ?? r.iELISA_Positive ?? r.IELISA_Positive ?? r.Positive
-      );
-      const R = safeNumber(r.R ?? r.Recovered);
-
-      const pendingCulled = safeNumber(
-        r.Pending_Culled ?? r["Pending Culled"]
-      );
-
-      const pendingQuarantined = safeNumber(
-        r.Pending_Quarantined ?? r["Pending Quarantined"],
-        Math.max(0, I - pendingCulled)
-      );
-
-      output.push({
-        Farm_ID: farmId,
-        Location: safeText(r.Location),
-        Latitude: safeNumber(r.Latitude ?? r.lat),
-        Longitude: safeNumber(r.Longitude ?? r.lon ?? r.lng),
-        Date: safeText(r.Date, today()),
-        Observation: safeNumber(r.Observation ?? r.Obs, index + 1),
-        Total_Animals: N,
-        S: safeNumber(r.S, Math.max(0, N - (E + I + R))),
-        E,
-        I,
-        R,
-        RBPT_Positive: safeNumber(r.RBPT_Positive ?? r.RBPT ?? r["RBPT+"]),
-        iELISA_Positive: safeNumber(
-          r.iELISA_Positive ?? r.IELISA_Positive ?? r["IELISA+"] ?? I
-        ),
-        Abortion_Count: safeNumber(
-          r.Abortion_Count ??
-            r.Abortions ??
-            r.Initial_Abortion_Count ??
-            r["Initial Abortion Count"]
-        ),
-        Pending_Culled: pendingCulled,
-        Culled: safeNumber(r.Culled),
-        Pending_Quarantined: pendingQuarantined,
-        Quarantined: safeNumber(r.Quarantined),
-        New_Animals_Moved_In: safeNumber(
-          r.New_Animals_Moved_In ?? r.MovedIn ?? r["Moved In"]
-        ),
-        New_Animals_Moved_Out: safeNumber(
-          r.New_Animals_Moved_Out ?? r.MovedOut ?? r["Moved Out"]
-        ),
-        Susceptible_In_From_MovedIn: safeNumber(
-          r.Susceptible_In_From_MovedIn ?? r.SusIn
-        ),
-        Susceptible_Out_From_MovedOut: safeNumber(
-          r.Susceptible_Out_From_MovedOut ?? r.SusOut
-        ),
-      });
-    });
-  });
-
-  return output;
-}
-
-function validateTransmissionRows(rows: ObsRow[]) {
-  const warnings: string[] = [];
-  const errors: string[] = [];
-
-  rows.forEach((r) => {
-    if (!r.Farm_ID) errors.push(`Observation ${r.Observation}: Farm_ID missing.`);
-
-    if (r.Total_Animals < 0) {
-      errors.push(`${r.Farm_ID} observation ${r.Observation}: N is negative.`);
-    }
-
-    if (r.S < 0) {
-      warnings.push(`${r.Farm_ID} observation ${r.Observation}: S is negative.`);
-    }
-
-    if (r.S + r.E + r.I + r.R > r.Total_Animals) {
-      warnings.push(
-        `${r.Farm_ID} observation ${r.Observation}: S+E+I+R exceeds N.`
-      );
-    }
-
-    if (!r.Latitude || !r.Longitude) {
-      warnings.push(`${r.Farm_ID}: latitude/longitude missing for map.`);
-    }
-  });
-
-  return { warnings, errors };
-}
-
 function logGrowthRate(values: number[]) {
   const usable = values.map((v, i) => ({ v, i })).filter((x) => x.v > 0);
   if (usable.length < 2) return null;
@@ -414,11 +316,248 @@ function prevalenceCategory(p: number | null) {
   return "very_high";
 }
 
+function confirmationFromAny(row: RawRow): number {
+  return safeNumber(
+    row.Confirmatory_Diagnosis ??
+      row["Confirmatory Diagnosis"] ??
+      row.confirmatory_diagnosis ??
+      row.confirmatoryDiagnosis ??
+      row.Confirmatory ??
+      row.confirmatory ??
+      row.I ??
+      row.Infected ??
+      row.infected ??
+      row.Positive ??
+      row.positive
+  );
+}
+
+function normalizeImportedRows(rows: RawRow[]): ObsRow[] {
+  const grouped = new Map<string, RawRow[]>();
+
+  rows.forEach((r) => {
+    const farm = safeText(r.Farm_ID ?? r.Farm ?? r.farm_id ?? "Farm_1");
+    if (!grouped.has(farm)) grouped.set(farm, []);
+    grouped.get(farm)!.push(r);
+  });
+
+  const output: ObsRow[] = [];
+
+  grouped.forEach((farmRows, farmId) => {
+    const orderedRaw = [...farmRows].sort(
+      (a, b) =>
+        safeNumber(a.Observation ?? a.Obs, 999999) -
+        safeNumber(b.Observation ?? b.Obs, 999999)
+    );
+
+    orderedRaw.forEach((r, index) => {
+      const N = safeNumber(
+        r.Total_Animals ?? r.N ?? r.Total ?? r.total_animals
+      );
+      const E = safeNumber(r.E ?? r.Exposed ?? r.exposed);
+      const confirmatory = confirmationFromAny(r);
+      const I = confirmatory;
+      const R = safeNumber(r.R ?? r.Recovered ?? r.recovered);
+
+      const pendingCulled = safeNumber(
+        r.Pending_Culled ?? r["Pending Culled"] ?? r.pending_culled
+      );
+
+      const pendingQuarantined = safeNumber(
+        r.Pending_Quarantined ??
+          r["Pending Quarantined"] ??
+          r.pending_quarantined,
+        Math.max(0, I - pendingCulled)
+      );
+
+      output.push({
+        Farm_ID: farmId,
+        Location: safeText(r.Location ?? r.location),
+        Latitude: safeNumber(r.Latitude ?? r.lat ?? r.latitude, NaN),
+        Longitude: safeNumber(r.Longitude ?? r.lon ?? r.lng ?? r.longitude, NaN),
+        Date: safeText(r.Date ?? r.date, today()),
+        Observation: safeNumber(r.Observation ?? r.Obs ?? r.observation, index + 1),
+        Total_Animals: N,
+        S: safeNumber(r.S ?? r.Susceptible ?? r.susceptible, Math.max(0, N - (E + I + R))),
+        E,
+        I,
+        R,
+        Confirmatory_Diagnosis: confirmatory,
+        Abortion_Count: safeNumber(
+          r.Abortion_Count ??
+            r.Abortions ??
+            r.abortions ??
+            r.Initial_Abortion_Count ??
+            r["Initial Abortion Count"]
+        ),
+        Pending_Culled: pendingCulled,
+        Culled: safeNumber(r.Culled ?? r.culled),
+        Pending_Quarantined: pendingQuarantined,
+        Quarantined: safeNumber(r.Quarantined ?? r.quarantined),
+        New_Animals_Moved_In: safeNumber(
+          r.New_Animals_Moved_In ??
+            r.MovedIn ??
+            r["Moved In"] ??
+            r.moved_in
+        ),
+        New_Animals_Moved_Out: safeNumber(
+          r.New_Animals_Moved_Out ??
+            r.MovedOut ??
+            r["Moved Out"] ??
+            r.moved_out
+        ),
+        Susceptible_In_From_MovedIn: safeNumber(
+          r.Susceptible_In_From_MovedIn ?? r.SusIn ?? r.susceptible_in
+        ),
+        Susceptible_Out_From_MovedOut: safeNumber(
+          r.Susceptible_Out_From_MovedOut ?? r.SusOut ?? r.susceptible_out
+        ),
+      });
+    });
+  });
+
+  return output;
+}
+
+function normalizeLogicRows(rows: ObsRow[]): ObsRow[] {
+  return rows.map((r, index) => {
+    const confirmatory = safeNumber(
+      (r as any).Confirmatory_Diagnosis ??
+        (r as any)["Confirmatory Diagnosis"] ??
+        (r as any).confirmatoryDiagnosis ??
+        (r as any).I
+    );
+
+    const N = safeNumber(r.Total_Animals);
+    const E = safeNumber(r.E);
+    const I = confirmatory;
+    const R = safeNumber(r.R);
+
+    return {
+      Farm_ID: safeText(r.Farm_ID, `Farm_${index + 1}`),
+      Location: safeText(r.Location),
+      Latitude: safeNumber(r.Latitude, NaN),
+      Longitude: safeNumber(r.Longitude, NaN),
+      Date: safeText(r.Date, today()),
+      Observation: safeNumber(r.Observation, index + 1),
+      Total_Animals: N,
+      S: safeNumber(r.S, Math.max(0, N - (E + I + R))),
+      E,
+      I,
+      R,
+      Confirmatory_Diagnosis: confirmatory,
+      Abortion_Count: safeNumber(r.Abortion_Count),
+      Pending_Culled: safeNumber(r.Pending_Culled),
+      Culled: safeNumber(r.Culled),
+      Pending_Quarantined: safeNumber(
+        r.Pending_Quarantined,
+        Math.max(0, I - safeNumber(r.Pending_Culled))
+      ),
+      Quarantined: safeNumber(r.Quarantined),
+      New_Animals_Moved_In: safeNumber(r.New_Animals_Moved_In),
+      New_Animals_Moved_Out: safeNumber(r.New_Animals_Moved_Out),
+      Susceptible_In_From_MovedIn: safeNumber(r.Susceptible_In_From_MovedIn),
+      Susceptible_Out_From_MovedOut: safeNumber(r.Susceptible_Out_From_MovedOut),
+    };
+  });
+}
+
+function validateTransmissionRows(rows: ObsRow[]) {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  rows.forEach((r) => {
+    if (!r.Farm_ID) errors.push(`Observation ${r.Observation}: Farm_ID missing.`);
+
+    if (r.Total_Animals < 0) {
+      errors.push(`${r.Farm_ID} observation ${r.Observation}: N is negative.`);
+    }
+
+    if (r.S < 0) {
+      warnings.push(`${r.Farm_ID} observation ${r.Observation}: S is negative.`);
+    }
+
+    if (r.S + r.E + r.I + r.R > r.Total_Animals) {
+      warnings.push(
+        `${r.Farm_ID} observation ${r.Observation}: S+E+I+R exceeds N.`
+      );
+    }
+
+    if (!Number.isFinite(r.Latitude) || !Number.isFinite(r.Longitude)) {
+      warnings.push(
+        `${r.Farm_ID} observation ${r.Observation}: latitude/longitude missing or invalid for map.`
+      );
+    }
+
+    if (Math.abs(r.Latitude) > 90 || Math.abs(r.Longitude) > 180) {
+      warnings.push(
+        `${r.Farm_ID} observation ${r.Observation}: latitude/longitude outside valid geographic range.`
+      );
+    }
+
+    if (r.Confirmatory_Diagnosis !== r.I) {
+      warnings.push(
+        `${r.Farm_ID} observation ${r.Observation}: Confirmatory_Diagnosis was forced to equal I.`
+      );
+    }
+  });
+
+  return { warnings, errors };
+}
+
+function buildHeatFeature(point: any) {
+  return {
+    type: "Feature",
+    properties: {
+      farmId: point.farmId,
+      location: point.location,
+      prevalence: point.prevalence ?? 0,
+      prevalencePercent:
+        point.prevalence === null ? null : Number((point.prevalence * 100).toFixed(3)),
+      prevalenceCategory: point.prevalenceCategory,
+      infected: point.infected ?? 0,
+      exposed: point.exposed ?? 0,
+      susceptible: point.susceptible ?? 0,
+      recovered: point.recovered ?? 0,
+      confirmatoryDiagnosis: point.confirmatoryDiagnosis ?? 0,
+      totalAnimals: point.totalAnimals ?? 0,
+      totalAbortions: point.totalAbortions ?? 0,
+      attackRate: point.attackRate ?? 0,
+      abortionRate: point.abortionRate ?? 0,
+      estimatedR0: point.estimatedR0 ?? null,
+      intensityScore: point.intensityScore ?? 0,
+      heatWeight: point.heatWeight ?? 1,
+      popupHTML:
+        `<strong>${point.farmId}</strong><br/>` +
+        `${point.location || ""}<br/>` +
+        `N: ${point.totalAnimals ?? 0}<br/>` +
+        `I: ${point.infected ?? 0}<br/>` +
+        `Confirmatory Diagnosis: ${point.confirmatoryDiagnosis ?? 0}<br/>` +
+        `Abortions: ${point.totalAbortions ?? 0}<br/>` +
+        `Prevalence: ${
+          point.prevalence === null || point.prevalence === undefined
+            ? "NA"
+            : `${(point.prevalence * 100).toFixed(2)}%`
+        }<br/>` +
+        `R0: ${
+          point.estimatedR0 === null || point.estimatedR0 === undefined
+            ? "NA"
+            : Number(point.estimatedR0).toFixed(3)
+        }`,
+    },
+    geometry: {
+      type: "Point",
+      coordinates: [point.longitude, point.latitude],
+    },
+  };
+}
+
 function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
-  const validation = validateTransmissionRows(rows);
+  const normalized = normalizeLogicRows(rows);
+  const validation = validateTransmissionRows(normalized);
   const farms = new Map<string, ObsRow[]>();
 
-  rows.forEach((row) => {
+  normalized.forEach((row) => {
     if (!farms.has(row.Farm_ID)) farms.set(row.Farm_ID, []);
     farms.get(row.Farm_ID)!.push(row);
   });
@@ -428,7 +567,9 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
     const first = ordered[0];
     const last = ordered[ordered.length - 1];
 
-    const totalIELISA = sum(ordered.map((r) => r.iELISA_Positive));
+    const totalConfirmatoryDiagnosis = sum(
+      ordered.map((r) => r.Confirmatory_Diagnosis)
+    );
     const totalI = sum(ordered.map((r) => r.I));
     const totalAbortions = sum(ordered.map((r) => r.Abortion_Count));
     const totalCulled = sum(ordered.map((r) => r.Culled));
@@ -442,15 +583,20 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
     const netMovement = totalMovedIn - totalMovedOut;
 
     const apparentPrevalence =
-      last.Total_Animals > 0 ? last.iELISA_Positive / last.Total_Animals : null;
+      last.Total_Animals > 0
+        ? last.Confirmatory_Diagnosis / last.Total_Animals
+        : null;
 
     const infectionPrevalence =
       last.Total_Animals > 0 ? last.I / last.Total_Animals : null;
 
     const cumulativeApparentPrevalence =
-      last.Total_Animals > 0 ? totalIELISA / last.Total_Animals : null;
+      last.Total_Animals > 0
+        ? totalConfirmatoryDiagnosis / last.Total_Animals
+        : null;
 
-    const attackRate = first.S > 0 ? totalIELISA / first.S : null;
+    const attackRate =
+      first.S > 0 ? totalConfirmatoryDiagnosis / first.S : null;
 
     const abortionRate =
       last.Total_Animals > 0 ? totalAbortions / last.Total_Animals : null;
@@ -464,6 +610,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
     const r = logGrowthRate(ordered.map((x) => x.I));
     const gamma = infectiousPeriodDays > 0 ? 1 / infectiousPeriodDays : null;
     const beta = r !== null && gamma !== null ? r + gamma : null;
+
     const estimatedR0 =
       beta !== null && gamma !== null && gamma > 0 ? beta / gamma : null;
 
@@ -480,6 +627,33 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
       (estimatedR0 && estimatedR0 > 1 ? Math.min(estimatedR0, 5) * 5 : 0) +
       (abortionRate ?? 0) * 20;
 
+    const heatWeight =
+      Math.max(1, last.I) +
+      Math.max(0, (apparentPrevalence ?? 0) * 100) +
+      Math.max(0, totalAbortions * 0.5) +
+      Math.max(0, transmissionIntensityScore * 0.25);
+
+    const mapPoint = {
+      farmId,
+      location: last.Location,
+      latitude: last.Latitude,
+      longitude: last.Longitude,
+      prevalence: apparentPrevalence,
+      prevalenceCategory: prevalenceCategory(apparentPrevalence),
+      infected: last.I,
+      exposed: last.E,
+      susceptible: last.S,
+      recovered: last.R,
+      confirmatoryDiagnosis: last.Confirmatory_Diagnosis,
+      totalAnimals: last.Total_Animals,
+      totalAbortions,
+      attackRate,
+      abortionRate,
+      estimatedR0,
+      intensityScore: transmissionIntensityScore,
+      heatWeight,
+    };
+
     return {
       farmId,
       observations: ordered.length,
@@ -495,7 +669,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
         R: last.R,
       },
       initialAbortionCount: first.Abortion_Count,
-      totalIELISAPositive: totalIELISA,
+      totalConfirmatoryDiagnosis,
       totalInfectedSum: totalI,
       totalAbortions,
       totalCulled,
@@ -509,7 +683,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
       infectionPrevalence,
       cumulativeApparentPrevalence,
       apparentPrevalenceCI95: wilsonCI(
-        last.iELISA_Positive,
+        last.Confirmatory_Diagnosis,
         last.Total_Animals
       ),
       attackRate,
@@ -540,23 +714,8 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
         quarantinedAppliedThisObservation: last.Quarantined,
       },
       transmissionIntensityScore,
-      mapPoint: {
-        farmId,
-        location: last.Location,
-        latitude: last.Latitude,
-        longitude: last.Longitude,
-        prevalence: apparentPrevalence,
-        prevalenceCategory: prevalenceCategory(apparentPrevalence),
-        infected: last.I,
-        exposed: last.E,
-        susceptible: last.S,
-        recovered: last.R,
-        totalAnimals: last.Total_Animals,
-        attackRate,
-        abortionRate,
-        estimatedR0,
-        intensityScore: transmissionIntensityScore,
-      },
+      heatWeight,
+      mapPoint,
       trend: ordered.map((r) => ({
         farmId,
         observation: r.Observation,
@@ -566,8 +725,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
         I: r.I,
         R: r.R,
         N: r.Total_Animals,
-        rbptPositive: r.RBPT_Positive,
-        ielisaPositive: r.iELISA_Positive,
+        confirmatoryDiagnosis: r.Confirmatory_Diagnosis,
         abortions: r.Abortion_Count,
         pendingCulled: r.Pending_Culled,
         culledApplied: r.Culled,
@@ -583,7 +741,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
             ? "Not available"
             : `${(apparentPrevalence * 100).toFixed(
                 2
-              )}% apparent prevalence by iELISA.`,
+              )}% apparent prevalence by confirmatory diagnosis.`,
         attackRate:
           attackRate === null
             ? "Not available"
@@ -620,6 +778,9 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
       I: sum(rowsAtObs.map((r: any) => r.I)),
       R: sum(rowsAtObs.map((r: any) => r.R)),
       N: sum(rowsAtObs.map((r: any) => r.N)),
+      confirmatoryDiagnosis: sum(
+        rowsAtObs.map((r: any) => r.confirmatoryDiagnosis)
+      ),
       abortions: sum(rowsAtObs.map((r: any) => r.abortions)),
       pendingCulled: sum(rowsAtObs.map((r: any) => r.pendingCulled)),
       culledApplied: sum(rowsAtObs.map((r: any) => r.culledApplied)),
@@ -628,7 +789,13 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
 
   const mapPoints = farmSummaries
     .map((x: any) => x.mapPoint)
-    .filter((p: any) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+    .filter(
+      (p: any) =>
+        Number.isFinite(p.latitude) &&
+        Number.isFinite(p.longitude) &&
+        Math.abs(p.latitude) <= 90 &&
+        Math.abs(p.longitude) <= 180
+    );
 
   const farmDistanceMatrix = mapPoints.flatMap((a: any) =>
     mapPoints
@@ -645,9 +812,37 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
       }))
   );
 
+  const heatmapFeatures = mapPoints.map(buildHeatFeature);
+
+  const heatmapGeoJSON = {
+    type: "FeatureCollection",
+    features: heatmapFeatures,
+  };
+
+  const mapBounds =
+    mapPoints.length > 0
+      ? {
+          minLongitude: Math.min(...mapPoints.map((p: any) => p.longitude)),
+          maxLongitude: Math.max(...mapPoints.map((p: any) => p.longitude)),
+          minLatitude: Math.min(...mapPoints.map((p: any) => p.latitude)),
+          maxLatitude: Math.max(...mapPoints.map((p: any) => p.latitude)),
+        }
+      : null;
+
+  const mapCenter =
+    mapPoints.length > 0
+      ? {
+          longitude: mean(mapPoints.map((p: any) => p.longitude)),
+          latitude: mean(mapPoints.map((p: any) => p.latitude)),
+        }
+      : {
+          longitude: 90.4125,
+          latitude: 23.8103,
+        };
+
   return {
     totalFarms: farmSummaries.length,
-    totalObservations: rows.length,
+    totalObservations: normalized.length,
     validation,
     overallSEIR: {
       N: totalN,
@@ -661,8 +856,8 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
       recoveredProportion: totalN > 0 ? totalR / totalN : null,
     },
     overallTotals: {
-      totalIELISAPositive: sum(
-        farmSummaries.map((x: any) => x.totalIELISAPositive)
+      totalConfirmatoryDiagnosis: sum(
+        farmSummaries.map((x: any) => x.totalConfirmatoryDiagnosis)
       ),
       totalAbortions: sum(farmSummaries.map((x: any) => x.totalAbortions)),
       totalCulled: sum(farmSummaries.map((x: any) => x.totalCulled)),
@@ -724,8 +919,58 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
       })),
       mapPoints,
       farmDistanceMatrix,
+      heatmapGeoJSON,
+      mapConfig: {
+        defaultView: "normal",
+        availableViews: [
+          {
+            id: "normal",
+            label: "Normal",
+            mapboxStyle: "mapbox://styles/mapbox/dark-v11",
+          },
+          {
+            id: "satellite",
+            label: "Satellite",
+            mapboxStyle: "mapbox://styles/mapbox/satellite-streets-v12",
+          },
+        ],
+        center: mapCenter,
+        bounds: mapBounds,
+        heatmapLayer: {
+          sourceId: "transmission-heatmap-source",
+          layerId: "transmission-heatmap-layer",
+          pointLayerId: "transmission-point-layer",
+          weightProperty: "heatWeight",
+          popupProperty: "popupHTML",
+        },
+      },
     },
     mapPoints,
+    heatmapGeoJSON,
+    mapConfig: {
+      defaultView: "normal",
+      availableViews: [
+        {
+          id: "normal",
+          label: "Normal",
+          mapboxStyle: "mapbox://styles/mapbox/dark-v11",
+        },
+        {
+          id: "satellite",
+          label: "Satellite",
+          mapboxStyle: "mapbox://styles/mapbox/satellite-streets-v12",
+        },
+      ],
+      center: mapCenter,
+      bounds: mapBounds,
+      heatmapLayer: {
+        sourceId: "transmission-heatmap-source",
+        layerId: "transmission-heatmap-layer",
+        pointLayerId: "transmission-point-layer",
+        weightProperty: "heatWeight",
+        popupProperty: "popupHTML",
+      },
+    },
     farmDistanceMatrix,
     farmSummaries,
   };
@@ -955,7 +1200,45 @@ function analyzeContinuousRisk(
   };
 }
 
-function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], threshold: number) {
+function describeDataset(rows: RawRow[]) {
+  const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+
+  return {
+    rows: rows.length,
+    columns: columns.length,
+    columnNames: columns,
+    variableProfile: columns.map((c) => {
+      const numeric = isNumericColumn(rows, c);
+      const values = rows
+        .map((r) => r[c])
+        .filter((v) => !isMissing(v))
+        .map((v) => (numeric ? Number(v) : v));
+
+      return {
+        variable: c,
+        type: numeric ? "numeric" : "categorical/text",
+        uniqueValues: uniqueValues(rows, c).length,
+        missing: missingCount(rows, c),
+        numericSummary: numeric ? describeNumeric(values as number[]) : null,
+        categories: numeric
+          ? null
+          : uniqueValues(rows, c)
+              .slice(0, 20)
+              .map((level) => ({
+                level,
+                count: rows.filter((r) => String(r[c]) === level).length,
+              })),
+      };
+    }),
+  };
+}
+
+function analyzeRisk(
+  rows: RawRow[],
+  outcome: string,
+  predictors: string[],
+  threshold: number
+) {
   const datasetProfile = describeDataset(rows);
 
   const univariable = predictors.map((p) => {
@@ -1030,39 +1313,6 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
           pValue: x.pValue,
         })),
     },
-  };
-}
-
-function describeDataset(rows: RawRow[]) {
-  const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
-
-  return {
-    rows: rows.length,
-    columns: columns.length,
-    columnNames: columns,
-    variableProfile: columns.map((c) => {
-      const numeric = isNumericColumn(rows, c);
-      const values = rows
-        .map((r) => r[c])
-        .filter((v) => !isMissing(v))
-        .map((v) => (numeric ? Number(v) : v));
-
-      return {
-        variable: c,
-        type: numeric ? "numeric" : "categorical/text",
-        uniqueValues: uniqueValues(rows, c).length,
-        missing: missingCount(rows, c),
-        numericSummary: numeric ? describeNumeric(values as number[]) : null,
-        categories: numeric
-          ? null
-          : uniqueValues(rows, c)
-              .slice(0, 20)
-              .map((level) => ({
-                level,
-                count: rows.filter((r) => String(r[c]) === level).length,
-              })),
-      };
-    }),
   };
 }
 
@@ -1232,6 +1482,621 @@ function analyzeStatistics(rows: RawRow[]) {
   };
 }
 
+function parseFASTA(text: string): SequenceRecord[] {
+  const clean = text.trim();
+  if (!clean) return [];
+
+  const blocks = clean.split(/^>/m).filter(Boolean);
+
+  return blocks
+    .map((block, index) => {
+      const lines = block.split(/\r?\n/).filter(Boolean);
+      const id = lines[0]?.trim() || `sequence_${index + 1}`;
+      const sequence = lines
+        .slice(1)
+        .join("")
+        .replace(/\s+/g, "")
+        .toUpperCase();
+
+      return { id, sequence };
+    })
+    .filter((record) => record.sequence.length > 0);
+}
+
+function gcContent(sequence: string): number | null {
+  if (!sequence.length) return null;
+
+  const gc = sequence
+    .split("")
+    .filter((base) => base === "G" || base === "C").length;
+
+  return gc / sequence.length;
+}
+
+function countAmbiguousBases(sequence: string): number {
+  return sequence
+    .split("")
+    .filter((base) => !["A", "T", "G", "C", "-"].includes(base)).length;
+}
+
+function consensusSequence(sequences: string[]): string {
+  if (sequences.length === 0) return "";
+
+  const maxLen = Math.max(...sequences.map((seq) => seq.length));
+  const bases = ["A", "T", "G", "C", "N", "-"];
+  let consensus = "";
+
+  for (let i = 0; i < maxLen; i++) {
+    const counts: Record<string, number> = {};
+
+    bases.forEach((base) => {
+      counts[base] = 0;
+    });
+
+    sequences.forEach((seq) => {
+      const base = seq[i] ?? "N";
+      counts[base] = (counts[base] ?? 0) + 1;
+    });
+
+    const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    consensus += best;
+  }
+
+  return consensus;
+}
+
+function hammingDistance(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let distance = Math.abs(a.length - b.length);
+
+  for (let i = 0; i < n; i++) {
+    if (a[i] !== b[i]) distance += 1;
+  }
+
+  return distance;
+}
+
+function analyzeGenomics(records: SequenceRecord[]) {
+  if (records.length === 0) {
+    return {
+      count: 0,
+      message: "No FASTA sequences supplied.",
+      sequenceSummaries: [],
+      mutationHotspots: [],
+      pairwiseDistances: [],
+    };
+  }
+
+  const sequences = records.map((record) => record.sequence);
+  const consensus = consensusSequence(sequences);
+
+  const sequenceSummaries = records.map((record) => ({
+    id: record.id,
+    length: record.sequence.length,
+    gcContent: gcContent(record.sequence),
+    ambiguousBases: countAmbiguousBases(record.sequence),
+    distanceToConsensus: hammingDistance(record.sequence, consensus),
+  }));
+
+  const mutationProfile = consensus.split("").map((base, index) => {
+    const column = sequences.map((seq) => seq[index] ?? "N");
+    const unique = Array.from(new Set(column));
+    const nonConsensusCount = column.filter((b) => b !== base).length;
+
+    return {
+      position: index + 1,
+      consensusBase: base,
+      variantCount: unique.length,
+      variants: unique.join(","),
+      nonConsensusCount,
+      variabilityScore: unique.length - 1,
+      frequencyNonConsensus:
+        column.length > 0 ? nonConsensusCount / column.length : null,
+    };
+  });
+
+  const mutationHotspots = mutationProfile
+    .filter((m) => m.variabilityScore > 0)
+    .sort((a, b) => {
+      if (b.variabilityScore !== a.variabilityScore) {
+        return b.variabilityScore - a.variabilityScore;
+      }
+      return b.nonConsensusCount - a.nonConsensusCount;
+    })
+    .slice(0, 50);
+
+  const pairwiseDistances: any[] = [];
+
+  for (let i = 0; i < records.length; i++) {
+    for (let j = i + 1; j < records.length; j++) {
+      pairwiseDistances.push({
+        from: records[i].id,
+        to: records[j].id,
+        distance: hammingDistance(records[i].sequence, records[j].sequence),
+      });
+    }
+  }
+
+  return {
+    count: records.length,
+    uniqueSequenceCount: new Set(sequences).size,
+    consensusLength: consensus.length,
+    meanLength: mean(records.map((record) => record.sequence.length)),
+    meanGCContent: mean(
+      records
+        .map((record) => gcContent(record.sequence))
+        .filter((x): x is number => x !== null)
+    ),
+    meanAmbiguousBases: mean(
+      records.map((record) => countAmbiguousBases(record.sequence))
+    ),
+    consensusPreview: consensus.slice(0, 500),
+    sequenceSummaries,
+    mutationHotspots,
+    pairwiseDistances,
+    nucleotideDiversityApproximation: mean(
+      pairwiseDistances.map((p) => p.distance)
+    ),
+    interpretation: {
+      diversity:
+        new Set(sequences).size > 1
+          ? "Multiple sequence types/haplotypes detected."
+          : "No sequence diversity detected among supplied sequences.",
+      hotspots:
+        mutationHotspots.length > 0
+          ? "Variable sites were detected and ranked as mutation hotspots."
+          : "No variable sites detected from supplied sequences.",
+    },
+  };
+}
+
+function normalizeAnimalRows(rows: RawRow[]) {
+  return rows.map((r, index) => ({
+    animalId: safeText(r.animal_id ?? r.Animal_ID ?? r.id, `animal_${index + 1}`),
+    species: safeText(r.species ?? r.Species),
+    age: safeNumber(r.age ?? r.Age, NaN),
+    sex: safeText(r.sex ?? r.Sex),
+    diseaseState: safeText(
+      r.disease_state ?? r["Disease State"] ?? r.Disease_State
+    ),
+    immunityScore: safeNumber(
+      r.immunity_score ?? r["Immunity Score"] ?? r.Immunity_Score,
+      NaN
+    ),
+    serumPathogenLoad: safeNumber(
+      r.serum_pathogen_load ??
+        r["Serum Pathogen Load"] ??
+        r.Serum_Pathogen_Load,
+      NaN
+    ),
+    vaccineStrain: safeText(
+      r.vaccine_strain ?? r["Vaccine Strain"] ?? r.Vaccine_Strain
+    ),
+    vaccineStrainSequence: safeText(
+      r.vaccine_strain_sequence ??
+        r["Vaccine Strain Sequence"] ??
+        r.Vaccine_Strain_Sequence
+    ),
+    vaccinationDate: safeText(
+      r.vaccination_date ?? r["Vaccination Date"] ?? r.Vaccination_Date
+    ),
+    antibodyTiter: safeNumber(
+      r.antibody_titer ?? r["Antibody Titer"] ?? r.Antibody_Titer,
+      NaN
+    ),
+    coInfections: safeText(
+      r.co_infections ?? r["Co-infections"] ?? r.coinfections
+    ),
+    bodyTemperature: safeNumber(
+      r.body_temperature ?? r["Body Temperature"] ?? r.Body_Temperature,
+      NaN
+    ),
+    clinicalScore: safeNumber(
+      r.clinical_score ?? r["Clinical Score"] ?? r.Clinical_Score,
+      NaN
+    ),
+    weight: safeNumber(r.weight ?? r.Weight, NaN),
+    farmId: safeText(r.farm_id ?? r.Farm_ID ?? r.Farm),
+    location: safeText(r.location ?? r.Location),
+  }));
+}
+
+function analyzeAnimalLevel(rows: RawRow[]) {
+  const normalized = normalizeAnimalRows(rows);
+
+  if (normalized.length === 0) {
+    return {
+      count: 0,
+      message: "No animal-level data supplied.",
+    };
+  }
+
+  const diseaseStates = Array.from(
+    new Set(normalized.map((r) => r.diseaseState).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.diseaseState === level).length,
+  }));
+
+  const speciesDistribution = Array.from(
+    new Set(normalized.map((r) => r.species).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.species === level).length,
+  }));
+
+  const sexDistribution = Array.from(
+    new Set(normalized.map((r) => r.sex).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.sex === level).length,
+  }));
+
+  const vaccineStrainDistribution = Array.from(
+    new Set(normalized.map((r) => r.vaccineStrain).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.vaccineStrain === level).length,
+  }));
+
+  const coInfectionDistribution = Array.from(
+    new Set(normalized.map((r) => r.coInfections).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.coInfections === level).length,
+  }));
+
+  return {
+    count: normalized.length,
+    speciesDistribution,
+    sexDistribution,
+    diseaseStates,
+    vaccineStrainDistribution,
+    coInfectionDistribution,
+    numericSummary: {
+      age: describeNumeric(normalized.map((r) => r.age)),
+      immunityScore: describeNumeric(normalized.map((r) => r.immunityScore)),
+      serumPathogenLoad: describeNumeric(
+        normalized.map((r) => r.serumPathogenLoad)
+      ),
+      antibodyTiter: describeNumeric(normalized.map((r) => r.antibodyTiter)),
+      bodyTemperature: describeNumeric(
+        normalized.map((r) => r.bodyTemperature)
+      ),
+      clinicalScore: describeNumeric(normalized.map((r) => r.clinicalScore)),
+      weight: describeNumeric(normalized.map((r) => r.weight)),
+    },
+    correlationSignals: [
+      {
+        x: "immunityScore",
+        y: "serumPathogenLoad",
+        correlation: pearsonCorrelation(
+          normalized.map((r) => r.immunityScore),
+          normalized.map((r) => r.serumPathogenLoad)
+        ),
+      },
+      {
+        x: "antibodyTiter",
+        y: "serumPathogenLoad",
+        correlation: pearsonCorrelation(
+          normalized.map((r) => r.antibodyTiter),
+          normalized.map((r) => r.serumPathogenLoad)
+        ),
+      },
+      {
+        x: "clinicalScore",
+        y: "serumPathogenLoad",
+        correlation: pearsonCorrelation(
+          normalized.map((r) => r.clinicalScore),
+          normalized.map((r) => r.serumPathogenLoad)
+        ),
+      },
+    ],
+    riskSignals: {
+      lowImmunityCount: normalized.filter(
+        (r) => Number.isFinite(r.immunityScore) && r.immunityScore < 40
+      ).length,
+      highPathogenLoadCount: normalized.filter(
+        (r) => Number.isFinite(r.serumPathogenLoad) && r.serumPathogenLoad > 7
+      ).length,
+      highClinicalScoreCount: normalized.filter(
+        (r) => Number.isFinite(r.clinicalScore) && r.clinicalScore >= 3
+      ).length,
+      coInfectedCount: normalized.filter((r) => r.coInfections).length,
+    },
+    rows: normalized,
+  };
+}
+
+function normalizeGeoTemporalRows(rows: RawRow[]) {
+  return rows.map((r, index) => ({
+    id: safeText(r.id ?? r.ID, `geo_${index + 1}`),
+    farmId: safeText(r.farm_id ?? r.Farm_ID ?? r.Farm),
+    location: safeText(r.location ?? r.Location),
+    latitude: safeNumber(r.latitude ?? r.Latitude ?? r.lat, NaN),
+    longitude: safeNumber(r.longitude ?? r.Longitude ?? r.lon ?? r.lng, NaN),
+    date: safeText(r.date ?? r.Date, today()),
+    cases: safeNumber(r.cases ?? r.Cases ?? r.ill_animals ?? r.Ill_Animals, 0),
+    deaths: safeNumber(r.deaths ?? r.Deaths, 0),
+    clusterId: safeText(r.cluster_id ?? r.Cluster_ID ?? r.cluster),
+    siteType: safeText(r.site_type ?? r.Site_Type ?? r.site),
+    movementExposure: safeNumber(
+      r.movement_exposure ?? r.Movement_Exposure,
+      0
+    ),
+  }));
+}
+
+function analyzeGeoTemporal(rows: RawRow[]) {
+  const normalized = normalizeGeoTemporalRows(rows);
+
+  if (normalized.length === 0) {
+    return {
+      count: 0,
+      message: "No geospatial/temporal data supplied.",
+      heatmapGeoJSON: {
+        type: "FeatureCollection",
+        features: [],
+      },
+    };
+  }
+
+  const validDates = normalized.map((r) => r.date).filter(Boolean).sort();
+
+  const heatmapFeatures = normalized
+    .filter(
+      (r) =>
+        Number.isFinite(r.latitude) &&
+        Number.isFinite(r.longitude) &&
+        Math.abs(r.latitude) <= 90 &&
+        Math.abs(r.longitude) <= 180
+    )
+    .map((r) => ({
+      type: "Feature",
+      properties: {
+        id: r.id,
+        farmId: r.farmId,
+        location: r.location,
+        date: r.date,
+        cases: r.cases,
+        deaths: r.deaths,
+        clusterId: r.clusterId,
+        siteType: r.siteType,
+        movementExposure: r.movementExposure,
+        heatWeight: Math.max(1, r.cases + r.deaths * 2 + r.movementExposure),
+        popupHTML:
+          `<strong>${r.farmId || r.location || r.id}</strong><br/>` +
+          `Date: ${r.date}<br/>` +
+          `Cases: ${r.cases}<br/>` +
+          `Deaths: ${r.deaths}<br/>` +
+          `Cluster: ${r.clusterId || "NA"}`,
+      },
+      geometry: {
+        type: "Point",
+        coordinates: [r.longitude, r.latitude],
+      },
+    }));
+
+  const locations = Array.from(
+    new Set(normalized.map((r) => r.location).filter(Boolean))
+  );
+
+  const timeline = Array.from(new Set(validDates)).map((date) => ({
+    date,
+    count: normalized.filter((r) => r.date === date).length,
+    totalCases: sum(normalized.filter((r) => r.date === date).map((r) => r.cases)),
+    totalDeaths: sum(
+      normalized.filter((r) => r.date === date).map((r) => r.deaths)
+    ),
+  }));
+
+  return {
+    count: normalized.length,
+    firstDate: validDates[0] ?? null,
+    lastDate: validDates[validDates.length - 1] ?? null,
+    locations,
+    locationCount: locations.length,
+    timeline,
+    totalCases: sum(normalized.map((r) => r.cases)),
+    totalDeaths: sum(normalized.map((r) => r.deaths)),
+    heatmapGeoJSON: {
+      type: "FeatureCollection",
+      features: heatmapFeatures,
+    },
+    rows: normalized,
+  };
+}
+
+function normalizeCircumstantialRows(rows: RawRow[]) {
+  return rows.map((r, index) => ({
+    id: safeText(r.id ?? r.ID, `circumstantial_${index + 1}`),
+    farmId: safeText(r.farm_id ?? r.Farm_ID ?? r.Farm),
+    numberOfAnimalsReared: safeNumber(
+      r.number_of_animals_reared ??
+        r["Number of Animals Reared"] ??
+        r.animals_reared,
+      NaN
+    ),
+    howManyIll: safeNumber(
+      r.how_many_ill ?? r["How Many Ill"] ?? r.ill_animals,
+      NaN
+    ),
+    similarSymptomsSeenIn: safeText(
+      r.similar_symptoms_seen_in ??
+        r["Similar Symptoms Seen In"] ??
+        r.similar_symptoms
+    ),
+    durationDays: safeNumber(
+      r.duration_days ?? r["Duration Days"] ?? r.duration,
+      NaN
+    ),
+    drugAdministered: safeText(
+      r.drug_administered ?? r["Drug Administered"] ?? r.drug
+    ),
+    managementSystem: safeText(
+      r.management_system ?? r["Management System"] ?? r.management
+    ),
+    biosecurityScore: safeNumber(
+      r.biosecurity_score ?? r["Biosecurity Score"] ?? r.biosecurity,
+      NaN
+    ),
+    feedSource: safeText(r.feed_source ?? r["Feed Source"]),
+    waterSource: safeText(r.water_source ?? r["Water Source"]),
+    vectorExposure: safeText(r.vector_exposure ?? r["Vector Exposure"]),
+    recentAnimalIntroduction: safeText(
+      r.recent_animal_introduction ?? r["Recent Animal Introduction"]
+    ),
+  }));
+}
+
+function analyzeCircumstantial(rows: RawRow[]) {
+  const normalized = normalizeCircumstantialRows(rows);
+
+  if (normalized.length === 0) {
+    return {
+      count: 0,
+      message: "No circumstantial evidence supplied.",
+    };
+  }
+
+  const morbidityRates = normalized
+    .map((r) =>
+      Number.isFinite(r.numberOfAnimalsReared) && r.numberOfAnimalsReared > 0
+        ? r.howManyIll / r.numberOfAnimalsReared
+        : NaN
+    )
+    .filter((v) => Number.isFinite(v));
+
+  const drugUse = Array.from(
+    new Set(normalized.map((r) => r.drugAdministered).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.drugAdministered === level).length,
+  }));
+
+  const managementSystems = Array.from(
+    new Set(normalized.map((r) => r.managementSystem).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.managementSystem === level).length,
+  }));
+
+  const symptomDistribution = Array.from(
+    new Set(normalized.map((r) => r.similarSymptomsSeenIn).filter(Boolean))
+  ).map((level) => ({
+    level,
+    count: normalized.filter((r) => r.similarSymptomsSeenIn === level).length,
+  }));
+
+  return {
+    count: normalized.length,
+    animalsRearedSummary: describeNumeric(
+      normalized.map((r) => r.numberOfAnimalsReared)
+    ),
+    illAnimalsSummary: describeNumeric(normalized.map((r) => r.howManyIll)),
+    durationSummary: describeNumeric(normalized.map((r) => r.durationDays)),
+    biosecuritySummary: describeNumeric(
+      normalized.map((r) => r.biosecurityScore)
+    ),
+    morbidityRateMean: mean(morbidityRates),
+    morbidityRateMedian: median(morbidityRates),
+    drugUse,
+    managementSystems,
+    symptomDistribution,
+    feedSources: Array.from(
+      new Set(normalized.map((r) => r.feedSource).filter(Boolean))
+    ),
+    waterSources: Array.from(
+      new Set(normalized.map((r) => r.waterSource).filter(Boolean))
+    ),
+    vectorExposureCount: normalized.filter((r) => r.vectorExposure).length,
+    recentAnimalIntroductionCount: normalized.filter(
+      (r) => r.recentAnimalIntroduction
+    ).length,
+    rows: normalized,
+  };
+}
+
+function analyzeEvolutionary(
+  animalRows: RawRow[],
+  geoRows: RawRow[],
+  circumstantialRows: RawRow[],
+  fastaText: string
+) {
+  const animal = analyzeAnimalLevel(animalRows);
+  const geoTemporal = analyzeGeoTemporal(geoRows);
+  const circumstantial = analyzeCircumstantial(circumstantialRows);
+  const genomics = analyzeGenomics(parseFASTA(fastaText));
+
+  const lowImmunityCount = Number(animal?.riskSignals?.lowImmunityCount ?? 0);
+  const highPathogenLoadCount = Number(
+    animal?.riskSignals?.highPathogenLoadCount ?? 0
+  );
+  const highClinicalScoreCount = Number(
+    animal?.riskSignals?.highClinicalScoreCount ?? 0
+  );
+  const uniqueSequenceCount = Number(genomics?.uniqueSequenceCount ?? 0);
+  const hotspotCount = Number(genomics?.mutationHotspots?.length ?? 0);
+  const morbidityRate = Number(circumstantial?.morbidityRateMean ?? 0);
+  const geoCaseCount = Number(geoTemporal?.totalCases ?? 0);
+  const geoLocationCount = Number(geoTemporal?.locationCount ?? 0);
+
+  const evolutionaryRiskScore =
+    lowImmunityCount * 1.5 +
+    highPathogenLoadCount * 1.5 +
+    highClinicalScoreCount * 1.2 +
+    uniqueSequenceCount * 2 +
+    hotspotCount * 0.5 +
+    morbidityRate * 100 * 0.25 +
+    geoCaseCount * 0.1 +
+    geoLocationCount * 0.8;
+
+  const suggestedDrivers = [
+    lowImmunityCount > 0 ? "Low host immunity" : null,
+    highPathogenLoadCount > 0 ? "High serum pathogen load" : null,
+    highClinicalScoreCount > 0 ? "High clinical severity" : null,
+    uniqueSequenceCount > 1 ? "Multiple pathogen haplotypes/sequence types" : null,
+    hotspotCount > 0 ? "Detected genomic mutation hotspots" : null,
+    morbidityRate > 0.2 ? "Elevated morbidity at farm/population level" : null,
+    geoLocationCount > 1 ? "Spatial spread across multiple locations" : null,
+  ].filter(Boolean);
+
+  return {
+    animalLevel: animal,
+    geoTemporal,
+    genomics,
+    circumstantial,
+    integratedSummary: {
+      evolutionaryRiskScore,
+      riskCategory:
+        evolutionaryRiskScore >= 50
+          ? "high"
+          : evolutionaryRiskScore >= 25
+          ? "moderate"
+          : "low",
+      interpretation:
+        evolutionaryRiskScore >= 50
+          ? "High evolutionary and transmission concern based on integrated host, pathogen, spatial, and circumstantial evidence."
+          : evolutionaryRiskScore >= 25
+          ? "Moderate concern; further genomic and epidemiological confirmation is recommended."
+          : "Lower concern based on currently supplied evidence, but interpretation depends on data completeness.",
+      suggestedDrivers,
+    },
+    visualization: {
+      genomicHotspots: genomics.mutationHotspots ?? [],
+      pairwiseDistances: genomics.pairwiseDistances ?? [],
+      geoHeatmap: geoTemporal.heatmapGeoJSON,
+      diseaseStateDistribution: animal.diseaseStates ?? [],
+      speciesDistribution: animal.speciesDistribution ?? [],
+      vaccineStrainDistribution: animal.vaccineStrainDistribution ?? [],
+      circumstantialMorbidity: {
+        mean: circumstantial.morbidityRateMean ?? null,
+        median: circumstantial.morbidityRateMedian ?? null,
+      },
+    },
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -1314,6 +2179,57 @@ export async function POST(request: Request) {
       });
     }
 
+    if (moduleName === "evolutionary") {
+      const animalFile = formData.get("animalFile") as File | null;
+      const geoFile = formData.get("geoFile") as File | null;
+      const circumstantialFile = formData.get("circumstantialFile") as File | null;
+      const fastaFile = formData.get("fastaFile") as File | null;
+
+      const animalRowsText = String(formData.get("animalRows") || "");
+      const geoRowsText = String(formData.get("geoRows") || "");
+      const circumstantialRowsText = String(
+        formData.get("circumstantialRows") || ""
+      );
+      const fastaTextInput = String(formData.get("fastaText") || "");
+
+      const animalRows = animalFile
+        ? parseCSV(await animalFile.text())
+        : animalRowsText
+        ? JSON.parse(animalRowsText)
+        : [];
+
+      const geoRows = geoFile
+        ? parseCSV(await geoFile.text())
+        : geoRowsText
+        ? JSON.parse(geoRowsText)
+        : [];
+
+      const circumstantialRows = circumstantialFile
+        ? parseCSV(await circumstantialFile.text())
+        : circumstantialRowsText
+        ? JSON.parse(circumstantialRowsText)
+        : [];
+
+      const fastaText = fastaFile ? await fastaFile.text() : fastaTextInput;
+
+      return NextResponse.json({
+        status: "success",
+        module: "Evolutionary Analysis",
+        evolutionary: analyzeEvolutionary(
+          animalRows,
+          geoRows,
+          circumstantialRows,
+          fastaText
+        ),
+        notes: [
+          "Animal-level data may include species, age, sex, disease_state, immunity_score, serum_pathogen_load, vaccine_strain, vaccine_strain_sequence, vaccination_date, antibody_titer, co_infections, body_temperature, clinical_score, weight, farm_id, and location.",
+          "Geospatial/temporal data may include farm_id, location, latitude, longitude, date, cases, deaths, cluster_id, site_type, and movement_exposure.",
+          "Genomics data expects FASTA text or a FASTA file from the isolated pathogen.",
+          "Circumstantial evidence may include number_of_animals_reared, how_many_ill, similar_symptoms_seen_in, duration_days, drug_administered, management_system, biosecurity_score, feed_source, water_source, vector_exposure, and recent_animal_introduction.",
+        ],
+      });
+    }
+
     const mode = String(formData.get("mode") || "logic");
     const infectiousPeriodDays = safeNumber(
       formData.get("infectiousPeriodDays"),
@@ -1334,7 +2250,9 @@ export async function POST(request: Request) {
 
       rows = normalizeImportedRows(parseCSV(await file.text()));
     } else {
-      rows = JSON.parse(String(formData.get("rows") || "[]")) as ObsRow[];
+      rows = normalizeLogicRows(
+        JSON.parse(String(formData.get("rows") || "[]")) as ObsRow[]
+      );
     }
 
     if (rows.length === 0) {
@@ -1352,11 +2270,11 @@ export async function POST(request: Request) {
       analysis: analyzeTransmission(rows, infectiousPeriodDays),
       notes: [
         "First observation has Culled=0 and Quarantined=0.",
-        "Initial observation now supports Abortion_Count.",
-        "Each new farm must be appended to the existing rows array from page.tsx; otherwise previous farm data will disappear.",
+        "Initial observation supports Abortion_Count.",
+        "Confirmatory_Diagnosis is always treated as I.",
         "Correct N logic: New N = previous N - previous Pending_Culled + moved in - moved out.",
         "S is recalculated as N - (E + I + R).",
-        "Output includes farm-wise table data, overall SEIR dynamics, farm rankings, map points, trend data, abortion summaries, and visualization-ready arrays.",
+        "Output includes farm-wise data, overall SEIR dynamics, rankings, interactive heatmap-ready GeoJSON, normal map style, satellite map style, map bounds, popups, and point layer data.",
       ],
     });
   } catch (error: any) {
