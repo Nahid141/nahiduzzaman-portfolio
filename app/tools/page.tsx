@@ -36,8 +36,8 @@ type NetworkEdge = {
   movements: number;
 };
 
-type MainTab = "transmission" | "risk" | "network" | "statistics";
-type TStep = "farm" | "observe" | "table" | "analysis" | "map";
+type MainTab = "transmission" | "risk" | "statistics" | "network";
+type TransmissionStep = "farm" | "observe" | "table" | "analysis" | "map";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -57,6 +57,12 @@ function valueText(value: any, digits = 4) {
   if (value === null || value === undefined || Number.isNaN(value)) return "NA";
   if (typeof value === "number") return value.toFixed(digits);
   return String(value);
+}
+
+function nextFarmId(existing: string[]) {
+  let i = existing.length + 1;
+  while (existing.includes(`Farm_${i}`)) i += 1;
+  return `Farm_${i}`;
 }
 
 async function readSpreadsheetLikeFile(file: File): Promise<any[]> {
@@ -135,9 +141,10 @@ export default function Tools() {
   const [mainTab, setMainTab] = useState<MainTab>("transmission");
 
   const [transmissionMode, setTransmissionMode] = useState<"logic" | "import">("logic");
-  const [tStep, setTStep] = useState<TStep>("farm");
+  const [tStep, setTStep] = useState<TransmissionStep>("farm");
   const [farms, setFarms] = useState<ObsRow[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState("");
+
   const [transmissionFile, setTransmissionFile] = useState<File | null>(null);
   const [transmissionFileName, setTransmissionFileName] = useState("");
   const [infectiousPeriodDays, setInfectiousPeriodDays] = useState("14");
@@ -149,6 +156,10 @@ export default function Tools() {
   const [riskPredictors, setRiskPredictors] = useState("");
   const [riskThreshold, setRiskThreshold] = useState("0.2");
   const [riskResult, setRiskResult] = useState<any>(null);
+
+  const [statsFile, setStatsFile] = useState<File | null>(null);
+  const [statsFileName, setStatsFileName] = useState("");
+  const [statsResult, setStatsResult] = useState<any>(null);
 
   const [networkSource, setNetworkSource] = useState<"manual" | "import">("manual");
   const [networkEdges, setNetworkEdges] = useState<NetworkEdge[]>([]);
@@ -163,13 +174,9 @@ export default function Tools() {
   });
   const [networkResult, setNetworkResult] = useState<any>(null);
 
-  const [statsFile, setStatsFile] = useState<File | null>(null);
-  const [statsFileName, setStatsFileName] = useState("");
-  const [statsResult, setStatsResult] = useState<any>(null);
-
   const [log, setLog] = useState<string[]>([
     "> EGStat-N web engine initialized.",
-    "> Modules: transmission dynamics, risk-factor analysis, statistics, geospatial map, and network analysis.",
+    "> Transmission dynamics now supports multiple farms without deleting previous farm data.",
   ]);
 
   const [setup, setSetup] = useState({
@@ -184,6 +191,7 @@ export default function Tools() {
     R: "0",
     RBPT_Positive: "0",
     iELISA_Positive: "0",
+    Abortion_Count: "0",
     Pending_Culled: "0",
   });
 
@@ -245,6 +253,32 @@ export default function Tools() {
     setLog((old) => [...old, ...lines]);
   }
 
+  function prepareNewFarm() {
+    const newId = nextFarmId(farmIds);
+
+    setSetup((old) => ({
+      ...old,
+      Farm_ID: newId,
+      Location: "",
+      Latitude: "0",
+      Longitude: "0",
+      Date: today(),
+      Total_Animals: "100",
+      E: "0",
+      I: "0",
+      R: "0",
+      RBPT_Positive: "0",
+      iELISA_Positive: "0",
+      Abortion_Count: "0",
+      Pending_Culled: "0",
+    }));
+
+    setSelectedFarmId("");
+    setTStep("farm");
+    setTransmissionMode("logic");
+    pushLog([`> New farm entry form opened: ${newId}. Previous farm data preserved.`]);
+  }
+
   function createNewFarm() {
     const farmId = setup.Farm_ID.trim();
 
@@ -262,6 +296,7 @@ export default function Tools() {
     const E = num(setup.E);
     const I = num(setup.I);
     const R = num(setup.R);
+    const initialAbortions = num(setup.Abortion_Count);
     const pendingCulled = num(setup.Pending_Culled);
     const pendingQuarantined = Math.max(0, I - pendingCulled);
     const S = N - (E + I + R);
@@ -285,7 +320,7 @@ export default function Tools() {
       R,
       RBPT_Positive: num(setup.RBPT_Positive),
       iELISA_Positive: num(setup.iELISA_Positive, I),
-      Abortion_Count: 0,
+      Abortion_Count: initialAbortions,
       Pending_Culled: pendingCulled,
       Culled: 0,
       Pending_Quarantined: pendingQuarantined,
@@ -296,6 +331,7 @@ export default function Tools() {
       Susceptible_Out_From_MovedOut: 0,
     };
 
+    // IMPORTANT: this appends the new farm and does NOT delete previous farm data.
     setFarms((old) => [...old, initial]);
     setSelectedFarmId(farmId);
     setTransmissionResult(null);
@@ -314,11 +350,26 @@ export default function Tools() {
       Pending_Culled: "0",
     });
 
+    setSetup((old) => ({
+      ...old,
+      Farm_ID: nextFarmId([...farmIds, farmId]),
+      Date: today(),
+      Total_Animals: "100",
+      E: "0",
+      I: "0",
+      R: "0",
+      RBPT_Positive: "0",
+      iELISA_Positive: "0",
+      Abortion_Count: "0",
+      Pending_Culled: "0",
+    }));
+
     pushLog([
       `> New farm created: ${farmId}.`,
-      `> Initial observation: N=${N}, S=${S}, E=${E}, I=${I}, R=${R}.`,
+      `> Initial observation: N=${N}, S=${S}, E=${E}, I=${I}, R=${R}, Abortions=${initialAbortions}.`,
       "> First observation rule applied: Culled=0, Quarantined=0.",
       `> Pending_Culled=${pendingCulled}; Pending_Quarantined=${pendingQuarantined}.`,
+      `> Total farms currently stored: ${farmIds.length + 1}.`,
     ]);
   }
 
@@ -395,6 +446,20 @@ export default function Tools() {
       `> New S = N - (E + I + R) = ${newRow.S}.`,
       `> Applied culled=${newRow.Culled}; applied quarantined=${newRow.Quarantined}.`,
     ]);
+  }
+
+  function deleteFarm(farmId: string) {
+    setFarms((old) => old.filter((r) => r.Farm_ID !== farmId));
+    if (selectedFarmId === farmId) setSelectedFarmId("");
+    setTransmissionResult(null);
+    pushLog([`> Farm removed from current session: ${farmId}.`]);
+  }
+
+  function clearAllFarms() {
+    setFarms([]);
+    setSelectedFarmId("");
+    setTransmissionResult(null);
+    pushLog(["> All farm observations cleared."]);
   }
 
   async function runTransmissionAnalysis() {
@@ -590,8 +655,8 @@ export default function Tools() {
 
           <p className="mx-auto max-w-3xl text-lg leading-8 text-slate-300">
             Epidemiological Graphics and Statistics Tool for Networks —
-            farm-level SEIR transmission dynamics, risk-factor analysis,
-            statistical summaries, Mapbox geospatial visualization, and network
+            multi-farm SEIR transmission dynamics, abortion monitoring,
+            risk-factor analysis, statistics, Mapbox visualization, and network
             analysis.
           </p>
         </div>
@@ -604,9 +669,9 @@ export default function Tools() {
               </h2>
 
               <p className="mb-6 leading-8 text-slate-300">
-                Create multiple farms, add sequential observations, calculate
-                overall SEIR dynamics, visualize trends, map farms with Mapbox,
-                run risk-factor screening, and analyze transmission networks.
+                Create multiple farms without losing previous farm data, add
+                farm-wise observations, calculate overall SEIR dynamics, visualize
+                trends, map farms, and run statistical/network analyses.
               </p>
 
               <button
@@ -622,19 +687,19 @@ export default function Tools() {
 
               <div className="grid gap-3 text-sm font-semibold text-slate-300">
                 <div className="rounded-xl bg-white/5 p-3">
-                  Transmission Dynamics + Overall SEIR
+                  Multi-Farm Transmission Dynamics
+                </div>
+                <div className="rounded-xl bg-white/5 p-3">
+                  Initial Abortion Data Input
+                </div>
+                <div className="rounded-xl bg-white/5 p-3">
+                  Farm-wise Data Table
                 </div>
                 <div className="rounded-xl bg-white/5 p-3">
                   Mapbox Geospatial Map
                 </div>
                 <div className="rounded-xl bg-white/5 p-3">
-                  Risk Factor Analysis
-                </div>
-                <div className="rounded-xl bg-white/5 p-3">
-                  Statistical Summary
-                </div>
-                <div className="rounded-xl bg-white/5 p-3">
-                  Manual / Excel Network Input
+                  Risk Factor and Network Analysis
                 </div>
               </div>
             </div>
@@ -719,12 +784,16 @@ export default function Tools() {
                   obs={obs}
                   setObs={setObs}
                   createNewFarm={createNewFarm}
+                  prepareNewFarm={prepareNewFarm}
                   addObservation={addObservation}
+                  deleteFarm={deleteFarm}
+                  clearAllFarms={clearAllFarms}
                   runTransmissionAnalysis={runTransmissionAnalysis}
                   selectedFarmId={selectedFarmId}
                   setSelectedFarmId={setSelectedFarmId}
                   farmIds={farmIds}
                   farms={farms}
+                  selectedRows={selectedRows}
                   last={last}
                   nextPreview={nextPreview}
                   transmissionResult={transmissionResult}
@@ -804,12 +873,16 @@ function TransmissionSection(props: any) {
     obs,
     setObs,
     createNewFarm,
+    prepareNewFarm,
     addObservation,
+    deleteFarm,
+    clearAllFarms,
     runTransmissionAnalysis,
     selectedFarmId,
     setSelectedFarmId,
     farmIds,
     farms,
+    selectedRows,
     last,
     nextPreview,
     transmissionResult,
@@ -852,6 +925,13 @@ function TransmissionSection(props: any) {
             CSV Import
           </button>
 
+          <button
+            onClick={prepareNewFarm}
+            className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-black text-slate-950 hover:bg-white"
+          >
+            + Add New Farm
+          </button>
+
           <label className="ml-auto text-sm text-slate-300">
             Infectious period
           </label>
@@ -863,6 +943,13 @@ function TransmissionSection(props: any) {
           />
 
           <span className="text-sm text-slate-400">days</span>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <ResultCard title="Farms stored" value={String(farmIds.length)} />
+          <ResultCard title="Observations stored" value={String(farms.length)} />
+          <ResultCard title="Selected farm" value={selectedFarmId || "None"} />
+          <ResultCard title="Current input mode" value={transmissionMode} />
         </div>
 
         {transmissionMode === "import" && (
@@ -897,14 +984,29 @@ function TransmissionSection(props: any) {
       {tStep === "farm" && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 lg:col-span-2">
-            <h3 className="mb-4 text-2xl font-black text-cyan-300">
-              Create New Farm
-            </h3>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-2xl font-black text-cyan-300">
+                  Create New Farm
+                </h3>
+                <p className="text-sm text-slate-400">
+                  This form appends the farm to the existing farm list and does
+                  not delete previous farm data.
+                </p>
+              </div>
+
+              <button
+                onClick={prepareNewFarm}
+                className="rounded-xl bg-emerald-400 px-4 py-2 font-black text-slate-950 hover:bg-white"
+              >
+                Prepare Another Farm
+              </button>
+            </div>
 
             <p className="mb-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4 text-sm leading-7 text-slate-300">
               Initial observation rule: Culled=0, Quarantined=0,
               Pending_Quarantined=max(0, I - Pending_Culled), and
-              S=N-(E+I+R).
+              S=N-(E+I+R). Initial abortion count is included in Observation 1.
             </p>
 
             <div className="grid gap-4 md:grid-cols-3">
@@ -918,13 +1020,17 @@ function TransmissionSection(props: any) {
               ))}
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <div className="mt-6 grid gap-4 md:grid-cols-5">
               <ResultCard
                 title="Calculated S"
                 value={String(
                   num(setup.Total_Animals) -
                     (num(setup.E) + num(setup.I) + num(setup.R))
                 )}
+              />
+              <ResultCard
+                title="Initial Abortions"
+                value={String(num(setup.Abortion_Count))}
               />
               <ResultCard
                 title="Pending Quarantined"
@@ -940,8 +1046,30 @@ function TransmissionSection(props: any) {
               onClick={createNewFarm}
               className="mt-6 rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 hover:bg-white"
             >
-              Create New Farm
+              Create Farm and Keep Previous Farm Data
             </button>
+
+            {farmIds.length > 0 && (
+              <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900 p-4">
+                <h4 className="mb-3 font-black text-cyan-300">
+                  Existing Farms
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {farmIds.map((id: string) => (
+                    <button
+                      key={id}
+                      onClick={() => {
+                        setSelectedFarmId(id);
+                        setTStep("observe");
+                      }}
+                      className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold hover:border-cyan-300 hover:text-cyan-300"
+                    >
+                      {id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <Console log={log} />
@@ -951,9 +1079,24 @@ function TransmissionSection(props: any) {
       {tStep === "observe" && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 lg:col-span-2">
-            <h3 className="mb-4 text-2xl font-black text-cyan-300">
-              Add Observation
-            </h3>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-2xl font-black text-cyan-300">
+                  Add Farm-wise Observation
+                </h3>
+                <p className="text-sm text-slate-400">
+                  Choose a farm and add its next observation. Other farms remain
+                  stored.
+                </p>
+              </div>
+
+              <button
+                onClick={prepareNewFarm}
+                className="rounded-xl bg-emerald-400 px-4 py-2 font-black text-slate-950 hover:bg-white"
+              >
+                + Add New Farm
+              </button>
+            </div>
 
             <div className="mb-4 flex flex-wrap gap-3">
               <select
@@ -970,10 +1113,10 @@ function TransmissionSection(props: any) {
               </select>
 
               <button
-                onClick={() => setTStep("farm")}
+                onClick={() => setTStep("table")}
                 className="rounded-xl border border-white/10 px-4 py-3 font-bold hover:border-cyan-300"
               >
-                Create another farm
+                View Farm-wise Table
               </button>
             </div>
 
@@ -1036,7 +1179,7 @@ function TransmissionSection(props: any) {
                 onClick={addObservation}
                 className="rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 hover:bg-white"
               >
-                Add Observation
+                Add Observation to Selected Farm
               </button>
 
               <button
@@ -1055,17 +1198,46 @@ function TransmissionSection(props: any) {
       {tStep === "table" && (
         <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6">
           <div className="mb-5 flex flex-wrap justify-between gap-3">
-            <h3 className="text-2xl font-black text-cyan-300">
-              Farm Observation Table
-            </h3>
+            <div>
+              <h3 className="text-2xl font-black text-cyan-300">
+                Farm-wise Observation Table
+              </h3>
+              <p className="text-sm text-slate-400">
+                All farms and all observations are displayed here.
+              </p>
+            </div>
 
-            <button
-              onClick={runTransmissionAnalysis}
-              className="rounded-xl bg-cyan-400 px-4 py-2 font-black text-slate-950 hover:bg-white"
-            >
-              Calculate Dynamics
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={prepareNewFarm}
+                className="rounded-xl bg-emerald-400 px-4 py-2 font-black text-slate-950 hover:bg-white"
+              >
+                + Add New Farm
+              </button>
+
+              <button
+                onClick={runTransmissionAnalysis}
+                className="rounded-xl bg-cyan-400 px-4 py-2 font-black text-slate-950 hover:bg-white"
+              >
+                Calculate Dynamics
+              </button>
+
+              <button
+                onClick={clearAllFarms}
+                className="rounded-xl bg-red-500 px-4 py-2 font-black text-white hover:bg-red-600"
+              >
+                Clear All
+              </button>
+            </div>
           </div>
+
+          <FarmSummaryStrip
+            farmIds={farmIds}
+            farms={farms}
+            setSelectedFarmId={setSelectedFarmId}
+            setTStep={setTStep}
+            deleteFarm={deleteFarm}
+          />
 
           <ObservationTable rows={farms} />
         </div>
@@ -1127,12 +1299,14 @@ function TransmissionSection(props: any) {
                     value={String(transmissionResult.analysis.totalObservations)}
                   />
                   <ResultCard
-                    title="Selected Farm R0"
-                    value={valueText(farmSummary?.estimatedR0)}
+                    title="Total Abortions"
+                    value={String(
+                      transmissionResult.analysis.overallTotals.totalAbortions
+                    )}
                   />
                   <ResultCard
-                    title="Selected Farm Attack Rate"
-                    value={percent(farmSummary?.attackRate)}
+                    title="Selected Farm R0"
+                    value={valueText(farmSummary?.estimatedR0)}
                   />
                 </div>
 
@@ -1141,6 +1315,9 @@ function TransmissionSection(props: any) {
                   <PendingCulledChart farms={transmissionResult.analysis.farmSummaries} />
                   <PrevalenceBars
                     data={transmissionResult.analysis.visualization.prevalenceBars}
+                  />
+                  <AbortionBars
+                    data={transmissionResult.analysis.visualization.abortionBars}
                   />
                   <R0Bars data={transmissionResult.analysis.visualization.r0Bars} />
                 </div>
@@ -1267,22 +1444,10 @@ function RiskSection(props: any) {
         {riskResult ? (
           <>
             <div className="grid gap-4 md:grid-cols-4">
-              <ResultCard
-                title="Predictors"
-                value={String(riskResult.risk.summary.totalPredictors)}
-              />
-              <ResultCard
-                title="p < 0.05"
-                value={String(riskResult.risk.summary.significantAt005)}
-              />
-              <ResultCard
-                title="Selected"
-                value={String(riskResult.risk.summary.selectedForMultivariable)}
-              />
-              <ResultCard
-                title="Strongest"
-                value={riskResult.risk.summary.strongestPredictor?.variable ?? "NA"}
-              />
+              <ResultCard title="Predictors" value={String(riskResult.risk.summary.totalPredictors)} />
+              <ResultCard title="p < 0.05" value={String(riskResult.risk.summary.significantAt005)} />
+              <ResultCard title="Selected" value={String(riskResult.risk.summary.selectedForMultivariable)} />
+              <ResultCard title="Strongest" value={riskResult.risk.summary.strongestPredictor?.variable ?? "NA"} />
             </div>
 
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -1292,15 +1457,6 @@ function RiskSection(props: any) {
               />
               <RiskForestPlot data={riskResult.risk.visualization.forestData} />
             </div>
-
-            {riskResult.risk.visualization.multivariableForest?.length > 0 && (
-              <div className="mt-6">
-                <RiskForestPlot
-                  title="Multivariable Odds Ratio Plot"
-                  data={riskResult.risk.visualization.multivariableForest}
-                />
-              </div>
-            )}
 
             <RiskTable rows={riskResult.risk.univariable} />
           </>
@@ -1374,18 +1530,9 @@ function StatisticsSection(props: any) {
         {statsResult ? (
           <>
             <div className="grid gap-4 md:grid-cols-3">
-              <ResultCard
-                title="Rows"
-                value={String(statsResult.statistics.dataset.rows)}
-              />
-              <ResultCard
-                title="Columns"
-                value={String(statsResult.statistics.dataset.columns)}
-              />
-              <ResultCard
-                title="Numeric Variables"
-                value={String(statsResult.statistics.numericColumns.length)}
-              />
+              <ResultCard title="Rows" value={String(statsResult.statistics.dataset.rows)} />
+              <ResultCard title="Columns" value={String(statsResult.statistics.dataset.columns)} />
+              <ResultCard title="Numeric Variables" value={String(statsResult.statistics.numericColumns.length)} />
             </div>
 
             <StatsTable rows={statsResult.statistics.descriptiveStatistics} />
@@ -1455,40 +1602,12 @@ function NetworkSection(props: any) {
 
         {networkSource === "manual" ? (
           <div className="grid gap-3">
-            <Input
-              label="Edge ID"
-              value={networkInput.edgeId}
-              onChange={(v) => setNetworkInput({ ...networkInput, edgeId: v })}
-            />
-            <Input
-              label="From Node"
-              value={networkInput.source}
-              onChange={(v) => setNetworkInput({ ...networkInput, source: v })}
-            />
-            <Input
-              label="To Node"
-              value={networkInput.target}
-              onChange={(v) => setNetworkInput({ ...networkInput, target: v })}
-            />
-            <Input
-              label="Edge Type"
-              value={networkInput.edgeType}
-              onChange={(v) => setNetworkInput({ ...networkInput, edgeType: v })}
-            />
-            <Input
-              label="Road Distance km"
-              value={String(networkInput.distanceKm)}
-              onChange={(v) =>
-                setNetworkInput({ ...networkInput, distanceKm: num(v) })
-              }
-            />
-            <Input
-              label="Avg Movements"
-              value={String(networkInput.movements)}
-              onChange={(v) =>
-                setNetworkInput({ ...networkInput, movements: num(v, 1) })
-              }
-            />
+            <Input label="Edge ID" value={networkInput.edgeId} onChange={(v) => setNetworkInput({ ...networkInput, edgeId: v })} />
+            <Input label="From Node" value={networkInput.source} onChange={(v) => setNetworkInput({ ...networkInput, source: v })} />
+            <Input label="To Node" value={networkInput.target} onChange={(v) => setNetworkInput({ ...networkInput, target: v })} />
+            <Input label="Edge Type" value={networkInput.edgeType} onChange={(v) => setNetworkInput({ ...networkInput, edgeType: v })} />
+            <Input label="Road Distance km" value={String(networkInput.distanceKm)} onChange={(v) => setNetworkInput({ ...networkInput, distanceKm: num(v) })} />
+            <Input label="Avg Movements" value={String(networkInput.movements)} onChange={(v) => setNetworkInput({ ...networkInput, movements: num(v, 1) })} />
 
             <button
               onClick={addManualNetworkEdge}
@@ -1544,30 +1663,14 @@ function NetworkSection(props: any) {
         {networkResult ? (
           <>
             <div className="grid gap-4 md:grid-cols-4">
-              <ResultCard
-                title="Nodes"
-                value={String(networkResult.network.statistics.nodeCount)}
-              />
-              <ResultCard
-                title="Edges"
-                value={String(networkResult.network.statistics.edgeCount)}
-              />
-              <ResultCard
-                title="Density"
-                value={valueText(networkResult.network.statistics.density)}
-              />
-              <ResultCard
-                title="Top Node"
-                value={networkResult.network.statistics.highestDegreeNode?.node ?? "NA"}
-              />
+              <ResultCard title="Nodes" value={String(networkResult.network.statistics.nodeCount)} />
+              <ResultCard title="Edges" value={String(networkResult.network.statistics.edgeCount)} />
+              <ResultCard title="Density" value={valueText(networkResult.network.statistics.density)} />
+              <ResultCard title="Top Node" value={networkResult.network.statistics.highestDegreeNode?.node ?? "NA"} />
             </div>
 
             <NetworkPlot data={networkResult.network} />
             <DegreeBars data={networkResult.network.visualization.degreeBars} />
-
-            <pre className="mt-6 max-h-80 overflow-auto rounded-2xl bg-black p-5 text-sm text-slate-300">
-              {JSON.stringify(networkResult.network.statistics, null, 2)}
-            </pre>
           </>
         ) : (
           <>
@@ -1661,60 +1764,145 @@ function Console({ log }: { log: string[] }) {
   );
 }
 
-function ObservationTable({ rows }: { rows: ObsRow[] }) {
+function FarmSummaryStrip({
+  farmIds,
+  farms,
+  setSelectedFarmId,
+  setTStep,
+  deleteFarm,
+}: {
+  farmIds: string[];
+  farms: ObsRow[];
+  setSelectedFarmId: (id: string) => void;
+  setTStep: (step: TransmissionStep) => void;
+  deleteFarm: (id: string) => void;
+}) {
   return (
-    <div className="overflow-auto rounded-2xl border border-white/10">
-      <table className="w-full min-w-[1350px] border-collapse text-sm">
-        <thead className="bg-slate-900 text-cyan-300">
-          <tr>
-            {[
-              "Farm_ID",
-              "Date",
-              "Obs",
-              "N",
-              "S",
-              "E",
-              "I",
-              "R",
-              "Pending_Culled",
-              "Culled",
-              "Pending_Quarantined",
-              "Quarantined",
-              "MovedIn",
-              "MovedOut",
-              "Lat",
-              "Lon",
-            ].map((h) => (
-              <th key={h} className="border border-white/10 px-3 py-2 text-left">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
+    <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {farmIds.map((farmId) => {
+        const rows = farms.filter((r) => r.Farm_ID === farmId);
+        const last = rows.sort((a, b) => a.Observation - b.Observation)[rows.length - 1];
 
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="odd:bg-white/[0.03] even:bg-white/[0.06]">
-              <td className="border border-white/10 px-3 py-2">{r.Farm_ID}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Date}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Observation}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Total_Animals}</td>
-              <td className="border border-white/10 px-3 py-2">{r.S}</td>
-              <td className="border border-white/10 px-3 py-2">{r.E}</td>
-              <td className="border border-white/10 px-3 py-2">{r.I}</td>
-              <td className="border border-white/10 px-3 py-2">{r.R}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Pending_Culled}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Culled}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Pending_Quarantined}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Quarantined}</td>
-              <td className="border border-white/10 px-3 py-2">{r.New_Animals_Moved_In}</td>
-              <td className="border border-white/10 px-3 py-2">{r.New_Animals_Moved_Out}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Latitude}</td>
-              <td className="border border-white/10 px-3 py-2">{r.Longitude}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        return (
+          <div
+            key={farmId}
+            className="rounded-2xl border border-white/10 bg-slate-900 p-4"
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h4 className="font-black text-cyan-300">{farmId}</h4>
+              <button
+                onClick={() => deleteFarm(farmId)}
+                className="rounded-lg bg-red-500 px-2 py-1 text-xs font-bold text-white hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-300">
+              Observations: {rows.length} | Last N: {last?.Total_Animals ?? "NA"} |
+              Last I: {last?.I ?? "NA"}
+            </p>
+
+            <button
+              onClick={() => {
+                setSelectedFarmId(farmId);
+                setTStep("observe");
+              }}
+              className="mt-3 rounded-xl border border-white/10 px-3 py-2 text-sm font-bold hover:border-cyan-300 hover:text-cyan-300"
+            >
+              Add Observation
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ObservationTable({ rows }: { rows: ObsRow[] }) {
+  const grouped = Array.from(new Set(rows.map((r) => r.Farm_ID)));
+
+  return (
+    <div className="space-y-8">
+      {grouped.map((farmId) => {
+        const farmRows = rows
+          .filter((r) => r.Farm_ID === farmId)
+          .sort((a, b) => a.Observation - b.Observation);
+
+        return (
+          <div key={farmId}>
+            <h4 className="mb-3 text-xl font-black text-cyan-300">
+              {farmId}
+            </h4>
+
+            <div className="overflow-auto rounded-2xl border border-white/10">
+              <table className="w-full min-w-[1450px] border-collapse text-sm">
+                <thead className="bg-slate-900 text-cyan-300">
+                  <tr>
+                    {[
+                      "Farm_ID",
+                      "Date",
+                      "Obs",
+                      "N",
+                      "S",
+                      "E",
+                      "I",
+                      "R",
+                      "RBPT+",
+                      "iELISA+",
+                      "Abortions",
+                      "Pending_Culled",
+                      "Culled",
+                      "Pending_Quarantined",
+                      "Quarantined",
+                      "MovedIn",
+                      "MovedOut",
+                      "Lat",
+                      "Lon",
+                    ].map((h) => (
+                      <th key={h} className="border border-white/10 px-3 py-2 text-left">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {farmRows.map((r, i) => (
+                    <tr key={i} className="odd:bg-white/[0.03] even:bg-white/[0.06]">
+                      <td className="border border-white/10 px-3 py-2">{r.Farm_ID}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Date}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Observation}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Total_Animals}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.S}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.E}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.I}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.R}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.RBPT_Positive}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.iELISA_Positive}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Abortion_Count}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Pending_Culled}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Culled}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Pending_Quarantined}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Quarantined}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.New_Animals_Moved_In}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.New_Animals_Moved_Out}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Latitude}</td>
+                      <td className="border border-white/10 px-3 py-2">{r.Longitude}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+
+      {rows.length === 0 && (
+        <p className="rounded-2xl bg-slate-900 p-6 text-slate-300">
+          No farm data yet. Create a farm first.
+        </p>
+      )}
     </div>
   );
 }
@@ -1823,6 +2011,38 @@ function PrevalenceBars({ data }: { data: any[] }) {
   );
 }
 
+function AbortionBars({ data }: { data: any[] }) {
+  const maxV = Math.max(1, ...(data ?? []).map((x) => x.totalAbortions ?? 0));
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-900 p-5">
+      <h4 className="mb-4 text-lg font-black text-cyan-300">
+        Abortion Count by Farm
+      </h4>
+
+      <div className="space-y-3">
+        {(data ?? []).map((d, i) => (
+          <div key={i}>
+            <div className="mb-1 flex justify-between text-xs text-slate-300">
+              <span>{d.farmId}</span>
+              <span>{d.totalAbortions}</span>
+            </div>
+
+            <div className="h-3 rounded-full bg-white/10">
+              <div
+                className="h-3 rounded-full bg-rose-400"
+                style={{
+                  width: `${Math.max(2, ((d.totalAbortions ?? 0) / maxV) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function R0Bars({ data }: { data: any[] }) {
   const maxV = Math.max(1, ...(data ?? []).map((x) => x.r0 ?? 0));
 
@@ -1896,7 +2116,7 @@ function MapboxFarmMap({ points }: { points: any[] }) {
             .setLngLat([Number(p.longitude), Number(p.latitude)])
             .setPopup(
               new mapboxgl.Popup().setHTML(
-                `<b>${p.farmId}</b><br/>${p.location || ""}<br/>N=${p.totalAnimals}<br/>I=${p.infected}<br/>Prev=${
+                `<b>${p.farmId}</b><br/>${p.location || ""}<br/>N=${p.totalAnimals}<br/>I=${p.infected}<br/>Abortions=${p.totalAbortions ?? "NA"}<br/>Prev=${
                   p.prevalence === null ? "NA" : (p.prevalence * 100).toFixed(2) + "%"
                 }<br/>R0=${p.estimatedR0 === null ? "NA" : Number(p.estimatedR0).toFixed(3)}`
               )

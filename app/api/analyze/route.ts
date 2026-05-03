@@ -67,16 +67,6 @@ function median(values: number[]): number | null {
   return usable.length % 2 === 0 ? (usable[mid - 1] + usable[mid]) / 2 : usable[mid];
 }
 
-function min(values: number[]): number | null {
-  const usable = values.filter((v) => Number.isFinite(v));
-  return usable.length ? Math.min(...usable) : null;
-}
-
-function max(values: number[]): number | null {
-  const usable = values.filter((v) => Number.isFinite(v));
-  return usable.length ? Math.max(...usable) : null;
-}
-
 function variance(values: number[]): number | null {
   const usable = values.filter((v) => Number.isFinite(v));
   if (usable.length < 2) return null;
@@ -116,10 +106,10 @@ function describeNumeric(values: number[]) {
     median: median(usable),
     sd: sd(usable),
     variance: variance(usable),
-    min: min(usable),
+    min: usable.length ? Math.min(...usable) : null,
     q1: quantile(usable, 0.25),
     q3: quantile(usable, 0.75),
-    max: max(usable),
+    max: usable.length ? Math.max(...usable) : null,
     sum: sum(usable),
   };
 }
@@ -230,10 +220,6 @@ function isNumericColumn(rows: RawRow[], col: string) {
   return vals.every((v) => Number.isFinite(Number(v)));
 }
 
-function getColumnNames(rows: RawRow[]) {
-  return rows.length > 0 ? Object.keys(rows[0]) : [];
-}
-
 function missingCount(rows: RawRow[], col: string) {
   return rows.filter((r) => isMissing(r[col])).length;
 }
@@ -247,6 +233,7 @@ function pearsonCorrelation(x: number[], y: number[]) {
 
   const xs = pairs.map((p) => p[0]);
   const ys = pairs.map((p) => p[1]);
+
   const mx = mean(xs);
   const my = mean(ys);
 
@@ -314,9 +301,11 @@ function normalizeImportedRows(rows: RawRow[]): ObsRow[] {
         r.I ?? r.iELISA_Positive ?? r.IELISA_Positive ?? r.Positive
       );
       const R = safeNumber(r.R ?? r.Recovered);
+
       const pendingCulled = safeNumber(
         r.Pending_Culled ?? r["Pending Culled"]
       );
+
       const pendingQuarantined = safeNumber(
         r.Pending_Quarantined ?? r["Pending Quarantined"],
         Math.max(0, I - pendingCulled)
@@ -338,7 +327,12 @@ function normalizeImportedRows(rows: RawRow[]): ObsRow[] {
         iELISA_Positive: safeNumber(
           r.iELISA_Positive ?? r.IELISA_Positive ?? r["IELISA+"] ?? I
         ),
-        Abortion_Count: safeNumber(r.Abortion_Count ?? r.Abortions),
+        Abortion_Count: safeNumber(
+          r.Abortion_Count ??
+            r.Abortions ??
+            r.Initial_Abortion_Count ??
+            r["Initial Abortion Count"]
+        ),
         Pending_Culled: pendingCulled,
         Culled: safeNumber(r.Culled),
         Pending_Quarantined: pendingQuarantined,
@@ -368,16 +362,24 @@ function validateTransmissionRows(rows: ObsRow[]) {
 
   rows.forEach((r) => {
     if (!r.Farm_ID) errors.push(`Observation ${r.Observation}: Farm_ID missing.`);
-    if (r.Total_Animals < 0)
+
+    if (r.Total_Animals < 0) {
       errors.push(`${r.Farm_ID} observation ${r.Observation}: N is negative.`);
-    if (r.S < 0)
+    }
+
+    if (r.S < 0) {
       warnings.push(`${r.Farm_ID} observation ${r.Observation}: S is negative.`);
-    if (r.S + r.E + r.I + r.R > r.Total_Animals)
+    }
+
+    if (r.S + r.E + r.I + r.R > r.Total_Animals) {
       warnings.push(
         `${r.Farm_ID} observation ${r.Observation}: S+E+I+R exceeds N.`
       );
-    if (!r.Latitude || !r.Longitude)
+    }
+
+    if (!r.Latitude || !r.Longitude) {
       warnings.push(`${r.Farm_ID}: latitude/longitude missing for map.`);
+    }
   });
 
   return { warnings, errors };
@@ -492,6 +494,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
         I: last.I,
         R: last.R,
       },
+      initialAbortionCount: first.Abortion_Count,
       totalIELISAPositive: totalIELISA,
       totalInfectedSum: totalI,
       totalAbortions,
@@ -550,17 +553,9 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
         recovered: last.R,
         totalAnimals: last.Total_Animals,
         attackRate,
+        abortionRate,
         estimatedR0,
         intensityScore: transmissionIntensityScore,
-        popup: {
-          title: farmId,
-          location: last.Location,
-          finalN: last.Total_Animals,
-          finalI: last.I,
-          prevalence: apparentPrevalence,
-          attackRate,
-          estimatedR0,
-        },
       },
       trend: ordered.map((r) => ({
         farmId,
@@ -581,6 +576,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
         movedIn: r.New_Animals_Moved_In,
         movedOut: r.New_Animals_Moved_Out,
       })),
+      rows: ordered,
       interpretation: {
         apparentPrevalence:
           apparentPrevalence === null
@@ -601,7 +597,6 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
             ? "R0 > 1 suggests sustained transmission potential."
             : "R0 ≤ 1 suggests limited sustained transmission potential.",
       },
-      rows: ordered,
     };
   });
 
@@ -625,6 +620,7 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
       I: sum(rowsAtObs.map((r: any) => r.I)),
       R: sum(rowsAtObs.map((r: any) => r.R)),
       N: sum(rowsAtObs.map((r: any) => r.N)),
+      abortions: sum(rowsAtObs.map((r: any) => r.abortions)),
       pendingCulled: sum(rowsAtObs.map((r: any) => r.pendingCulled)),
       culledApplied: sum(rowsAtObs.map((r: any) => r.culledApplied)),
     };
@@ -676,13 +672,17 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
     },
     rankings: {
       byPrevalence: [...farmSummaries].sort(
-        (a: any, b: any) => (b.apparentPrevalence ?? 0) - (a.apparentPrevalence ?? 0)
+        (a: any, b: any) =>
+          (b.apparentPrevalence ?? 0) - (a.apparentPrevalence ?? 0)
       ),
       byAttackRate: [...farmSummaries].sort(
         (a: any, b: any) => (b.attackRate ?? 0) - (a.attackRate ?? 0)
       ),
       byR0: [...farmSummaries].sort(
         (a: any, b: any) => (b.estimatedR0 ?? 0) - (a.estimatedR0 ?? 0)
+      ),
+      byAbortionRate: [...farmSummaries].sort(
+        (a: any, b: any) => (b.abortionRate ?? 0) - (a.abortionRate ?? 0)
       ),
       byIntensityScore: [...farmSummaries].sort(
         (a: any, b: any) =>
@@ -707,6 +707,11 @@ function analyzeTransmission(rows: ObsRow[], infectiousPeriodDays: number) {
         farmId: f.farmId,
         prevalence: f.apparentPrevalence,
         category: f.prevalenceCategory,
+      })),
+      abortionBars: farmSummaries.map((f: any) => ({
+        farmId: f.farmId,
+        abortionRate: f.abortionRate,
+        totalAbortions: f.totalAbortions,
       })),
       r0Bars: farmSummaries.map((f: any) => ({
         farmId: f.farmId,
@@ -735,9 +740,7 @@ function binaryEncodeOutcome(rows: RawRow[], outcome: string) {
   const positive = uniques.includes("1") ? "1" : uniques[1];
   const negative = uniques.find((v) => v !== positive) ?? uniques[0];
 
-  const y = rows.map((r) => (String(r[outcome]) === positive ? 1 : 0));
-
-  return { y, positive, negative };
+  return { positive, negative };
 }
 
 function chiSquare2x2(a0: number, b0: number, c0: number, d0: number) {
@@ -765,8 +768,6 @@ function oddsRatioCI(a0: number, b0: number, c0: number, d0: number) {
     oddsRatio: or,
     ciLower: Math.exp(Math.log(or) - 1.96 * se),
     ciUpper: Math.exp(Math.log(or) + 1.96 * se),
-    logOR: Math.log(or),
-    seLogOR: se,
   };
 }
 
@@ -848,8 +849,6 @@ function analyzeCategoricalRisk(
     oddsRatio: or.oddsRatio,
     ciLower: or.ciLower,
     ciUpper: or.ciUpper,
-    logOR: or.logOR,
-    seLogOR: or.seLogOR,
     riskRatio: rr.riskRatio,
     rrLower: rr.rrLower,
     rrUpper: rr.rrUpper,
@@ -956,148 +955,6 @@ function analyzeContinuousRisk(
   };
 }
 
-function sigmoid(x: number) {
-  return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, x))));
-}
-
-function buildDesignMatrix(rows: RawRow[], outcome: string, predictors: string[]) {
-  const enc = binaryEncodeOutcome(rows, outcome);
-  if (!enc) return null;
-
-  const validRows = rows.filter((r) => !isMissing(r[outcome]));
-  const y = validRows.map((r) =>
-    String(r[outcome]) === enc.positive ? 1 : 0
-  );
-
-  const features: { name: string; values: number[] }[] = [];
-
-  predictors.forEach((p) => {
-    if (isNumericColumn(validRows, p)) {
-      const values = validRows.map((r) => safeNumber(r[p]));
-      const m = mean(values) ?? 0;
-      const s = sd(values) ?? 1;
-
-      features.push({
-        name: p,
-        values: values.map((v) => (s > 0 ? (v - m) / s : 0)),
-      });
-    } else {
-      const levels = uniqueValues(validRows, p);
-
-      levels.slice(1, 15).forEach((level) => {
-        features.push({
-          name: `${p}_${level}`,
-          values: validRows.map((r) => (String(r[p]) === level ? 1 : 0)),
-        });
-      });
-    }
-  });
-
-  const X = validRows.map((_, i) => [
-    1,
-    ...features.map((f) => f.values[i]),
-  ]);
-
-  return {
-    X,
-    y,
-    featureNames: ["Intercept", ...features.map((f) => f.name)],
-    positive: enc.positive,
-  };
-}
-
-function logisticRegression(rows: RawRow[], outcome: string, predictors: string[]) {
-  const design = buildDesignMatrix(rows, outcome, predictors);
-
-  if (!design || design.X.length < 5 || design.featureNames.length < 2) {
-    return null;
-  }
-
-  const { X, y, featureNames } = design;
-  const p = featureNames.length;
-  const beta = new Array(p).fill(0);
-  const lr = 0.03;
-  const lambda = 0.01;
-
-  for (let iter = 0; iter < 1500; iter++) {
-    const grad = new Array(p).fill(0);
-
-    for (let i = 0; i < X.length; i++) {
-      const eta = sum(X[i].map((xij, j) => xij * beta[j]));
-      const pred = sigmoid(eta);
-
-      for (let j = 0; j < p; j++) {
-        grad[j] += (pred - y[i]) * X[i][j];
-      }
-    }
-
-    for (let j = 0; j < p; j++) {
-      const penalty = j === 0 ? 0 : lambda * beta[j];
-      beta[j] -= lr * (grad[j] / X.length + penalty);
-    }
-  }
-
-  const preds = X.map((row) => sigmoid(sum(row.map((x, j) => x * beta[j]))));
-  const predClass = preds.map((v) => (v >= 0.5 ? 1 : 0));
-
-  const tp = predClass.filter((v, i) => v === 1 && y[i] === 1).length;
-  const tn = predClass.filter((v, i) => v === 0 && y[i] === 0).length;
-  const fp = predClass.filter((v, i) => v === 1 && y[i] === 0).length;
-  const fn = predClass.filter((v, i) => v === 0 && y[i] === 1).length;
-
-  const accuracy = (tp + tn) / y.length;
-  const precision = tp + fp > 0 ? tp / (tp + fp) : null;
-  const recall = tp + fn > 0 ? tp / (tp + fn) : null;
-  const specificity = tn + fp > 0 ? tn / (tn + fp) : null;
-  const f1 =
-    precision !== null && recall !== null && precision + recall > 0
-      ? (2 * precision * recall) / (precision + recall)
-      : null;
-
-  const results = featureNames.slice(1).map((name, idx) => {
-    const j = idx + 1;
-    const xj = X.map((r) => r[j]);
-    const info = sum(xj.map((x, i) => preds[i] * (1 - preds[i]) * x * x));
-    const se = info > 0 ? Math.sqrt(1 / info) : 1;
-    const z = beta[j] / se;
-    const pValue = normalPValue(z);
-
-    return {
-      variable: name,
-      coefficient: beta[j],
-      oddsRatio: Math.exp(beta[j]),
-      ciLower: Math.exp(beta[j] - 1.96 * se),
-      ciUpper: Math.exp(beta[j] + 1.96 * se),
-      stdError: se,
-      z,
-      pValue,
-    };
-  });
-
-  return {
-    method: "regularized logistic regression",
-    nObservations: y.length,
-    nVariables: results.length,
-    accuracy,
-    precision,
-    recall,
-    specificity,
-    f1,
-    confusionMatrix: {
-      tp,
-      tn,
-      fp,
-      fn,
-    },
-    calibration: preds.map((p, i) => ({
-      observed: y[i],
-      predictedProbability: p,
-      predictedClass: predClass[i],
-    })),
-    results,
-  };
-}
-
 function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], threshold: number) {
   const datasetProfile = describeDataset(rows);
 
@@ -1131,26 +988,6 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     )
     .map((x: any) => x.variable);
 
-  const multivariable =
-    selectedVariables.length > 0
-      ? logisticRegression(rows, outcome, selectedVariables)
-      : null;
-
-  const numericPredictors = predictors.filter((p) => isNumericColumn(rows, p));
-
-  const correlationMatrix = numericPredictors.flatMap((a) =>
-    numericPredictors
-      .filter((b) => b !== a)
-      .map((b) => ({
-        x: a,
-        y: b,
-        correlation: pearsonCorrelation(
-          rows.map((r) => Number(r[a])),
-          rows.map((r) => Number(r[b]))
-        ),
-      }))
-  );
-
   const ranked = [...univariable]
     .filter((r: any) => Number.isFinite(r.pValue))
     .sort((a: any, b: any) => a.pValue - b.pValue);
@@ -1162,18 +999,18 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     datasetProfile,
     univariable,
     selectedVariables,
-    multivariable,
-    correlationMatrix,
     summary: {
       totalPredictors: predictors.length,
       significantAt005: univariable.filter((x: any) => x.pValue < 0.05).length,
       selectedForMultivariable: selectedVariables.length,
       strongestPredictor: ranked[0] ?? null,
       protectiveFactors: univariable.filter(
-        (x: any) => Number.isFinite(x.oddsRatio) && x.oddsRatio < 1 && x.pValue < 0.05
+        (x: any) =>
+          Number.isFinite(x.oddsRatio) && x.oddsRatio < 1 && x.pValue < 0.05
       ),
       riskFactors: univariable.filter(
-        (x: any) => Number.isFinite(x.oddsRatio) && x.oddsRatio > 1 && x.pValue < 0.05
+        (x: any) =>
+          Number.isFinite(x.oddsRatio) && x.oddsRatio > 1 && x.pValue < 0.05
       ),
     },
     visualization: {
@@ -1192,23 +1029,12 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
           ciUpper: x.ciUpper,
           pValue: x.pValue,
         })),
-      multivariableForest:
-        multivariable?.results?.map((x: any) => ({
-          variable: x.variable,
-          oddsRatio: x.oddsRatio,
-          ciLower: x.ciLower,
-          ciUpper: x.ciUpper,
-          pValue: x.pValue,
-        })) ?? [],
-      correlationHeatmap: correlationMatrix,
-      modelCalibration: multivariable?.calibration ?? [],
-      confusionMatrix: multivariable?.confusionMatrix ?? null,
     },
   };
 }
 
 function describeDataset(rows: RawRow[]) {
-  const columns = getColumnNames(rows);
+  const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
 
   return {
     rows: rows.length,
@@ -1250,7 +1076,10 @@ function normalizeNetworkRows(rows: RawRow[]): NetworkEdge[] {
       distanceKm: safeNumber(
         r.Road_Distance_km ?? r["Road Distance (km)"] ?? r.distanceKm
       ),
-      movements: safeNumber(r.Avg_Movements ?? r["Avg Movements"] ?? r.movements, 1),
+      movements: safeNumber(
+        r.Avg_Movements ?? r["Avg Movements"] ?? r.movements,
+        1
+      ),
     }))
     .filter((e) => e.source && e.target);
 }
@@ -1292,36 +1121,6 @@ function connectedComponents(nodes: string[], edges: NetworkEdge[]) {
   return components;
 }
 
-function shortestPathLengths(start: string, nodes: string[], edges: NetworkEdge[]) {
-  const adj = new Map<string, Set<string>>();
-  nodes.forEach((n) => adj.set(n, new Set()));
-
-  edges.forEach((e) => {
-    adj.get(e.source)?.add(e.target);
-    adj.get(e.target)?.add(e.source);
-  });
-
-  const dist = new Map<string, number>();
-  nodes.forEach((n) => dist.set(n, Infinity));
-  dist.set(start, 0);
-
-  const queue = [start];
-
-  while (queue.length) {
-    const node = queue.shift()!;
-    const d = dist.get(node)!;
-
-    adj.get(node)?.forEach((nei) => {
-      if (dist.get(nei)! === Infinity) {
-        dist.set(nei, d + 1);
-        queue.push(nei);
-      }
-    });
-  }
-
-  return dist;
-}
-
 function analyzeNetwork(edges: NetworkEdge[]) {
   const nodes = Array.from(
     new Set(edges.flatMap((e) => [e.source, e.target]).filter(Boolean))
@@ -1350,33 +1149,13 @@ function analyzeNetwork(edges: NetworkEdge[]) {
     ),
   }));
 
-  const centrality = nodes.map((node) => {
-    const dist = shortestPathLengths(node, nodes, edges);
-    const finite = Array.from(dist.values()).filter(
-      (d) => Number.isFinite(d) && d > 0
-    );
-
-    const closeness =
-      finite.length > 0 ? finite.length / sum(finite) : 0;
-
-    return {
-      node,
-      degree: degree.find((d) => d.node === node)?.degree ?? 0,
-      weightedMovements:
-        degree.find((d) => d.node === node)?.weightedMovements ?? 0,
-      closeness,
-      hubScore:
-        (degree.find((d) => d.node === node)?.degree ?? 0) * 0.5 +
-        (degree.find((d) => d.node === node)?.weightedMovements ?? 0) * 0.5,
-    };
-  });
-
   const components = connectedComponents(nodes, edges);
   const sortedDegree = [...degree].sort((a, b) => b.degree - a.degree);
-  const sortedCentrality = [...centrality].sort((a, b) => b.hubScore - a.hubScore);
 
   const density =
-    nodes.length > 1 ? (2 * edges.length) / (nodes.length * (nodes.length - 1)) : 0;
+    nodes.length > 1
+      ? (2 * edges.length) / (nodes.length * (nodes.length - 1))
+      : 0;
 
   const totalMovements = sum(edges.map((e) => e.movements));
   const meanDistance = mean(edges.map((e) => e.distanceKm));
@@ -1385,14 +1164,11 @@ function analyzeNetwork(edges: NetworkEdge[]) {
     nodes: nodes.map((node, idx) => {
       const angle = (2 * Math.PI * idx) / Math.max(nodes.length, 1);
       const deg = degree.find((d) => d.node === node);
-      const cent = centrality.find((c) => c.node === node);
 
       return {
         id: node,
         degree: deg?.degree ?? 0,
         weightedMovements: deg?.weightedMovements ?? 0,
-        closeness: cent?.closeness ?? 0,
-        hubScore: cent?.hubScore ?? 0,
         x: Math.cos(angle),
         y: Math.sin(angle),
       };
@@ -1407,31 +1183,11 @@ function analyzeNetwork(edges: NetworkEdge[]) {
       componentCount: components.length,
       largestComponentSize: Math.max(...components.map((c) => c.length), 0),
       highestDegreeNode: sortedDegree[0] ?? null,
-      highestHubScoreNode: sortedCentrality[0] ?? null,
       topNodesByDegree: sortedDegree.slice(0, 10),
-      topNodesByHubScore: sortedCentrality.slice(0, 10),
     },
-    centrality,
     components,
     visualization: {
-      nodeScatter: nodes.map((node, idx) => {
-        const angle = (2 * Math.PI * idx) / Math.max(nodes.length, 1);
-        const deg = degree.find((d) => d.node === node);
-        const cent = centrality.find((c) => c.node === node);
-
-        return {
-          node,
-          x: Math.cos(angle),
-          y: Math.sin(angle),
-          degree: deg?.degree ?? 0,
-          weightedMovements: deg?.weightedMovements ?? 0,
-          closeness: cent?.closeness ?? 0,
-          hubScore: cent?.hubScore ?? 0,
-        };
-      }),
-      edgeLines: edges,
       degreeBars: sortedDegree,
-      hubScoreBars: sortedCentrality,
       movementHistogram: edges.map((e) => ({
         edgeId: e.edgeId,
         movements: e.movements,
@@ -1506,8 +1262,7 @@ export async function POST(request: Request) {
         risk: analyzeRisk(rows, outcome, predictors, threshold),
         notes: [
           "Univariable analysis includes chi-square 2x2 for categorical/binary predictors and group mean comparison for continuous predictors.",
-          "Variables below the threshold are selected for lightweight multivariable logistic regression.",
-          "For publication-grade regression, connect a Python backend with statsmodels or R.",
+          "Variables below the threshold are selected for further multivariable modeling in advanced backend versions.",
         ],
       });
     }
@@ -1536,10 +1291,6 @@ export async function POST(request: Request) {
         module: "Network Analysis",
         rows: edges.length,
         network: analyzeNetwork(edges),
-        notes: [
-          "Network analysis includes degree, weighted movements, closeness approximation, connected components, density, and hub ranking.",
-          "Excel files should be converted in the frontend before sending, or uploaded as CSV to this API route.",
-        ],
       });
     }
 
@@ -1601,10 +1352,11 @@ export async function POST(request: Request) {
       analysis: analyzeTransmission(rows, infectiousPeriodDays),
       notes: [
         "First observation has Culled=0 and Quarantined=0.",
-        "Each next observation applies previous Pending_Culled and Pending_Quarantined.",
+        "Initial observation now supports Abortion_Count.",
+        "Each new farm must be appended to the existing rows array from page.tsx; otherwise previous farm data will disappear.",
         "Correct N logic: New N = previous N - previous Pending_Culled + moved in - moved out.",
         "S is recalculated as N - (E + I + R).",
-        "Output includes overall SEIR dynamics, farm-level ranking, Mapbox-ready map points, trend data, and visualization-ready arrays.",
+        "Output includes farm-wise table data, overall SEIR dynamics, farm rankings, map points, trend data, abortion summaries, and visualization-ready arrays.",
       ],
     });
   } catch (error: any) {
