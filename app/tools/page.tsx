@@ -46,6 +46,21 @@ type TransmissionStep = "farm" | "observe" | "table" | "analysis" | "map";
 
 type MapStyleMode = "normal" | "satellite";
 
+type QigenexSequenceMode = "unaligned" | "aligned";
+
+type QigenexAnalysisMode =
+  | "complete"
+  | "alignment"
+  | "mutation"
+  | "fitness"
+  | "evolution"
+  | "antigenic_drift"
+  | "antigenic_shift"
+  | "vaccine_escape"
+  | "geo_spatiotemporal"
+  | "animal_host"
+  | "visualization";
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -233,9 +248,36 @@ export default function Tools() {
   const [evoCircRowsText, setEvoCircRowsText] = useState("");
   const [evoResult, setEvoResult] = useState<any>(null);
 
+  const [qigenexOpen, setQigenexOpen] = useState(false);
+  const [qigenexFullscreen, setQigenexFullscreen] = useState(false);
+  const [qigenexSequenceMode, setQigenexSequenceMode] = useState<QigenexSequenceMode>("unaligned");
+  const [qigenexAnalysisMode, setQigenexAnalysisMode] = useState<QigenexAnalysisMode>("complete");
+  const [qigenexFastaFile, setQigenexFastaFile] = useState<File | null>(null);
+  const [qigenexFastaFileName, setQigenexFastaFileName] = useState("");
+  const [qigenexFastaText, setQigenexFastaText] = useState("");
+  const [qigenexAlignedFile, setQigenexAlignedFile] = useState<File | null>(null);
+  const [qigenexAlignedFileName, setQigenexAlignedFileName] = useState("");
+  const [qigenexAlignedText, setQigenexAlignedText] = useState("");
+  const [qigenexReferenceText, setQigenexReferenceText] = useState("");
+  const [qigenexVaccineStrainText, setQigenexVaccineStrainText] = useState("");
+  const [qigenexGeoFile, setQigenexGeoFile] = useState<File | null>(null);
+  const [qigenexGeoFileName, setQigenexGeoFileName] = useState("");
+  const [qigenexAnimalFile, setQigenexAnimalFile] = useState<File | null>(null);
+  const [qigenexAnimalFileName, setQigenexAnimalFileName] = useState("");
+  const [qigenexGeoRowsText, setQigenexGeoRowsText] = useState(
+    "sample_id,farm_id,location,latitude,longitude,collection_date,cases,total_animals\nISO_001,Farm_1,Mymensingh,24.7471,90.4203,2026-01-01,5,100\nISO_002,Farm_2,Gazipur,24.0023,90.4264,2026-01-05,8,120"
+  );
+  const [qigenexAnimalRowsText, setQigenexAnimalRowsText] = useState(
+    "animal_id,sample_id,species,age,sex,disease_state,immunity_score,serum_pathogen_load,vaccine_strain,vaccination_date,antibody_titer,co_infections\nA001,ISO_001,cattle,24,female,infected,42,8.2,Strain_A,2025-12-01,128,none\nA002,ISO_002,goat,18,male,infected,35,7.1,Strain_B,2025-11-20,64,pasteurella"
+  );
+  const [qigenexNotes, setQigenexNotes] = useState("");
+  const [qigenexResult, setQigenexResult] = useState<any>(null);
+  const [qigenexLoading, setQigenexLoading] = useState(false);
+
   const [log, setLog] = useState<string[]>([
     "> Hello I'm Nahiduzzaman, the developer of this tool inviting you to take some coffee with me.",
     "> EGStat-N initialized.",
+    "> QI-GeneX-N ready: Google Cloud + PyTorch + Qiskit quantum circuit.",
   ]);
 
   const [setup, setSetup] = useState({
@@ -723,6 +765,87 @@ export default function Tools() {
     ]);
   }
 
+  async function runQigenexAnalysis() {
+    const hasSequence =
+      qigenexFastaText.trim() ||
+      qigenexFastaFile ||
+      qigenexAlignedText.trim() ||
+      qigenexAlignedFile;
+
+    if (!hasSequence) {
+      pushLog([
+        "> ERROR: QI-GeneX-N requires a FASTA sequence, FASTA file, aligned sequence, or aligned file.",
+      ]);
+      return;
+    }
+
+    const formData = new FormData();
+
+    formData.append("analysisMode", qigenexAnalysisMode);
+    formData.append("sequenceMode", qigenexSequenceMode);
+    formData.append("tool", "QI-GeneX-N");
+
+    if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText);
+    if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile);
+    if (qigenexAlignedText.trim()) formData.append("alignedText", qigenexAlignedText);
+    if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
+    if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
+    if (qigenexVaccineStrainText.trim()) formData.append("vaccineStrainText", qigenexVaccineStrainText);
+    if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
+    if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
+    if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
+    if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText);
+    if (qigenexNotes.trim()) formData.append("notes", qigenexNotes);
+
+    setQigenexLoading(true);
+    setQigenexResult(null);
+
+    try {
+      const response = await fetch("/api/qigenex", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.status === "error") {
+        setQigenexResult(data);
+        pushLog([`> QI-GeneX-N ERROR: ${data.error || "Google Cloud analysis failed."}`]);
+        return;
+      }
+
+      setQigenexResult(data);
+      pushLog([
+        "> QI-GeneX-N analysis completed through Google Cloud.",
+        `> Sequences analyzed=${data.summary?.sequenceCount ?? "NA"}.`,
+        `> Mean QML score=${data.qmlPrediction?.meanQMLScore ?? "NA"}.`,
+        `> Predictive evolution risk=${data.predictiveEvolution?.riskCategory ?? "NA"}.`,
+      ]);
+    } catch (error) {
+      pushLog([`> QI-GeneX-N connection ERROR: ${String(error)}`]);
+    } finally {
+      setQigenexLoading(false);
+    }
+  }
+
+  function clearQigenexInputs() {
+    setQigenexFastaFile(null);
+    setQigenexFastaFileName("");
+    setQigenexFastaText("");
+    setQigenexAlignedFile(null);
+    setQigenexAlignedFileName("");
+    setQigenexAlignedText("");
+    setQigenexReferenceText("");
+    setQigenexVaccineStrainText("");
+    setQigenexGeoFile(null);
+    setQigenexGeoFileName("");
+    setQigenexAnimalFile(null);
+    setQigenexAnimalFileName("");
+    setQigenexNotes("");
+    setQigenexResult(null);
+    pushLog(["> QI-GeneX-N inputs cleared."]);
+  }
+
   function downloadJSON(data: any, name: string) {
     if (!data) return;
 
@@ -773,50 +896,71 @@ export default function Tools() {
           </p>
         </div>
 
-        <div className="mx-auto max-w-5xl rounded-[2rem] border border-white/10 bg-white/[0.06] p-8 shadow-2xl backdrop-blur-xl">
-          <div className="grid gap-8 md:grid-cols-2">
-            <div>
-              <h2 className="mb-4 text-3xl font-black text-cyan-300">
-                Launch analysis workspace
-              </h2>
+        <div className="grid gap-8 lg:grid-cols-2">
+          <div className="rounded-[2rem] border border-cyan-300/20 bg-white/[0.06] p-8 shadow-2xl backdrop-blur-xl">
+            <p className="mb-3 text-sm font-black uppercase tracking-[0.3em] text-cyan-300">
+              Existing Tool
+            </p>
 
-              <p className="mb-6 leading-8 text-slate-300">
-                The transmission module uses Confirmatory Diagnosis as I,
-                removes RBPT terms, calculates SEIR dynamics, and exports
-                heatmap-ready Mapbox data for normal and satellite views.
-              </p>
+            <h2 className="mb-4 text-3xl font-black text-cyan-300">
+              EGStat-N
+            </h2>
 
-              <button
-                onClick={() => setOpen(true)}
-                className="rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white"
-              >
-                Open Tool Window
-              </button>
+            <p className="mb-6 leading-8 text-slate-300">
+              Epidemiological Graphics and Statistics Tool for Networks —
+              transmission dynamics, interactive heatmap mapping, risk-factor
+              analysis, statistics, network movement analysis, and evolutionary
+              evidence integration.
+            </p>
+
+            <div className="mb-6 grid gap-3 text-sm font-semibold text-slate-300">
+              <div className="rounded-xl bg-white/5 p-3">Multi-farm SEIR Transmission</div>
+              <div className="rounded-xl bg-white/5 p-3">Interactive Heatmap + Satellite View</div>
+              <div className="rounded-xl bg-white/5 p-3">Risk Factor and Statistics</div>
+              <div className="rounded-xl bg-white/5 p-3">Network Movement + Evolutionary Evidence</div>
             </div>
 
-            <div className="rounded-3xl border border-cyan-300/20 bg-slate-900/80 p-6">
-              <p className="mb-3 text-sm font-bold text-cyan-300">Modules</p>
+            <button
+              onClick={() => setOpen(true)}
+              className="rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white"
+            >
+              Open EGStat-N
+            </button>
+          </div>
 
-              <div className="grid gap-3 text-sm font-semibold text-slate-300">
-                <div className="rounded-xl bg-white/5 p-3">
-                  Multi-farm SEIR Transmission
-                </div>
-                <div className="rounded-xl bg-white/5 p-3">
-                  Interactive Heatmap + Satellite View
-                </div>
-                <div className="rounded-xl bg-white/5 p-3">
-                  Risk Factor and Statistics
-                </div>
-                <div className="rounded-xl bg-white/5 p-3">
-                  Network Movement Analysis
-                </div>
-                <div className="rounded-xl bg-white/5 p-3">
-                  Evolutionary Analysis
-                </div>
-              </div>
+          <div className="rounded-[2rem] border border-purple-300/20 bg-purple-500/[0.08] p-8 shadow-2xl backdrop-blur-xl">
+            <p className="mb-3 text-sm font-black uppercase tracking-[0.3em] text-purple-300">
+              Google Cloud Powered
+            </p>
+
+            <h2 className="mb-4 text-3xl font-black text-purple-300">
+              QI-GeneX-N
+            </h2>
+
+            <p className="mb-6 leading-8 text-slate-300">
+              Quantum-Inspired Gene Evolution and Fitness Prediction Network
+              powered by Google Cloud, PyTorch, and Qiskit quantum circuits.
+              Analyze sequences, aligned genomes, mutation hotspots, antigenic
+              drift/shift, vaccine escape, fitness landscape, geospatial
+              context, animal-level metadata, and predictive evolution.
+            </p>
+
+            <div className="mb-6 grid gap-3 text-sm font-semibold text-slate-300">
+              <div className="rounded-xl bg-white/5 p-3">Sequence upload, paste, and aligned sequence input</div>
+              <div className="rounded-xl bg-white/5 p-3">Antigenic drift/shift + mutation prediction</div>
+              <div className="rounded-xl bg-white/5 p-3">Vaccine escape using vaccine strain sequence</div>
+              <div className="rounded-xl bg-white/5 p-3">Geospatial + animal-level metadata suggestions</div>
             </div>
+
+            <button
+              onClick={() => setQigenexOpen(true)}
+              className="rounded-2xl bg-purple-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white"
+            >
+              Open QI-GeneX-N
+            </button>
           </div>
         </div>
+
       </section>
 
       {open && (
@@ -999,6 +1143,87 @@ export default function Tools() {
               <div className="mt-8">
                 <Console log={log} />
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {qigenexOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4 backdrop-blur">
+          <div
+            className={`border border-purple-300/20 bg-slate-950 shadow-2xl ${
+              qigenexFullscreen
+                ? "h-full w-full rounded-none"
+                : "h-[92vh] w-full max-w-7xl rounded-[2rem]"
+            }`}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+              <div>
+                <h2 className="text-2xl font-black text-purple-300">
+                  QI-GeneX-N Analysis Window
+                </h2>
+                <p className="text-sm text-slate-400">
+                  Google Cloud • PyTorch • Qiskit quantum circuit • genome evolution prediction
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setQigenexFullscreen(!qigenexFullscreen)}
+                  className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold hover:border-purple-300 hover:text-purple-300"
+                >
+                  {qigenexFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                </button>
+
+                <button
+                  onClick={() => setQigenexOpen(false)}
+                  className="rounded-xl bg-red-500 px-4 py-2 text-sm font-bold text-white hover:bg-red-600"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="h-[calc(100%-88px)] overflow-auto p-6">
+              <QigenexSection
+                sequenceMode={qigenexSequenceMode}
+                setSequenceMode={setQigenexSequenceMode}
+                analysisMode={qigenexAnalysisMode}
+                setAnalysisMode={setQigenexAnalysisMode}
+                fastaFileName={qigenexFastaFileName}
+                setFastaFile={setQigenexFastaFile}
+                setFastaFileName={setQigenexFastaFileName}
+                fastaText={qigenexFastaText}
+                setFastaText={setQigenexFastaText}
+                alignedFileName={qigenexAlignedFileName}
+                setAlignedFile={setQigenexAlignedFile}
+                setAlignedFileName={setQigenexAlignedFileName}
+                alignedText={qigenexAlignedText}
+                setAlignedText={setQigenexAlignedText}
+                referenceText={qigenexReferenceText}
+                setReferenceText={setQigenexReferenceText}
+                vaccineStrainText={qigenexVaccineStrainText}
+                setVaccineStrainText={setQigenexVaccineStrainText}
+                geoFileName={qigenexGeoFileName}
+                setGeoFile={setQigenexGeoFile}
+                setGeoFileName={setQigenexGeoFileName}
+                geoRowsText={qigenexGeoRowsText}
+                setGeoRowsText={setQigenexGeoRowsText}
+                animalFileName={qigenexAnimalFileName}
+                setAnimalFile={setQigenexAnimalFile}
+                setAnimalFileName={setQigenexAnimalFileName}
+                animalRowsText={qigenexAnimalRowsText}
+                setAnimalRowsText={setQigenexAnimalRowsText}
+                notes={qigenexNotes}
+                setNotes={setQigenexNotes}
+                result={qigenexResult}
+                loading={qigenexLoading}
+                runQigenexAnalysis={runQigenexAnalysis}
+                clearQigenexInputs={clearQigenexInputs}
+                downloadJSON={downloadJSON}
+                downloadCSV={downloadCSV}
+                log={log}
+              />
             </div>
           </div>
         </div>
@@ -1933,6 +2158,496 @@ function EvolutionarySection(props: any) {
         )}
       </Panel>
     </section>
+  );
+}
+
+function QigenexSection(props: any) {
+  const {
+    sequenceMode,
+    setSequenceMode,
+    analysisMode,
+    setAnalysisMode,
+    fastaFileName,
+    setFastaFile,
+    setFastaFileName,
+    fastaText,
+    setFastaText,
+    alignedFileName,
+    setAlignedFile,
+    setAlignedFileName,
+    alignedText,
+    setAlignedText,
+    referenceText,
+    setReferenceText,
+    vaccineStrainText,
+    setVaccineStrainText,
+    geoFileName,
+    setGeoFile,
+    setGeoFileName,
+    geoRowsText,
+    setGeoRowsText,
+    animalFileName,
+    setAnimalFile,
+    setAnimalFileName,
+    animalRowsText,
+    setAnimalRowsText,
+    notes,
+    setNotes,
+    result,
+    loading,
+    runQigenexAnalysis,
+    clearQigenexInputs,
+    downloadJSON,
+    downloadCSV,
+    log,
+  } = props;
+
+  const modeDescriptions: Record<string, string> = {
+    complete:
+      "Runs quantum-circuit genome encoding, PyTorch scoring, mutation hotspots, fitness landscape, predictive evolution, and metadata-aware suggestions.",
+    alignment:
+      "Uses aligned sequences directly when supplied. If unaligned sequences are supplied, the Google Cloud backend can later be extended to call MAFFT/MUSCLE.",
+    mutation:
+      "Ranks variable sites, mutation hotspots, mutation load, and likely high-impact genome changes.",
+    fitness:
+      "Builds a prototype fitness landscape score using hybrid Qiskit-PyTorch genome features.",
+    evolution:
+      "Predicts adaptive/evolutionary potential from sequence-derived quantum and neural features.",
+    antigenic_drift:
+      "Screens gradual antigenic change using sequence divergence, hotspot burden, and vaccine/reference comparison.",
+    antigenic_shift:
+      "Designed for reassortment/recombination-style signals when multiple genomic segments or mixed-source evidence are provided.",
+    vaccine_escape:
+      "Requires vaccine strain sequence for best output. Compares isolates with the vaccine strain to highlight potential escape-associated divergence.",
+    geo_spatiotemporal:
+      "Uses sample ID, farm ID, latitude, longitude, date, case count, and animal population for spatial-temporal interpretation.",
+    animal_host:
+      "Uses animal species, age, disease state, immune score, pathogen load, vaccination, antibody titer, and co-infection data for host-context analysis.",
+    visualization:
+      "Focuses on visual summaries: QML scores, fitness scores, mutation hotspots, top quantum states, and JSON export.",
+  };
+
+  return (
+    <section>
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Panel className="xl:col-span-2">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="mb-2 text-sm font-black uppercase tracking-[0.3em] text-purple-300">
+                QI-GeneX-N
+              </p>
+
+              <h3 className="text-2xl font-black text-purple-300">
+                Quantum-Inspired Gene Evolution and Fitness Prediction Network
+              </h3>
+
+              <p className="mt-2 max-w-4xl text-sm leading-7 text-slate-400">
+                This tool can analyze sequence-only data. When you add aligned
+                sequences, vaccine strain sequence, animal-level metadata, and
+                geospatial data, it will suggest richer downstream analyses such
+                as antigenic drift, antigenic shift, vaccine escape, spatial
+                clustering, and host adaptation.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-4 py-2 text-sm font-black text-emerald-200">
+              Google Cloud backend active
+            </span>
+          </div>
+
+          <div className="mb-6 grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-300">
+                Sequence status
+              </label>
+              <select
+                value={sequenceMode}
+                onChange={(e) => setSequenceMode(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-purple-300"
+              >
+                <option value="unaligned">Unaligned sequence input</option>
+                <option value="aligned">Already aligned sequence input</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-300">
+                Analysis option
+              </label>
+              <select
+                value={analysisMode}
+                onChange={(e) => setAnalysisMode(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-purple-300"
+              >
+                <option value="complete">Complete QI-GeneX-N analysis</option>
+                <option value="alignment">Alignment-aware analysis</option>
+                <option value="mutation">Mutation prediction</option>
+                <option value="fitness">Fitness landscape</option>
+                <option value="evolution">Predictive evolution</option>
+                <option value="antigenic_drift">Antigenic drift</option>
+                <option value="antigenic_shift">Antigenic shift</option>
+                <option value="vaccine_escape">Vaccine escape</option>
+                <option value="geo_spatiotemporal">Geospatial analysis</option>
+                <option value="animal_host">Animal-level host analysis</option>
+                <option value="visualization">Visualization only</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mb-6 rounded-2xl border border-purple-300/20 bg-purple-300/5 p-4 text-sm leading-7 text-slate-300">
+            <span className="font-black text-purple-300">Current analysis:</span>{" "}
+            {modeDescriptions[analysisMode] ?? modeDescriptions.complete}
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <EvidenceCard
+              title="1) Raw genome/ORF FASTA sequences"
+              description="Upload or paste unaligned FASTA. This is enough for sequence-only quantum circuit analysis."
+              filename={fastaFileName}
+              accept=".fasta,.fa,.fna,.ffn,.txt"
+              onFile={(f) => {
+                setFastaFile(f);
+                setFastaFileName(f?.name || "");
+              }}
+            >
+              <Textarea
+                label="Paste raw FASTA"
+                value={fastaText}
+                onChange={setFastaText}
+                placeholder={">isolate_1&#10;ATGCGTACCGTTAACCGGTT&#10;>isolate_2&#10;ATGCGTACCGTCAACCGGTA"}
+              />
+            </EvidenceCard>
+
+            <EvidenceCard
+              title="2) Aligned sequence input"
+              description="Upload or paste MAFFT/MUSCLE/IQ-TREE-ready aligned FASTA. Use this for better mutation-position interpretation."
+              filename={alignedFileName}
+              accept=".fasta,.fa,.aln,.txt"
+              onFile={(f) => {
+                setAlignedFile(f);
+                setAlignedFileName(f?.name || "");
+              }}
+            >
+              <Textarea
+                label="Paste aligned FASTA"
+                value={alignedText}
+                onChange={setAlignedText}
+                placeholder={">aligned_1&#10;ATGCGTACCGTT-AACCGGTT&#10;>aligned_2&#10;ATGCGTACCGTC-AACCGGTA"}
+              />
+            </EvidenceCard>
+
+            <Panel className="lg:col-span-2">
+              <h4 className="mb-3 text-xl font-black text-purple-300">
+                3) Reference, antigenic, and vaccine-escape setup
+              </h4>
+              <p className="mb-4 text-sm leading-7 text-slate-400">
+                For mutation calling, add a reference sequence. For vaccine
+                escape analysis, add the vaccine strain sequence. For antigenic
+                drift/shift, include multiple isolates and preferably metadata.
+              </p>
+              <div className="grid gap-5 lg:grid-cols-2">
+                <Textarea
+                  label="Reference sequence"
+                  value={referenceText}
+                  onChange={setReferenceText}
+                  placeholder={">reference&#10;ATGCGTACCGTTAACCGGTT"}
+                />
+                <Textarea
+                  label="Vaccine strain sequence"
+                  value={vaccineStrainText}
+                  onChange={setVaccineStrainText}
+                  placeholder={">vaccine_strain&#10;ATGCGTACCGTTAACCGGTT"}
+                />
+              </div>
+            </Panel>
+
+            <EvidenceCard
+              title="4) Geospatial and temporal data"
+              description="Optional CSV/XLSX. Required fields: sample_id, farm_id, location, latitude, longitude, collection_date, cases, total_animals."
+              filename={geoFileName}
+              accept=".csv,.xlsx,.xls"
+              onFile={(f) => {
+                setGeoFile(f);
+                setGeoFileName(f?.name || "");
+              }}
+            >
+              <Textarea
+                label="Example geospatial data fields"
+                value={geoRowsText}
+                onChange={setGeoRowsText}
+              />
+            </EvidenceCard>
+
+            <EvidenceCard
+              title="5) Animal-level data"
+              description="Optional CSV/XLSX. Useful fields: animal_id, sample_id, species, age, sex, disease_state, immunity_score, serum_pathogen_load, vaccine_strain, vaccination_date, antibody_titer, co_infections."
+              filename={animalFileName}
+              accept=".csv,.xlsx,.xls"
+              onFile={(f) => {
+                setAnimalFile(f);
+                setAnimalFileName(f?.name || "");
+              }}
+            >
+              <Textarea
+                label="Example animal-level data fields"
+                value={animalRowsText}
+                onChange={setAnimalRowsText}
+              />
+            </EvidenceCard>
+
+            <Panel className="lg:col-span-2">
+              <h4 className="mb-3 text-xl font-black text-purple-300">
+                6) Analysis notes
+              </h4>
+              <Textarea
+                label="Optional notes"
+                value={notes}
+                onChange={setNotes}
+                placeholder="Example: Analyze PRRSV ORF5 sequences for mutation hotspots, antigenic drift, vaccine escape, and predictive evolution."
+              />
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  onClick={runQigenexAnalysis}
+                  disabled={loading}
+                  className="rounded-2xl bg-purple-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? "Running on Google Cloud..." : "Run QI-GeneX-N"}
+                </button>
+
+                <button
+                  onClick={clearQigenexInputs}
+                  className="rounded-2xl border border-white/10 px-7 py-4 font-black text-slate-300 hover:border-red-300 hover:text-red-300"
+                >
+                  Clear QI-GeneX-N Inputs
+                </button>
+
+                <button
+                  onClick={() => downloadCSV(geoRowsText, "qigenex_geospatial_template.csv")}
+                  className="rounded-2xl border border-white/10 px-7 py-4 font-black text-slate-300 hover:border-purple-300 hover:text-purple-300"
+                >
+                  Download Geo Template
+                </button>
+
+                <button
+                  onClick={() => downloadCSV(animalRowsText, "qigenex_animal_template.csv")}
+                  className="rounded-2xl border border-white/10 px-7 py-4 font-black text-slate-300 hover:border-purple-300 hover:text-purple-300"
+                >
+                  Download Animal Template
+                </button>
+              </div>
+            </Panel>
+          </div>
+        </Panel>
+
+        <div className="grid gap-6">
+          <Panel>
+            <h4 className="mb-4 text-xl font-black text-purple-300">
+              Input readiness
+            </h4>
+            <div className="grid gap-3 text-sm">
+              <Readiness label="Raw FASTA" ready={Boolean(fastaText.trim() || fastaFileName)} />
+              <Readiness label="Aligned FASTA" ready={Boolean(alignedText.trim() || alignedFileName)} />
+              <Readiness label="Reference sequence" ready={Boolean(referenceText.trim())} />
+              <Readiness label="Vaccine strain sequence" ready={Boolean(vaccineStrainText.trim())} />
+              <Readiness label="Geospatial data" ready={Boolean(geoRowsText.trim() || geoFileName)} />
+              <Readiness label="Animal-level data" ready={Boolean(animalRowsText.trim() || animalFileName)} />
+            </div>
+            <p className="mt-4 rounded-2xl bg-slate-900 p-4 text-sm leading-7 text-slate-400">
+              Sequence-only mode will run now. Extra fields are forwarded to
+              Google Cloud and can be used as your backend expands.
+            </p>
+          </Panel>
+
+          <Console log={log} />
+        </div>
+      </div>
+
+      <Panel className="mt-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-2xl font-black text-purple-300">
+              QI-GeneX-N results and visualization
+            </h3>
+            <p className="mt-2 text-sm leading-7 text-slate-400">
+              Visualizes Qiskit quantum circuit output, PyTorch scores,
+              mutation hotspots, fitness landscape, vaccine-escape context,
+              and predictive evolution. The raw JSON is preserved for download.
+            </p>
+          </div>
+
+          {result && (
+            <button
+              onClick={() => downloadJSON(result, "qigenex_n_results.json")}
+              className="rounded-xl bg-blue-500 px-4 py-2 font-black text-white hover:bg-blue-600"
+            >
+              Download QI-GeneX-N JSON
+            </button>
+          )}
+        </div>
+
+        {!result ? (
+          <div className="rounded-2xl bg-slate-900 p-6 text-slate-300">
+            Run QI-GeneX-N to show sequence scores, QML score, mutation hotspots,
+            fitness landscape, predictive evolution, and visual summaries.
+          </div>
+        ) : (
+          <QigenexResults result={result} />
+        )}
+      </Panel>
+    </section>
+  );
+}
+
+function Readiness({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl bg-slate-900 p-3">
+      <span className="font-bold text-slate-300">{label}</span>
+      <span
+        className={`rounded-full px-3 py-1 text-xs font-black ${
+          ready ? "bg-emerald-400 text-slate-950" : "bg-slate-700 text-slate-300"
+        }`}
+      >
+        {ready ? "Ready" : "Optional"}
+      </span>
+    </div>
+  );
+}
+
+function QigenexResults({ result }: { result: any }) {
+  const sequenceResults = result?.qmlPrediction?.sequenceResults ?? [];
+  const hotspots = result?.predictiveMutation?.topHotspots ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-5">
+        <ResultCard title="Sequences" value={String(result?.summary?.sequenceCount ?? "NA")} />
+        <ResultCard title="Mean QML" value={valueText(result?.qmlPrediction?.meanQMLScore)} />
+        <ResultCard title="Mean Fitness" value={valueText(result?.fitnessLandscape?.meanFitness)} />
+        <ResultCard title="Hotspots" value={String(result?.predictiveMutation?.hotspotCount ?? "NA")} />
+        <ResultCard title="Risk" value={String(result?.predictiveEvolution?.riskCategory ?? "NA")} />
+      </div>
+
+      {result?.scientificNote && (
+        <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-7 text-amber-100">
+          <p className="mb-2 font-black text-amber-200">Scientific note</p>
+          {result.scientificNote}
+        </div>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <QigenexBars
+          title="Integrated predictive score by sequence"
+          data={sequenceResults.map((x: any) => ({
+            label: x.id,
+            value: x.integratedPredictiveScore ?? 0,
+          }))}
+        />
+        <QigenexBars
+          title="Quantum mutation score by sequence"
+          data={sequenceResults.map((x: any) => ({
+            label: x.id,
+            value: x.quantumCircuit?.quantumMutationScore ?? 0,
+          }))}
+        />
+        <QigenexBars
+          title="PyTorch fitness potential"
+          data={sequenceResults.map((x: any) => ({
+            label: x.id,
+            value: x.torchPrediction?.fitnessPotential ?? 0,
+          }))}
+        />
+        <QigenexBars
+          title="Mutation hotspot load"
+          data={hotspots.slice(0, 30).map((x: any) => ({
+            label: `Pos ${x.position}`,
+            value: x.mutationLoad ?? x.diversity ?? 0,
+          }))}
+        />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Panel>
+          <h4 className="mb-4 text-lg font-black text-purple-300">
+            Predictive mutation hotspot table
+          </h4>
+          <div className="max-h-96 overflow-auto rounded-2xl border border-white/10">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-900 text-slate-400">
+                <tr>
+                  <th className="p-3">Position</th>
+                  <th className="p-3">Variants</th>
+                  <th className="p-3">Mutation Load</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hotspots.slice(0, 100).map((h: any, i: number) => (
+                  <tr key={i} className="border-t border-white/5">
+                    <td className="p-3">{h.position}</td>
+                    <td className="p-3">{h.variants?.join(", ") ?? "NA"}</td>
+                    <td className="p-3">{valueText(h.mutationLoad)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+        <Panel>
+          <h4 className="mb-4 text-lg font-black text-purple-300">
+            Further analysis suggestions
+          </h4>
+          <ul className="list-disc space-y-3 pl-5 text-sm leading-7 text-slate-300">
+            <li>Use aligned FASTA for stronger mutation-position interpretation.</li>
+            <li>Add vaccine strain sequence for vaccine escape screening.</li>
+            <li>Add reference sequence for mutation naming and isolate comparison.</li>
+            <li>Add geospatial CSV for spatial clustering and heatmap analysis.</li>
+            <li>Add animal-level CSV for host adaptation and immune pressure analysis.</li>
+            <li>Train the PyTorch/Qiskit model using labeled fitness, antigenic, or vaccine-escape datasets.</li>
+          </ul>
+        </Panel>
+      </div>
+
+      <pre className="max-h-[520px] overflow-auto rounded-2xl bg-black p-5 text-xs text-slate-300">
+        {JSON.stringify(result, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+function QigenexBars({
+  title,
+  data,
+}: {
+  title: string;
+  data: { label: string; value: number }[];
+}) {
+  const max = Math.max(...data.map((d) => d.value), 0.0001);
+
+  return (
+    <Panel>
+      <h4 className="mb-4 text-lg font-black text-purple-300">{title}</h4>
+      {data.length === 0 ? (
+        <p className="text-sm text-slate-400">No visualization data available yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {data.slice(0, 25).map((item, i) => (
+            <div key={`${item.label}-${i}`}>
+              <div className="mb-1 flex justify-between gap-3 text-xs text-slate-400">
+                <span className="truncate">{item.label}</span>
+                <span>{Number(item.value).toFixed(4)}</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-purple-400"
+                  style={{ width: `${Math.max(2, (item.value / max) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }
 
