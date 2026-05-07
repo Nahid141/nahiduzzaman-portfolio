@@ -209,20 +209,28 @@ const QIGENEX_PUBLIC_BACKEND =
 function qigenexResultUrl(path?: string) {
   if (!path) return "";
 
-  if (path.startsWith("http")) return path;
+  if (path.startsWith("http")) {
+    return path;
+  }
 
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
-  if (!QIGENEX_PUBLIC_BACKEND) return cleanPath;
+  if (!QIGENEX_PUBLIC_BACKEND) {
+    return cleanPath;
+  }
 
   return `${QIGENEX_PUBLIC_BACKEND}${cleanPath}`;
 }
 
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `/api/qigenex?path=${encodeURIComponent(cleanPath)}`;
-}
 function qigenexDownloadName(path: string) {
   return path.split("/").pop() || "qigenex_result";
+}
+
+function qigenexStatusColor(status?: string) {
+  if (status === "completed") return "text-emerald-300";
+  if (status === "failed" || status === "error") return "text-red-300";
+  if (status === "queued" || status === "running") return "text-amber-300";
+  return "text-slate-300";
 }
 
 function qigenexStatusColor(status?: string) {
