@@ -204,7 +204,8 @@ function csvFromRows(rows: ObsRow[]) {
 }
 
 const QIGENEX_PUBLIC_BACKEND =
-  process.env.NEXT_PUBLIC_QIGENEX_BACKEND_PUBLIC_URL?.replace(/\/+$/, "") || "";
+  process.env.NEXT_PUBLIC_QIGENEX_BACKEND_PUBLIC_URL?.replace(/\/+$/, "") ||
+  "http://34.67.1.205:8000";
 
 function qigenexResultUrl(path?: string) {
   if (!path) return "";
@@ -214,20 +215,6 @@ function qigenexResultUrl(path?: string) {
   }
 
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-
-  if (!QIGENEX_PUBLIC_BACKEND) {
-    return cleanPath;
-  }
-
-  return `${QIGENEX_PUBLIC_BACKEND}${cleanPath}`;
-}
-
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-
-  if (!QIGENEX_PUBLIC_BACKEND) {
-    return cleanPath;
-  }
-
   return `${QIGENEX_PUBLIC_BACKEND}${cleanPath}`;
 }
 
@@ -2811,32 +2798,38 @@ function QigenexResultsDashboard({ result }: { result: any }) {
   ];
 
   function LinkButton({ label, path }: { label: string; path: any }) {
-  const href = qigenexResultUrl(String(path));
+    const href = qigenexResultUrl(String(path));
 
-  async function copyLink() {
-    await navigator.clipboard.writeText(href);
-    alert("Download link copied. Paste it directly in your browser if the button is blocked.");
+    async function copyLink() {
+      try {
+        await navigator.clipboard.writeText(href);
+        alert("Download link copied. Paste it directly in your browser if automatic download is blocked.");
+      } catch {
+        alert(href);
+      }
+    }
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        <a
+          href={href}
+          download={qigenexDownloadName(String(path))}
+          className="rounded-xl border border-purple-300/20 bg-purple-400/10 px-4 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300 hover:bg-purple-400 hover:text-slate-950"
+        >
+          {label}
+        </a>
+
+        <button
+          type="button"
+          onClick={copyLink}
+          className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-black text-slate-200 hover:border-cyan-300 hover:text-cyan-300"
+        >
+          Copy link
+        </button>
+      </div>
+    );
   }
 
-  return (
-    <div className="flex flex-wrap gap-2">
-      <a
-        href={href}
-        className="rounded-xl border border-purple-300/20 bg-purple-400/10 px-4 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300 hover:bg-purple-400 hover:text-slate-950"
-      >
-        {label}
-      </a>
-
-      <button
-        type="button"
-        onClick={copyLink}
-        className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-black text-slate-200 hover:border-cyan-300 hover:text-cyan-300"
-      >
-        Copy link
-      </button>
-    </div>
-  );
-}
 
   return (
     <div className="space-y-6">
@@ -2851,10 +2844,10 @@ function QigenexResultsDashboard({ result }: { result: any }) {
             </p>
           </div>
 
-          {outputs.qigenex_complete_results_zip && (
+          {jobId && (
             <a
-              href={qigenexResultUrl(outputs.qigenex_complete_results_zip)}
-              download={qigenexDownloadName(outputs.qigenex_complete_results_zip)}
+              href={qigenexResultUrl(outputs.qigenex_complete_results_zip || `/results/${jobId}/qigenex_complete_results.zip`)}
+              download={qigenexDownloadName(outputs.qigenex_complete_results_zip || "qigenex_complete_results.zip")}
               className="rounded-xl bg-purple-400 px-4 py-3 text-sm font-black text-slate-950 hover:bg-white"
             >
               Download Complete Results
