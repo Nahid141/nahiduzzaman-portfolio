@@ -233,14 +233,6 @@ function qigenexStatusColor(status?: string) {
   return "text-slate-300";
 }
 
-function qigenexStatusColor(status?: string) {
-  if (status === "completed") return "text-emerald-300";
-  if (status === "failed" || status === "error") return "text-red-300";
-  if (status === "queued" || status === "running") return "text-amber-300";
-  return "text-slate-300";
-}
-
-
 export default function Tools() {
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -2753,10 +2745,12 @@ function QigenexResultsDashboard({ result }: { result: any }) {
   ].filter(([, path]) => Boolean(path));
 
   const figureOutputs = [
-    ["Figures Directory", outputs.figures_dir],
-    ["Composite Figures", outputs.composite_figures_dir],
+    ["Figures ZIP", outputs.qigenex_figures_only_zip],
     ["Figure Summary", outputs.figure_generation_summary_txt],
+    ["Figure Manifest", outputs.figure_manifest],
+    ["Figure Captions", outputs.figure_captions],
     ["Composite Figure Summary", outputs.composite_figure_summary_txt],
+    ["Composite Figure Manifest", outputs.composite_figure_manifest],
   ].filter(([, path]) => Boolean(path));
 
   const cards = [
@@ -2808,18 +2802,18 @@ function QigenexResultsDashboard({ result }: { result: any }) {
   ];
 
   function LinkButton({ label, path }: { label: string; path: any }) {
-  const href = qigenexResultUrl(String(path));
+    const href = qigenexResultUrl(String(path));
 
-  return (
-    <a
-      href={href}
-      download={qigenexDownloadName(String(path))}
-      className="rounded-xl border border-purple-300/20 bg-purple-400/10 px-4 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300 hover:bg-purple-400 hover:text-slate-950"
-    >
-      {label}
-    </a>
-  );
-}
+    return (
+      <a
+        href={href}
+        download={qigenexDownloadName(String(path))}
+        className="rounded-xl border border-purple-300/20 bg-purple-400/10 px-4 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300 hover:bg-purple-400 hover:text-slate-950"
+      >
+        {label}
+      </a>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -2834,14 +2828,13 @@ function QigenexResultsDashboard({ result }: { result: any }) {
             </p>
           </div>
 
-          {jobId && (
+          {outputs.qigenex_complete_results_zip && (
             <a
-              href={qigenexResultUrl(`/results/${jobId}`)}
-              target="_blank"
-              rel="noreferrer"
+              href={qigenexResultUrl(outputs.qigenex_complete_results_zip)}
+              download={qigenexDownloadName(outputs.qigenex_complete_results_zip)}
               className="rounded-xl bg-purple-400 px-4 py-3 text-sm font-black text-slate-950 hover:bg-white"
             >
-              Open Backend Result Folder
+              Download Complete Results
             </a>
           )}
         </div>
