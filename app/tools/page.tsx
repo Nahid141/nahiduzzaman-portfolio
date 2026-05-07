@@ -51,15 +51,23 @@ type QigenexSequenceMode = "unaligned" | "aligned";
 type QigenexAnalysisMode =
   | "complete"
   | "alignment"
+  | "qc"
+  | "classification"
+  | "gene_orf"
+  | "gp5"
   | "mutation"
   | "fitness"
   | "evolution"
+  | "phylogeny"
+  | "genomic_intelligence"
+  | "ml_qml"
   | "antigenic_drift"
   | "antigenic_shift"
   | "vaccine_escape"
   | "geo_spatiotemporal"
   | "animal_host"
-  | "visualization";
+  | "visualization"
+  | "report_package";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -194,6 +202,28 @@ function csvFromRows(rows: ObsRow[]) {
 
   return [headers.join(","), ...body].join("\n");
 }
+
+const QIGENEX_PUBLIC_BACKEND =
+  process.env.NEXT_PUBLIC_QIGENEX_BACKEND_PUBLIC_URL?.replace(/\/+$/, "") || "";
+
+function qigenexResultUrl(path?: string) {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  if (!QIGENEX_PUBLIC_BACKEND) return path;
+  return `${QIGENEX_PUBLIC_BACKEND}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function qigenexDownloadName(path: string) {
+  return path.split("/").pop() || "qigenex_result";
+}
+
+function qigenexStatusColor(status?: string) {
+  if (status === "completed") return "text-emerald-300";
+  if (status === "failed" || status === "error") return "text-red-300";
+  if (status === "queued" || status === "running") return "text-amber-300";
+  return "text-slate-300";
+}
+
 
 export default function Tools() {
   const [open, setOpen] = useState(false);
@@ -765,6 +795,41 @@ export default function Tools() {
     ]);
   }
 
+  async function pollQigenexJob(jobId: string) {
+    for (let i = 0; i < 240; i++) {
+      const response = await fetch(`/api/qigenex?job_id=${encodeURIComponent(jobId)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+      setQigenexResult(data);
+
+      if (data.status === "completed") {
+        pushLog([
+          "> QI-GeneX-N completed.",
+          `> Status: ${data.message ?? "completed"}.`,
+          `> Outputs available: ${Object.keys(data.outputs ?? {}).length}.`,
+        ]);
+        return data;
+      }
+
+      if (data.status === "failed" || data.status === "error") {
+        pushLog([`> QI-GeneX-N failed: ${data.message || data.error || "Unknown error"}`]);
+        return data;
+      }
+
+      if (i % 4 === 0) {
+        pushLog([`> QI-GeneX-N still running: ${data.message ?? data.status ?? "processing"}`]);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+
+    pushLog(["> QI-GeneX-N polling timeout. Check backend job status manually."]);
+    return null;
+  }
+
   async function runQigenexAnalysis() {
     const hasSequence =
       qigenexFastaText.trim() ||
@@ -774,7 +839,7 @@ export default function Tools() {
 
     if (!hasSequence) {
       pushLog([
-        "> ERROR: QI-GeneX-N requires a FASTA sequence, FASTA file, aligned sequence, or aligned file.",
+        "> ERROR: QI-GeneX-N requires FASTA text, FASTA file, aligned text, or aligned FASTA file.",
       ]);
       return;
     }
@@ -785,16 +850,58 @@ export default function Tools() {
     formData.append("sequenceMode", qigenexSequenceMode);
     formData.append("tool", "QI-GeneX-N");
 
+    const selectedBackendMode =
+      qigenexAnalysisMode === "phylogeny" ||
+      qigenexAnalysisMode === "genomic_intelligence" ||
+      qigenexAnalysisMode === "evolution" ||
+      qigenexAnalysisMode === "antigenic_drift" ||
+      qigenexAnalysisMode === "antigenic_shift"
+        ? "standard"
+        : "fast";
+
+    formData.append("mode", selectedBackendMode);
+
+    formData.append("run_visualization", "true");
+    formData.append("run_composite_figures", "true");
+    formData.append("run_packaging", "true");
+    formData.append("run_ml", "true");
+    formData.append("run_qml", "true");
+    formData.append("run_fitness", "true");
+    formData.append("run_geospatial", "true");
+    formData.append("run_report", "true");
+
+    if (
+      qigenexAnalysisMode === "evolution" ||
+      qigenexAnalysisMode === "phylogeny" ||
+      qigenexAnalysisMode === "genomic_intelligence" ||
+      qigenexAnalysisMode === "antigenic_drift" ||
+      qigenexAnalysisMode === "antigenic_shift"
+    ) {
+      formData.append("run_phylogeny", "true");
+    }
+
+    formData.append("figure_set", "full");
+    formData.append("figure_styles", "journal_clean,journal_colorblind,journal_mono");
+    formData.append("figure_formats", "png,svg,pdf");
+    formData.append("figure_dpi", "600");
+
     if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText);
     if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile);
+
     if (qigenexAlignedText.trim()) formData.append("alignedText", qigenexAlignedText);
     if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
+
     if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
-    if (qigenexVaccineStrainText.trim()) formData.append("vaccineStrainText", qigenexVaccineStrainText);
+    if (qigenexVaccineStrainText.trim()) {
+      formData.append("vaccineStrainText", qigenexVaccineStrainText);
+    }
+
     if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
     if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
+
     if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
     if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText);
+
     if (qigenexNotes.trim()) formData.append("notes", qigenexNotes);
 
     setQigenexLoading(true);
@@ -810,23 +917,31 @@ export default function Tools() {
 
       if (!response.ok || data.status === "error") {
         setQigenexResult(data);
-        pushLog([`> QI-GeneX-N ERROR: ${data.error || "Google Cloud analysis failed."}`]);
+        pushLog([`> QI-GeneX-N ERROR: ${data.error || data.message || "Google Cloud analysis failed."}`]);
         return;
       }
 
       setQigenexResult(data);
+
+      const jobId = data.job_id;
+
       pushLog([
-        "> QI-GeneX-N analysis completed through Google Cloud.",
-        `> Sequences analyzed=${data.summary?.sequenceCount ?? "NA"}.`,
-        `> Mean QML score=${data.qmlPrediction?.meanQMLScore ?? "NA"}.`,
-        `> Predictive evolution risk=${data.predictiveEvolution?.riskCategory ?? "NA"}.`,
+        "> QI-GeneX-N job submitted to Google Cloud.",
+        `> Job ID: ${jobId}`,
+        `> Backend mode: ${data.mode ?? selectedBackendMode}`,
+        "> Polling job status...",
       ]);
+
+      if (jobId) {
+        await pollQigenexJob(jobId);
+      }
     } catch (error) {
       pushLog([`> QI-GeneX-N connection ERROR: ${String(error)}`]);
     } finally {
       setQigenexLoading(false);
     }
   }
+
 
   function clearQigenexInputs() {
     setQigenexFastaFile(null);
@@ -2202,300 +2317,600 @@ function QigenexSection(props: any) {
     log,
   } = props;
 
-  const modeDescriptions: Record<string, string> = {
-    complete:
-      "Runs quantum-circuit genome encoding, PyTorch scoring, mutation hotspots, fitness landscape, predictive evolution, and metadata-aware suggestions.",
-    alignment:
-      "Uses aligned sequences directly when supplied. If unaligned sequences are supplied, the Google Cloud backend can later be extended to call MAFFT/MUSCLE.",
-    mutation:
-      "Ranks variable sites, mutation hotspots, mutation load, and likely high-impact genome changes.",
-    fitness:
-      "Builds a prototype fitness landscape score using hybrid Qiskit-PyTorch genome features.",
-    evolution:
-      "Predicts adaptive/evolutionary potential from sequence-derived quantum and neural features.",
-    antigenic_drift:
-      "Screens gradual antigenic change using sequence divergence, hotspot burden, and vaccine/reference comparison.",
-    antigenic_shift:
-      "Designed for reassortment/recombination-style signals when multiple genomic segments or mixed-source evidence are provided.",
-    vaccine_escape:
-      "Requires vaccine strain sequence for best output. Compares isolates with the vaccine strain to highlight potential escape-associated divergence.",
-    geo_spatiotemporal:
-      "Uses sample ID, farm ID, latitude, longitude, date, case count, and animal population for spatial-temporal interpretation.",
-    animal_host:
-      "Uses animal species, age, disease state, immune score, pathogen load, vaccination, antibody titer, and co-infection data for host-context analysis.",
-    visualization:
-      "Focuses on visual summaries: QML scores, fitness scores, mutation hotspots, top quantum states, and JSON export.",
-  };
+  const hasSequence = Boolean(fastaText.trim() || fastaFileName || alignedText.trim() || alignedFileName);
+  const hasMetadata = Boolean(geoRowsText.trim() || geoFileName || animalRowsText.trim() || animalFileName);
+
+  const analysisOptions = [
+    {
+      id: "complete",
+      title: "Full analysis",
+      subtitle: "Best for complete results, figures, reports, and downloads.",
+      accent: "border-purple-300/40 bg-purple-400/10 text-purple-100",
+      chips: ["QC", "genes", "mutations", "figures", "ZIP"],
+    },
+    {
+      id: "mutation",
+      title: "Mutation profile",
+      subtitle: "Find substitutions, indels, mutation burden, and ranked changes.",
+      accent: "border-rose-300/40 bg-rose-400/10 text-rose-100",
+      chips: ["variants", "indels", "hotspots"],
+    },
+    {
+      id: "vaccine_escape",
+      title: "Vaccine mismatch",
+      subtitle: "Compare sequence divergence and GP5-related mismatch signals.",
+      accent: "border-amber-300/40 bg-amber-400/10 text-amber-100",
+      chips: ["GP5", "mismatch", "screening"],
+    },
+    {
+      id: "fitness",
+      title: "Fitness landscape",
+      subtitle: "Estimate strain expansion signal and feature contributions.",
+      accent: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100",
+      chips: ["fitness", "expansion", "3D plot"],
+    },
+    {
+      id: "phylogeny",
+      title: "Relationship analysis",
+      subtitle: "Build tree, distance heatmap, PCA, and network views when multiple sequences are provided.",
+      accent: "border-blue-300/40 bg-blue-400/10 text-blue-100",
+      chips: ["tree", "PCA", "network"],
+    },
+    {
+      id: "geo_spatiotemporal",
+      title: "Map and timeline",
+      subtitle: "Use dates and coordinates to create map-ready and timeline-ready outputs.",
+      accent: "border-lime-300/40 bg-lime-400/10 text-lime-100",
+      chips: ["map", "timeline", "region"],
+    },
+    {
+      id: "visualization",
+      title: "Figures only",
+      subtitle: "Generate publication-style PNG, SVG, and PDF figure sets.",
+      accent: "border-fuchsia-300/40 bg-fuchsia-400/10 text-fuchsia-100",
+      chips: ["PNG", "SVG", "PDF"],
+    },
+    {
+      id: "report_package",
+      title: "Report package",
+      subtitle: "Create report, key findings, manifests, and downloadable archives.",
+      accent: "border-slate-300/40 bg-white/10 text-slate-100",
+      chips: ["report", "tables", "downloads"],
+    },
+  ];
+
+  const selectedOption =
+    analysisOptions.find((option) => option.id === analysisMode) ?? analysisOptions[0];
+
+  const runSteps = [
+    { label: "Choose", active: true },
+    { label: "Add data", active: hasSequence },
+    { label: "Run", active: loading || Boolean(result) },
+    { label: "Download", active: result?.status === "completed" },
+  ];
 
   return (
-    <section>
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Panel className="xl:col-span-2">
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="mb-2 text-sm font-black uppercase tracking-[0.3em] text-purple-300">
-                QI-GeneX-N
-              </p>
-
-              <h3 className="text-2xl font-black text-purple-300">
-                Quantum-Inspired Gene Evolution and Fitness Prediction Network
-              </h3>
-
-              <p className="mt-2 max-w-4xl text-sm leading-7 text-slate-400">
-                This tool can analyze sequence-only data. When you add aligned
-                sequences, vaccine strain sequence, animal-level metadata, and
-                geospatial data, it will suggest richer downstream analyses such
-                as antigenic drift, antigenic shift, vaccine escape, spatial
-                clustering, and host adaptation.
-              </p>
-            </div>
-
-            <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-4 py-2 text-sm font-black text-emerald-200">
-              Google Cloud backend active
-            </span>
+    <section className="space-y-6">
+      <Panel>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="mb-2 text-sm font-black uppercase tracking-[0.3em] text-purple-300">
+              QI-GeneX-N
+            </p>
+            <h3 className="text-3xl font-black text-purple-100">
+              Select analysis option, then run
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">
+              Upload FASTA data, add metadata when available, and download reports, figures, and result packages after completion.
+            </p>
           </div>
 
-          <div className="mb-6 grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-300">
-                Sequence status
-              </label>
-              <select
-                value={sequenceMode}
-                onChange={(e) => setSequenceMode(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-purple-300"
+          <div className="flex flex-wrap gap-2">
+            {runSteps.map((step, index) => (
+              <div
+                key={step.label}
+                className={`rounded-full px-4 py-2 text-xs font-black ${
+                  step.active ? "bg-purple-400 text-slate-950" : "bg-white/10 text-slate-400"
+                }`}
               >
-                <option value="unaligned">Unaligned sequence input</option>
-                <option value="aligned">Already aligned sequence input</option>
-              </select>
-            </div>
+                {index + 1}. {step.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Panel>
 
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <Panel>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-300">
-                Analysis option
-              </label>
-              <select
-                value={analysisMode}
-                onChange={(e) => setAnalysisMode(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-purple-300"
-              >
-                <option value="complete">Complete QI-GeneX-N analysis</option>
-                <option value="alignment">Alignment-aware analysis</option>
-                <option value="mutation">Mutation prediction</option>
-                <option value="fitness">Fitness landscape</option>
-                <option value="evolution">Predictive evolution</option>
-                <option value="antigenic_drift">Antigenic drift</option>
-                <option value="antigenic_shift">Antigenic shift</option>
-                <option value="vaccine_escape">Vaccine escape</option>
-                <option value="geo_spatiotemporal">Geospatial analysis</option>
-                <option value="animal_host">Animal-level host analysis</option>
-                <option value="visualization">Visualization only</option>
-              </select>
+              <h4 className="text-2xl font-black text-purple-300">Analysis option</h4>
+              <p className="mt-1 text-sm text-slate-400">Pick one focused workflow.</p>
             </div>
+            <select
+              value={analysisMode}
+              onChange={(e) => setAnalysisMode(e.target.value)}
+              className="rounded-2xl border border-purple-300/20 bg-slate-900 px-4 py-3 text-sm font-black text-white outline-none focus:border-purple-300"
+            >
+              {analysisOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.title}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="mb-6 rounded-2xl border border-purple-300/20 bg-purple-300/5 p-4 text-sm leading-7 text-slate-300">
-            <span className="font-black text-purple-300">Current analysis:</span>{" "}
-            {modeDescriptions[analysisMode] ?? modeDescriptions.complete}
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <EvidenceCard
-              title="1) Raw genome/ORF FASTA sequences"
-              description="Upload or paste unaligned FASTA. This is enough for sequence-only quantum circuit analysis."
-              filename={fastaFileName}
-              accept=".fasta,.fa,.fna,.ffn,.txt"
-              onFile={(f) => {
-                setFastaFile(f);
-                setFastaFileName(f?.name || "");
-              }}
-            >
-              <Textarea
-                label="Paste raw FASTA"
-                value={fastaText}
-                onChange={setFastaText}
-                placeholder={">isolate_1&#10;ATGCGTACCGTTAACCGGTT&#10;>isolate_2&#10;ATGCGTACCGTCAACCGGTA"}
-              />
-            </EvidenceCard>
-
-            <EvidenceCard
-              title="2) Aligned sequence input"
-              description="Upload or paste MAFFT/MUSCLE/IQ-TREE-ready aligned FASTA. Use this for better mutation-position interpretation."
-              filename={alignedFileName}
-              accept=".fasta,.fa,.aln,.txt"
-              onFile={(f) => {
-                setAlignedFile(f);
-                setAlignedFileName(f?.name || "");
-              }}
-            >
-              <Textarea
-                label="Paste aligned FASTA"
-                value={alignedText}
-                onChange={setAlignedText}
-                placeholder={">aligned_1&#10;ATGCGTACCGTT-AACCGGTT&#10;>aligned_2&#10;ATGCGTACCGTC-AACCGGTA"}
-              />
-            </EvidenceCard>
-
-            <Panel className="lg:col-span-2">
-              <h4 className="mb-3 text-xl font-black text-purple-300">
-                3) Reference, antigenic, and vaccine-escape setup
-              </h4>
-              <p className="mb-4 text-sm leading-7 text-slate-400">
-                For mutation calling, add a reference sequence. For vaccine
-                escape analysis, add the vaccine strain sequence. For antigenic
-                drift/shift, include multiple isolates and preferably metadata.
-              </p>
-              <div className="grid gap-5 lg:grid-cols-2">
-                <Textarea
-                  label="Reference sequence"
-                  value={referenceText}
-                  onChange={setReferenceText}
-                  placeholder={">reference&#10;ATGCGTACCGTTAACCGGTT"}
-                />
-                <Textarea
-                  label="Vaccine strain sequence"
-                  value={vaccineStrainText}
-                  onChange={setVaccineStrainText}
-                  placeholder={">vaccine_strain&#10;ATGCGTACCGTTAACCGGTT"}
-                />
-              </div>
-            </Panel>
-
-            <EvidenceCard
-              title="4) Geospatial and temporal data"
-              description="Optional CSV/XLSX. Required fields: sample_id, farm_id, location, latitude, longitude, collection_date, cases, total_animals."
-              filename={geoFileName}
-              accept=".csv,.xlsx,.xls"
-              onFile={(f) => {
-                setGeoFile(f);
-                setGeoFileName(f?.name || "");
-              }}
-            >
-              <Textarea
-                label="Example geospatial data fields"
-                value={geoRowsText}
-                onChange={setGeoRowsText}
-              />
-            </EvidenceCard>
-
-            <EvidenceCard
-              title="5) Animal-level data"
-              description="Optional CSV/XLSX. Useful fields: animal_id, sample_id, species, age, sex, disease_state, immunity_score, serum_pathogen_load, vaccine_strain, vaccination_date, antibody_titer, co_infections."
-              filename={animalFileName}
-              accept=".csv,.xlsx,.xls"
-              onFile={(f) => {
-                setAnimalFile(f);
-                setAnimalFileName(f?.name || "");
-              }}
-            >
-              <Textarea
-                label="Example animal-level data fields"
-                value={animalRowsText}
-                onChange={setAnimalRowsText}
-              />
-            </EvidenceCard>
-
-            <Panel className="lg:col-span-2">
-              <h4 className="mb-3 text-xl font-black text-purple-300">
-                6) Analysis notes
-              </h4>
-              <Textarea
-                label="Optional notes"
-                value={notes}
-                onChange={setNotes}
-                placeholder="Example: Analyze PRRSV ORF5 sequences for mutation hotspots, antigenic drift, vaccine escape, and predictive evolution."
-              />
-
-              <div className="mt-6 flex flex-wrap gap-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            {analysisOptions.map((option) => {
+              const active = option.id === selectedOption.id;
+              return (
                 <button
-                  onClick={runQigenexAnalysis}
-                  disabled={loading}
-                  className="rounded-2xl bg-purple-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  key={option.id}
+                  onClick={() => setAnalysisMode(option.id)}
+                  className={`rounded-3xl border p-4 text-left transition hover:-translate-y-1 hover:border-purple-300 ${
+                    active ? option.accent : "border-white/10 bg-slate-900/70 text-slate-300"
+                  }`}
                 >
-                  {loading ? "Running on Google Cloud..." : "Run QI-GeneX-N"}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h5 className="text-lg font-black">{option.title}</h5>
+                      <p className="mt-2 text-sm leading-6 opacity-80">{option.subtitle}</p>
+                    </div>
+                    {active && <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-950">selected</span>}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {option.chips.map((chip) => (
+                      <span key={chip} className="rounded-full bg-black/25 px-3 py-1 text-xs font-bold">
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
                 </button>
-
-                <button
-                  onClick={clearQigenexInputs}
-                  className="rounded-2xl border border-white/10 px-7 py-4 font-black text-slate-300 hover:border-red-300 hover:text-red-300"
-                >
-                  Clear QI-GeneX-N Inputs
-                </button>
-
-                <button
-                  onClick={() => downloadCSV(geoRowsText, "qigenex_geospatial_template.csv")}
-                  className="rounded-2xl border border-white/10 px-7 py-4 font-black text-slate-300 hover:border-purple-300 hover:text-purple-300"
-                >
-                  Download Geo Template
-                </button>
-
-                <button
-                  onClick={() => downloadCSV(animalRowsText, "qigenex_animal_template.csv")}
-                  className="rounded-2xl border border-white/10 px-7 py-4 font-black text-slate-300 hover:border-purple-300 hover:text-purple-300"
-                >
-                  Download Animal Template
-                </button>
-              </div>
-            </Panel>
+              );
+            })}
           </div>
         </Panel>
 
-        <div className="grid gap-6">
-          <Panel>
-            <h4 className="mb-4 text-xl font-black text-purple-300">
-              Input readiness
-            </h4>
-            <div className="grid gap-3 text-sm">
-              <Readiness label="Raw FASTA" ready={Boolean(fastaText.trim() || fastaFileName)} />
-              <Readiness label="Aligned FASTA" ready={Boolean(alignedText.trim() || alignedFileName)} />
-              <Readiness label="Reference sequence" ready={Boolean(referenceText.trim())} />
-              <Readiness label="Vaccine strain sequence" ready={Boolean(vaccineStrainText.trim())} />
-              <Readiness label="Geospatial data" ready={Boolean(geoRowsText.trim() || geoFileName)} />
-              <Readiness label="Animal-level data" ready={Boolean(animalRowsText.trim() || animalFileName)} />
+        <Panel>
+          <h4 className="text-2xl font-black text-purple-300">Run setup</h4>
+          <div className="mt-5 grid gap-4">
+            <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Selected</p>
+              <p className="mt-2 text-lg font-black text-white">{selectedOption.title}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{selectedOption.subtitle}</p>
             </div>
-            <p className="mt-4 rounded-2xl bg-slate-900 p-4 text-sm leading-7 text-slate-400">
-              Sequence-only mode will run now. Extra fields are forwarded to
-              Google Cloud and can be used as your backend expands.
-            </p>
-          </Panel>
 
-          <Console log={log} />
-        </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <ResultCard title="Sequence" value={hasSequence ? "Ready" : "Required"} />
+              <ResultCard title="Metadata" value={hasMetadata ? "Added" : "Optional"} />
+              <ResultCard title="Figures" value="On" />
+              <ResultCard title="Downloads" value="On" />
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <p className="mb-3 text-sm font-black text-purple-200">Sequence input</p>
+              <div className="mb-3 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setSequenceMode("unaligned")}
+                  className={`rounded-xl px-4 py-2 text-sm font-black ${
+                    sequenceMode === "unaligned" ? "bg-purple-400 text-slate-950" : "bg-white/10 text-slate-300"
+                  }`}
+                >
+                  FASTA
+                </button>
+                <button
+                  onClick={() => setSequenceMode("aligned")}
+                  className={`rounded-xl px-4 py-2 text-sm font-black ${
+                    sequenceMode === "aligned" ? "bg-purple-400 text-slate-950" : "bg-white/10 text-slate-300"
+                  }`}
+                >
+                  Aligned FASTA
+                </button>
+              </div>
+
+              {sequenceMode === "unaligned" ? (
+                <div className="grid gap-3">
+                  <input
+                    type="file"
+                    accept=".fasta,.fa,.fna,.txt"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setFastaFile(f);
+                      setFastaFileName(f?.name || "");
+                    }}
+                    className="block w-full rounded-xl border border-white/10 bg-slate-900 p-3"
+                  />
+                  {fastaFileName && <p className="text-sm font-bold text-purple-200">Loaded: {fastaFileName}</p>}
+                  <textarea
+                    value={fastaText}
+                    onChange={(e) => setFastaText(e.target.value)}
+                    placeholder=">sample_1\nATGC..."
+                    className="min-h-[130px] rounded-2xl border border-white/10 bg-black p-4 text-sm text-slate-200 outline-none focus:border-purple-300"
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  <input
+                    type="file"
+                    accept=".fasta,.fa,.aln,.txt"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setAlignedFile(f);
+                      setAlignedFileName(f?.name || "");
+                    }}
+                    className="block w-full rounded-xl border border-white/10 bg-slate-900 p-3"
+                  />
+                  {alignedFileName && <p className="text-sm font-bold text-purple-200">Loaded: {alignedFileName}</p>}
+                  <textarea
+                    value={alignedText}
+                    onChange={(e) => setAlignedText(e.target.value)}
+                    placeholder=">sample_1\nATGC---..."
+                    className="min-h-[130px] rounded-2xl border border-white/10 bg-black p-4 text-sm text-slate-200 outline-none focus:border-purple-300"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </Panel>
       </div>
 
-      <Panel className="mt-6">
+      <Panel>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-2xl font-black text-purple-300">
-              QI-GeneX-N results and visualization
-            </h3>
-            <p className="mt-2 text-sm leading-7 text-slate-400">
-              Visualizes Qiskit quantum circuit output, PyTorch scores,
-              mutation hotspots, fitness landscape, vaccine-escape context,
-              and predictive evolution. The raw JSON is preserved for download.
+            <h4 className="text-2xl font-black text-purple-300">Optional data</h4>
+            <p className="mt-1 text-sm text-slate-400">Add these only when available.</p>
+          </div>
+          <button
+            onClick={clearQigenexInputs}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm font-black text-slate-300 hover:border-red-300 hover:text-red-300"
+          >
+            Clear
+          </button>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="mb-3 font-black text-purple-200">Reference / vaccine sequence</p>
+            <textarea
+              value={referenceText}
+              onChange={(e) => setReferenceText(e.target.value)}
+              placeholder="Reference FASTA sequence"
+              className="mb-3 min-h-[110px] w-full rounded-2xl border border-white/10 bg-black p-4 text-sm text-slate-200 outline-none focus:border-purple-300"
+            />
+            <textarea
+              value={vaccineStrainText}
+              onChange={(e) => setVaccineStrainText(e.target.value)}
+              placeholder="Vaccine strain FASTA sequence"
+              className="min-h-[110px] w-full rounded-2xl border border-white/10 bg-black p-4 text-sm text-slate-200 outline-none focus:border-purple-300"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="mb-3 font-black text-purple-200">Metadata</p>
+            <input
+              type="file"
+              accept=".csv,.tsv,.xlsx,.xls"
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                setGeoFile(f);
+                setGeoFileName(f?.name || "");
+              }}
+              className="mb-3 block w-full rounded-xl border border-white/10 bg-slate-900 p-3"
+            />
+            {geoFileName && <p className="mb-3 text-sm font-bold text-purple-200">Loaded: {geoFileName}</p>}
+            <textarea
+              value={geoRowsText}
+              onChange={(e) => setGeoRowsText(e.target.value)}
+              placeholder="sample_id,collection_date,country,region,latitude,longitude"
+              className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black p-4 text-sm text-slate-200 outline-none focus:border-purple-300"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="mb-3 font-black text-purple-200">Animal-level table</p>
+            <input
+              type="file"
+              accept=".csv,.tsv,.xlsx,.xls"
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                setAnimalFile(f);
+                setAnimalFileName(f?.name || "");
+              }}
+              className="mb-3 block w-full rounded-xl border border-white/10 bg-slate-900 p-3"
+            />
+            {animalFileName && <p className="mb-3 text-sm font-bold text-purple-200">Loaded: {animalFileName}</p>}
+            <textarea
+              value={animalRowsText}
+              onChange={(e) => setAnimalRowsText(e.target.value)}
+              placeholder="animal_id,sample_id,species,age,disease_state"
+              className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black p-4 text-sm text-slate-200 outline-none focus:border-purple-300"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="mb-3 font-black text-purple-200">Notes</p>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Study notes or interpretation context"
+              className="min-h-[190px] w-full rounded-2xl border border-white/10 bg-black p-4 text-sm text-slate-200 outline-none focus:border-purple-300"
+            />
+          </div>
+        </div>
+      </Panel>
+
+      <Panel>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h4 className="text-2xl font-black text-purple-300">Run</h4>
+            <p className="mt-1 text-sm text-slate-400">
+              {hasSequence ? "Ready to submit." : "Add a FASTA sequence first."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={runQigenexAnalysis}
+              disabled={loading || !hasSequence}
+              className="rounded-2xl bg-purple-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {loading ? "Running..." : "Run selected analysis"}
+            </button>
+            {result && (
+              <button
+                onClick={() => downloadJSON(result, "qigenex_n_results.json")}
+                className="rounded-2xl bg-blue-500 px-7 py-4 font-black text-white hover:bg-blue-600"
+              >
+                Download JSON
+              </button>
+            )}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel>
+        <div className="mb-5">
+          <h4 className="text-2xl font-black text-purple-300">Results</h4>
+          <p className="mt-1 text-sm text-slate-400">Live status, output links, figures, reports, and downloads.</p>
+        </div>
+        <QigenexResultsDashboard result={result} />
+      </Panel>
+
+      <Console log={log} />
+    </section>
+  );
+}
+
+function QigenexResultsDashboard({ result }: { result: any }) {
+  if (!result) {
+    return (
+      <div className="rounded-2xl bg-slate-900 p-6 text-slate-300">
+        Run QI-GeneX-N to show live status, reports, figures, and downloads.
+      </div>
+    );
+  }
+
+  const outputs = result.outputs ?? {};
+  const summary = result.summary ?? {};
+  const jobId = result.job_id ?? result.bridge?.jobId ?? "";
+
+  const zipOutputs = [
+    ["Complete Results ZIP", outputs.qigenex_complete_results_zip],
+    ["Figures ZIP", outputs.qigenex_figures_only_zip],
+    ["Tables ZIP", outputs.qigenex_tables_only_zip],
+    ["Report Package ZIP", outputs.qigenex_report_package_zip],
+  ].filter(([, path]) => Boolean(path));
+
+  const reportOutputs = [
+    ["Research Report", outputs.qigenex_research_report_txt],
+    ["Research Report JSON", outputs.qigenex_research_report_json],
+    ["Key Findings", outputs.qigenex_key_findings],
+    ["Download Manifest", outputs.qigenex_download_manifest],
+    ["Package Manifest", outputs.qigenex_package_manifest],
+    ["Figure Manifest", outputs.figure_manifest],
+    ["Figure Captions", outputs.figure_captions],
+    ["Composite Figure Manifest", outputs.composite_figure_manifest],
+  ].filter(([, path]) => Boolean(path));
+
+  const analysisOutputs = [
+    ["QC Table", outputs.qc_table],
+    ["Reference Similarity", outputs.reference_similarity],
+    ["ORF Annotation", outputs.orf_annotation],
+    ["PRRSV Gene Annotation", outputs.prrsv_gene_annotation],
+    ["Curated Gene Annotation", outputs.prrsv_curated_gene_annotation],
+    ["GP5 Glycosylation", outputs.gp5_glycosylation],
+    ["GP5 Features", outputs.gp5_features],
+    ["Nucleotide Mutations", outputs.nucleotide_mutations],
+    ["Indels", outputs.indels],
+    ["Mutation Features", outputs.mutation_features],
+    ["Predictive Mutation Ranking", outputs.predictive_mutation_ranking],
+    ["Vaccine Mismatch", outputs.vaccine_mismatch_scores],
+    ["Risk Assessment", outputs.risk_assessment],
+    ["Surveillance Priority", outputs.sample_surveillance_priority],
+    ["Molecular Clusters", outputs.spatiotemporal_clusters ?? outputs.molecular_epidemiology_clusters],
+    ["Fitness Landscape", outputs.fitness_landscape],
+    ["Strain Expansion", outputs.strain_expansion_scores],
+    ["ML Features", outputs.ml_risk_features],
+    ["ML Predictions", outputs.ml_predictions],
+    ["QML Predictions", outputs.qml_predictions],
+    ["Map-ready Samples", outputs.map_ready_samples],
+    ["Timeline-ready Samples", outputs.timeline_ready_samples],
+  ].filter(([, path]) => Boolean(path));
+
+  const figureOutputs = [
+    ["Figures Directory", outputs.figures_dir],
+    ["Composite Figures", outputs.composite_figures_dir],
+    ["Figure Summary", outputs.figure_generation_summary_txt],
+    ["Composite Figure Summary", outputs.composite_figure_summary_txt],
+  ].filter(([, path]) => Boolean(path));
+
+  const cards = [
+    ["Status", result.status ?? "NA"],
+    ["Job ID", jobId || "NA"],
+    ["Message", result.message ?? "NA"],
+    ["Total Sequences", summary.total_sequences ?? "NA"],
+    ["Passed QC", summary.passed_qc ?? "NA"],
+    ["Failed QC", summary.failed_qc ?? "NA"],
+    ["Mean GC %", summary.mean_gc_percent ?? "NA"],
+    [
+      "Classification",
+      summary.classification_summary?.classified_sequences !== undefined
+        ? `${summary.classification_summary.classified_sequences} classified`
+        : "NA",
+    ],
+    [
+      "ORF5/GP5",
+      summary.prrsv_specialized_summary?.orf5_gp5_status ??
+        summary.prrsv_specialized_summary?.orf5_gp5_alias_found ??
+        "NA",
+    ],
+    [
+      "Mutations",
+      summary.mutation_summary?.total_substitutions !== undefined
+        ? `${summary.mutation_summary.total_substitutions} substitutions`
+        : "NA",
+    ],
+    ["Mismatch", summary.vaccine_mismatch_summary?.mean_mismatch_score ?? "NA"],
+    ["Fitness", summary.fitness_landscape_summary?.max_fitness_landscape_score ?? "NA"],
+    [
+      "ML",
+      summary.ml_model_summary?.ml_available === true
+        ? "available"
+        : summary.ml_model_summary?.reason ?? "not available",
+    ],
+    [
+      "QML",
+      summary.qml_summary?.qml_available === true
+        ? "available"
+        : summary.qml_summary?.reason ?? "not available",
+    ],
+    [
+      "Figures",
+      summary.figure_generation_summary?.generated_records !== undefined
+        ? `${summary.figure_generation_summary.generated_records} generated`
+        : "pending",
+    ],
+  ];
+
+  function LinkButton({ label, path }: { label: string; path: any }) {
+    const href = qigenexResultUrl(String(path));
+
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        download={qigenexDownloadName(String(path))}
+        className="rounded-xl border border-purple-300/20 bg-purple-400/10 px-4 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300 hover:bg-purple-400 hover:text-slate-950"
+      >
+        {label}
+      </a>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-2xl font-black text-purple-300">
+              QI-GeneX-N Results
+            </h4>
+            <p className={`mt-1 text-sm font-black uppercase tracking-[0.25em] ${qigenexStatusColor(result.status)}`}>
+              {result.status ?? "unknown"}
             </p>
           </div>
 
-          {result && (
-            <button
-              onClick={() => downloadJSON(result, "qigenex_n_results.json")}
-              className="rounded-xl bg-blue-500 px-4 py-2 font-black text-white hover:bg-blue-600"
+          {jobId && (
+            <a
+              href={qigenexResultUrl(`/results/${jobId}`)}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl bg-purple-400 px-4 py-3 text-sm font-black text-slate-950 hover:bg-white"
             >
-              Download QI-GeneX-N JSON
-            </button>
+              Open Backend Result Folder
+            </a>
           )}
         </div>
 
-        {!result ? (
-          <div className="rounded-2xl bg-slate-900 p-6 text-slate-300">
-            Run QI-GeneX-N to show sequence scores, QML score, mutation hotspots,
-            fitness landscape, predictive evolution, and visual summaries.
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {cards.map(([title, value]) => (
+            <div key={title} className="rounded-2xl bg-slate-900 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                {title}
+              </p>
+              <p className="mt-2 break-words text-sm font-bold text-white">
+                {String(value)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {zipOutputs.length > 0 && (
+        <div className="rounded-3xl border border-emerald-300/20 bg-emerald-400/5 p-5">
+          <h4 className="mb-4 text-xl font-black text-emerald-300">
+            One-click ZIP Downloads
+          </h4>
+          <div className="flex flex-wrap gap-3">
+            {zipOutputs.map(([label, path]) => (
+              <LinkButton key={label} label={label} path={path} />
+            ))}
           </div>
-        ) : (
-          <QigenexResults result={result} />
-        )}
-      </Panel>
-    </section>
+        </div>
+      )}
+
+      {reportOutputs.length > 0 && (
+        <div className="rounded-3xl border border-blue-300/20 bg-blue-400/5 p-5">
+          <h4 className="mb-4 text-xl font-black text-blue-300">
+            Reports, Captions, and Manifests
+          </h4>
+          <div className="flex flex-wrap gap-3">
+            {reportOutputs.map(([label, path]) => (
+              <LinkButton key={label} label={label} path={path} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {analysisOutputs.length > 0 && (
+        <div className="rounded-3xl border border-amber-300/20 bg-amber-400/5 p-5">
+          <h4 className="mb-4 text-xl font-black text-amber-300">
+            Analysis Tables
+          </h4>
+          <div className="flex flex-wrap gap-3">
+            {analysisOutputs.map(([label, path]) => (
+              <LinkButton key={label} label={label} path={path} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {figureOutputs.length > 0 && (
+        <div className="rounded-3xl border border-fuchsia-300/20 bg-fuchsia-400/5 p-5">
+          <h4 className="mb-4 text-xl font-black text-fuchsia-300">
+            Publication Figures
+          </h4>
+          <div className="flex flex-wrap gap-3">
+            {figureOutputs.map(([label, path]) => (
+              <LinkButton key={label} label={label} path={path} />
+            ))}
+          </div>
+          <p className="mt-4 text-sm leading-7 text-slate-400">
+            Figure outputs include PNG, SVG, and PDF formats, journal-style variants,
+            composite panels, captions, and manifests when figure generation is complete.
+          </p>
+        </div>
+      )}
+
+      <details className="rounded-3xl border border-white/10 bg-black p-5">
+        <summary className="cursor-pointer text-lg font-black text-purple-300">
+          Raw QI-GeneX-N JSON
+        </summary>
+        <pre className="mt-4 max-h-[520px] overflow-auto text-xs leading-6 text-slate-300">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </details>
+    </div>
   );
 }
 
@@ -2514,7 +2929,7 @@ function Readiness({ label, ready }: { label: string; ready: boolean }) {
   );
 }
 
-function QigenexResults({ result }: { result: any }) {
+function OldQigenexResults({ result }: { result: any }) {
   const sequenceResults = result?.qmlPrediction?.sequenceResults ?? [];
   const hotspots = result?.predictiveMutation?.topHotspots ?? [];
 
