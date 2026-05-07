@@ -208,11 +208,19 @@ const QIGENEX_PUBLIC_BACKEND =
 
 function qigenexResultUrl(path?: string) {
   if (!path) return "";
+
   if (path.startsWith("http")) return path;
-  if (!QIGENEX_PUBLIC_BACKEND) return path;
-  return `${QIGENEX_PUBLIC_BACKEND}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (!QIGENEX_PUBLIC_BACKEND) return cleanPath;
+
+  return `${QIGENEX_PUBLIC_BACKEND}${cleanPath}`;
 }
 
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `/api/qigenex?path=${encodeURIComponent(cleanPath)}`;
+}
 function qigenexDownloadName(path: string) {
   return path.split("/").pop() || "qigenex_result";
 }
@@ -2792,20 +2800,18 @@ function QigenexResultsDashboard({ result }: { result: any }) {
   ];
 
   function LinkButton({ label, path }: { label: string; path: any }) {
-    const href = qigenexResultUrl(String(path));
+  const href = qigenexResultUrl(String(path));
 
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        download={qigenexDownloadName(String(path))}
-        className="rounded-xl border border-purple-300/20 bg-purple-400/10 px-4 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300 hover:bg-purple-400 hover:text-slate-950"
-      >
-        {label}
-      </a>
-    );
-  }
+  return (
+    <a
+      href={href}
+      download={qigenexDownloadName(String(path))}
+      className="rounded-xl border border-purple-300/20 bg-purple-400/10 px-4 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300 hover:bg-purple-400 hover:text-slate-950"
+    >
+      {label}
+    </a>
+  );
+}
 
   return (
     <div className="space-y-6">

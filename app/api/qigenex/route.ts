@@ -50,6 +50,15 @@ function makeTextFile(text: string, filename: string, type = "text/plain") {
   return new File([text], filename, { type });
 }
 
+function safeFilename(path: string) {
+  const filename = path.split("/").pop() || "qigenex_result";
+  return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function isAllowedResultPath(path: string) {
+  return path.startsWith("/results/");
+}
+
 export async function GET(req: NextRequest) {
   try {
     const backendUrl = getBackendUrl();
@@ -59,6 +68,7 @@ export async function GET(req: NextRequest) {
         {
           status: "error",
           error: "QIGENEX_BACKEND_URL is not configured.",
+          fix: "Add QIGENEX_BACKEND_URL=http://34.67.1.205:8000 in Vercel environment variables, then redeploy.",
         },
         { status: 500 }
       );
@@ -68,17 +78,63 @@ export async function GET(req: NextRequest) {
     const jobId = searchParams.get("job_id");
     const resultPath = searchParams.get("path");
 
+    // Proxy file downloads through Next.js/Vercel.
+    // Example:
+    // /api/qigenex?path=/results/JOB_ID/qigenex_complete_results.zip
     if (resultPath) {
       const cleanPath = resultPath.startsWith("/") ? resultPath : `/${resultPath}`;
+
+      if (!isAllowedResultPath(cleanPath)) {
+        return NextResponse.json(
+          {
+            status: "error",
+            error: "Invalid result path. Only /results/... paths are allowed.",
+            path: cleanPath,
+          },
+          { status: 400 }
+        );
+      }
+
       const url = `${backendUrl}${cleanPath}`;
 
-      return NextResponse.json({
-        status: "ok",
-        url,
-        path: cleanPath,
+      const backendResponse = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!backendResponse.ok) {
+        return NextResponse.json(
+          {
+            status: "error",
+            error: "Failed to download backend result file.",
+            backendStatus: backendResponse.status,
+            path: cleanPath,
+            url,
+          },
+          { status: backendResponse.status }
+        );
+      }
+
+      const arrayBuffer = await backendResponse.arrayBuffer();
+      const filename = safeFilename(cleanPath);
+
+      const headers = new Headers();
+      headers.set(
+        "Content-Type",
+        backendResponse.headers.get("content-type") || "application/octet-stream"
+      );
+      headers.set("Content-Disposition", `attachment; filename="${filename}"`);
+      headers.set("Cache-Control", "no-store");
+
+      return new NextResponse(arrayBuffer, {
+        status: 200,
+        headers,
       });
     }
 
+    // Poll job status.
+    // Example:
+    // /api/qigenex?job_id=JOB_ID
     if (jobId) {
       const response = await fetch(`${backendUrl}/jobs/${jobId}`, {
         method: "GET",
@@ -117,6 +173,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Health check.
     return NextResponse.json({
       status: "running",
       route: "/api/qigenex",
@@ -126,7 +183,7 @@ export async function GET(req: NextRequest) {
       endpoints: {
         submit: "POST /api/qigenex",
         status: "GET /api/qigenex?job_id=JOB_ID",
-        resultUrl: "GET /api/qigenex?path=/results/JOB_ID/file",
+        download: "GET /api/qigenex?path=/results/JOB_ID/file",
       },
     });
   } catch (error) {
@@ -150,7 +207,7 @@ export async function POST(req: NextRequest) {
         {
           status: "error",
           error: "QIGENEX_BACKEND_URL is not configured.",
-          fix: "Add QIGENEX_BACKEND_URL=http://35.222.71.217:8000 in .env.local and Vercel environment variables.",
+          fix: "Add QIGENEX_BACKEND_URL=http://34.67.1.205:8000 in Vercel environment variables, then redeploy.",
         },
         { status: 500 }
       );
@@ -167,6 +224,8 @@ export async function POST(req: NextRequest) {
       requestedMode ? String(requestedMode) : modeFromAnalysisMode(analysisMode)
     );
 
+    // FASTA input mapping.
+    // FastAPI expects: fasta
     const fastaDirect = incoming.get("fasta");
     const fastaFile = incoming.get("fastaFile");
     const alignedFile = incoming.get("alignedFile");
@@ -193,12 +252,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           status: "error",
-          error: "No FASTA input found. Provide fasta, fastaFile, alignedFile, fastaText, or alignedText.",
+          error:
+            "No FASTA input found. Provide fasta, fastaFile, alignedFile, fastaText, or alignedText.",
         },
         { status: 400 }
       );
     }
 
+    // Metadata mapping.
+    // FastAPI expects: metadata
     const metadataDirect = incoming.get("metadata");
     const geoFile = incoming.get("geoFile");
     const animalFile = incoming.get("animalFile");
@@ -229,6 +291,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Backend analysis options.
     [
       "run_phylogeny",
       "run_ml",
@@ -290,9 +353,9 @@ export async function POST(req: NextRequest) {
         details: error instanceof Error ? error.message : String(error),
         fix: [
           "Confirm Google Cloud backend is running.",
-          "Open http://35.222.71.217:8000/ in browser.",
-          "Check .env.local contains QIGENEX_BACKEND_URL=http://35.222.71.217:8000.",
-          "Restart npm run dev after editing .env.local.",
+          "Open http://34.67.1.205:8000/ in browser.",
+          "Check Vercel has QIGENEX_BACKEND_URL=http://34.67.1.205:8000.",
+          "Redeploy after editing Vercel environment variables.",
         ],
       },
       { status: 500 }
