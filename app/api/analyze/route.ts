@@ -49,6 +49,7 @@ type StatisticalTestRequest = {
   pairedColumnB: string;
   oneSampleMean: number;
   alpha: number;
+  rawGroupColumn?: string;
 };
 
 function safeNumber(value: any, fallback = 0): number {
@@ -329,7 +330,21 @@ function parseCSV(text: string): RawRow[] {
 async function rowsFromFormFile(formData: FormData, field = "file"): Promise<RawRow[]> {
   const file = formData.get(field);
   if (!file || typeof file === "string") return [];
-  const text = await file.text();
+
+  const maybeFile = file as File;
+  const fileName = safeText((maybeFile as any).name).toLowerCase();
+
+  if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+    const loadXlsx = new Function("moduleName", "return import(moduleName)") as (moduleName: string) => Promise<any>;
+    const XLSX = await loadXlsx("xlsx");
+    const buffer = await maybeFile.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    return XLSX.utils.sheet_to_json(sheet) as RawRow[];
+  }
+
+  const text = await maybeFile.text();
   return parseCSV(text);
 }
 
@@ -523,6 +538,140 @@ function leveneTest(rows: RawRow[], valueColumn: string, groupColumn: string) {
     .filter((r) => groupMedians.has(String(r[groupColumn])) && Number.isFinite(Number(r[valueColumn])))
     .map((r) => ({ ...r, __levene_abs_dev: Math.abs(Number(r[valueColumn]) - Number(groupMedians.get(String(r[groupColumn])))) }));
   return { ...oneWayANOVA(transformed, "__levene_abs_dev", groupColumn), test: "Levene test for equality of variances", originalValueColumn: valueColumn };
+}
+
+
+function nestedModelFTest(reduced: any, full: any, label: string) {
+  if (!reduced || !full || reduced.sse === undefined || full.sse === undefined) {
+    return { effect: label, fStatistic: null, df1: null, df2: null, pValue: null, message: "Model comparison could not be calculated." };
+  }
+
+  const df1 = Number(reduced.dfResidual) - Number(full.dfResidual);
+  const df2 = Number(full.dfResidual);
+  const sseReduced = Number(reduced.sse);
+  const sseFull = Number(full.sse);
+
+  if (!Number.isFinite(df1) || !Number.isFinite(df2) || df1 <= 0 || df2 <= 0 || sseReduced < sseFull) {
+    return { effect: label, fStatistic: null, df1, df2, pValue: null, message: "Nested model comparison is not valid for this dataset/design." };
+  }
+
+  const fStatistic = ((sseReduced - sseFull) / df1) / (sseFull / df2);
+  return { effect: label, fStatistic, df1, df2, pValue: fPValue(fStatistic, df1, df2) };
+}
+
+function twoWayANOVA(rows: RawRow[], valueColumn: string, factorA: string, factorB: string) {
+  if (!factorA || !factorB || factorA === factorB) {
+    return {
+      test: "Two-way ANOVA",
+      valueColumn,
+      factorA,
+      factorB,
+      pValue: null,
+      message: "Two-way ANOVA requires two different factor columns. In the page, enter them as Group / factor column = factorA,factorB.",
+    };
+  }
+
+  const usable = rows
+    .filter((r) => !isMissing(r[factorA]) && !isMissing(r[factorB]) && Number.isFinite(Number(r[valueColumn])))
+    .map((r) => ({ ...r, __interaction_factor: `${String(r[factorA])} × ${String(r[factorB])}` }));
+
+  if (usable.length < 6 || uniqueValues(usable, factorA).length < 2 || uniqueValues(usable, factorB).length < 2) {
+    return {
+      test: "Two-way ANOVA",
+      valueColumn,
+      factorA,
+      factorB,
+      pValue: null,
+      message: "Two-way ANOVA requires at least two levels in each factor and sufficient complete observations.",
+    };
+  }
+
+  const interceptOnlyRows = usable.map((r) => ({ ...r, __intercept_only: 1 }));
+  const modelA = linearRegression(interceptOnlyRows, valueColumn, [factorA]);
+  const modelAB = linearRegression(interceptOnlyRows, valueColumn, [factorA, factorB]);
+  const modelFull = linearRegression(interceptOnlyRows, valueColumn, [factorA, factorB, "__interaction_factor"]);
+  const nullModel = linearRegression(interceptOnlyRows, valueColumn, ["__intercept_only"]);
+
+  const effects = [
+    nestedModelFTest(nullModel, modelA, factorA),
+    nestedModelFTest(modelA, modelAB, factorB),
+    nestedModelFTest(modelAB, modelFull, `${factorA}:${factorB}`),
+  ];
+
+  return {
+    test: "Two-way ANOVA",
+    method: "Sequential nested-model ANOVA using dummy-coded factors and interaction term",
+    valueColumn,
+    factorA,
+    factorB,
+    n: usable.length,
+    factorALevels: uniqueValues(usable, factorA),
+    factorBLevels: uniqueValues(usable, factorB),
+    effects,
+    pValue: effects.map((e: any) => e.pValue).filter((p: any) => Number.isFinite(p)).sort((a: number, b: number) => a - b)[0] ?? null,
+    fullModel: modelFull,
+  };
+}
+
+function repeatedMeasuresFromWideColumns(rows: RawRow[], valueColumns: string[], alpha: number) {
+  const numericCols = valueColumns.filter((c) => isNumericColumn(rows, c));
+  if (numericCols.length < 2) {
+    return {
+      test: "Repeated-measures ANOVA",
+      pValue: null,
+      message: "Repeated-measures analysis requires at least two numeric repeated-measure columns.",
+    };
+  }
+
+  const complete = rows.filter((r) => numericCols.every((c) => Number.isFinite(Number(r[c]))));
+  const n = complete.length;
+  const k = numericCols.length;
+
+  if (n < 2 || k < 2) {
+    return {
+      test: "Repeated-measures ANOVA",
+      pValue: null,
+      message: "Insufficient complete repeated-measures rows.",
+    };
+  }
+
+  const matrix = complete.map((r) => numericCols.map((c) => Number(r[c])));
+  const allValues = matrix.flat();
+  const grandMean = mean(allValues);
+  if (grandMean === null) {
+    return { test: "Repeated-measures ANOVA", pValue: null, message: "No numeric repeated-measures values." };
+  }
+
+  const subjectMeans = matrix.map((row) => Number(mean(row)));
+  const conditionMeans = numericCols.map((_, j) => Number(mean(matrix.map((row) => row[j]))));
+  const ssTotal = sum(allValues.map((v) => (v - grandMean) ** 2));
+  const ssSubjects = k * sum(subjectMeans.map((m) => (m - grandMean) ** 2));
+  const ssConditions = n * sum(conditionMeans.map((m) => (m - grandMean) ** 2));
+  const ssError = ssTotal - ssSubjects - ssConditions;
+  const dfConditions = k - 1;
+  const dfError = (n - 1) * (k - 1);
+  const msConditions = ssConditions / dfConditions;
+  const msError = ssError / dfError;
+  const fStatistic = msError > 0 ? msConditions / msError : null;
+
+  return {
+    test: "Repeated-measures ANOVA",
+    method: "One-factor repeated-measures ANOVA from wide repeated-measure columns",
+    valueColumns: numericCols,
+    nSubjects: n,
+    conditions: k,
+    conditionMeans: numericCols.map((c, i) => ({ condition: c, mean: conditionMeans[i] })),
+    ssTotal,
+    ssSubjects,
+    ssConditions,
+    ssError,
+    dfConditions,
+    dfError,
+    fStatistic,
+    pValue: fStatistic === null ? null : fPValue(fStatistic, dfConditions, dfError),
+    etaSquaredPartial: ssConditions / (ssConditions + ssError),
+    significant: fStatistic === null ? false : (fPValue(fStatistic, dfConditions, dfError) ?? 1) < alpha,
+  };
 }
 
 function mannWhitneyU(rows: RawRow[], valueColumn: string, groupColumn: string) {
@@ -871,7 +1020,7 @@ function getStatRequest(formData: FormData, rows: RawRow[]): StatisticalTestRequ
   return {
     tests: parseList(formData.get("tests")).length ? parseList(formData.get("tests")) : ["descriptive", "normality", "correlation", "t_test", "anova", "chi_square", "regression"],
     valueColumns: parseList(formData.get("valueColumns")).length ? parseList(formData.get("valueColumns")) : numericColumns.slice(0, 6),
-    groupColumn: safeText(formData.get("groupColumn"), categoricalColumns[0] ?? ""),
+    groupColumn: parseList(formData.get("groupColumn"))[0] ?? safeText(formData.get("groupColumn"), categoricalColumns[0] ?? ""),
     outcomeColumn: safeText(formData.get("outcomeColumn"), categoricalColumns[0] ?? numericColumns[0] ?? ""),
     predictorColumns: parseList(formData.get("predictorColumns")).length ? parseList(formData.get("predictorColumns")) : columns.filter((c) => c !== (categoricalColumns[0] ?? numericColumns[0])).slice(0, 8),
     subjectColumn: safeText(formData.get("subjectColumn"), ""),
@@ -879,6 +1028,7 @@ function getStatRequest(formData: FormData, rows: RawRow[]): StatisticalTestRequ
     pairedColumnB: safeText(formData.get("pairedColumnB"), numericColumns[1] ?? ""),
     oneSampleMean: safeNumber(formData.get("oneSampleMean"), 0),
     alpha: safeNumber(formData.get("alpha"), 0.05),
+    rawGroupColumn: safeText(formData.get("groupColumn")),
   };
 }
 
@@ -888,6 +1038,8 @@ function analyzeStatistics(rows: RawRow[], request: StatisticalTestRequest) {
   const categoricalColumns = profile.columnNames.filter((c) => !isNumericColumn(rows, c));
   const tests = new Set(request.tests.map((t) => t.toLowerCase().replace(/[\s-]+/g, "_")));
   const valueColumns = request.valueColumns.filter((c) => numericColumns.includes(c));
+  const rawGroupFactors = parseList((request as any).rawGroupColumn ?? null);
+  const groupFactors = rawGroupFactors.length >= 2 ? rawGroupFactors : [request.groupColumn, categoricalColumns.find((c) => c !== request.groupColumn) ?? ""].filter(Boolean);
   const results: any = {
     request,
     dataset: profile,
@@ -919,6 +1071,12 @@ function analyzeStatistics(rows: RawRow[], request: StatisticalTestRequest) {
   }
   if (tests.has("anova") || tests.has("one_way_anova")) {
     results.tests.anova = valueColumns.map((col) => oneWayANOVA(rows, col, request.groupColumn));
+  }
+  if (tests.has("two_way_anova")) {
+    results.tests.twoWayAnova = valueColumns.map((col) => twoWayANOVA(rows, col, groupFactors[0] ?? "", groupFactors[1] ?? ""));
+  }
+  if (tests.has("repeated_measures_anova")) {
+    results.tests.repeatedMeasuresAnova = repeatedMeasuresFromWideColumns(rows, valueColumns, request.alpha);
   }
   if (tests.has("welch_anova")) {
     results.tests.welchAnova = valueColumns.map((col) => welchANOVA(rows, col, request.groupColumn));
@@ -955,12 +1113,33 @@ function analyzeStatistics(rows: RawRow[], request: StatisticalTestRequest) {
       results.regression.logistic = results.multivariable;
     }
   }
+  const flattenedInferentialTests = [
+    ...(results.tests.normality ?? []),
+    ...(results.tests.tTests ?? []),
+    ...(results.tests.oneSampleTTests ?? []),
+    ...(results.tests.anova ?? []),
+    ...(results.tests.twoWayAnova ?? []),
+    ...(results.tests.welchAnova ?? []),
+    ...(results.tests.levene ?? []),
+    ...(results.tests.mannWhitney ?? []),
+    ...(results.tests.kruskalWallis ?? []),
+    ...(results.tests.chiSquareAndFisher ?? []),
+    ...(Array.isArray(results.tests.pairedTTest) ? results.tests.pairedTTest : results.tests.pairedTTest ? [results.tests.pairedTTest] : []),
+    ...(Array.isArray(results.tests.repeatedMeasuresAnova) ? results.tests.repeatedMeasuresAnova : results.tests.repeatedMeasuresAnova ? [results.tests.repeatedMeasuresAnova] : []),
+  ];
+
+  results.inferentialTests = flattenedInferentialTests;
+  results.inferential = flattenedInferentialTests;
+  results.correlations = results.tests.correlations ?? [];
+  results.correlationMatrix = results.tests.correlations ?? [];
+
   results.visualization = {
     variableCards: profile.variableProfile,
     numericSummaryBars: valueColumns.map((col) => ({ variable: col, mean: mean(numericVector(rows, col)), sd: sd(numericVector(rows, col)) })),
     pValueSummary: [
       ...(results.tests.tTests ?? []),
       ...(results.tests.anova ?? []),
+      ...(results.tests.twoWayAnova ?? []),
       ...(results.tests.welchAnova ?? []),
       ...(results.tests.mannWhitney ?? []),
       ...(results.tests.kruskalWallis ?? []),
