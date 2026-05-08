@@ -309,9 +309,9 @@ export default function Tools() {
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
   const [log, setLog] = useState<string[]>([
-    "> Hello I'm Nahiduzzaman, the developer of this tool inviting you to take some coffee with me.",
+    "> Tools page ready.",
     "> EGStat-N initialized.",
-    "> QI-GeneX-N ready: Google Cloud + PyTorch + Qiskit quantum circuit.",
+    "> QI-GeneX-N ready.",
   ]);
 
   const [setup, setSetup] = useState({
@@ -998,88 +998,97 @@ export default function Tools() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-20 text-white">
-      <section className="mx-auto max-w-7xl">
-        <div className="mb-12 text-center">
-          <p className="mb-3 text-sm font-black uppercase tracking-[0.3em] text-cyan-300">
-            Research Tools
-          </p>
+    <main className="min-h-screen overflow-hidden bg-slate-950 px-6 py-16 text-white">
+      <section className="relative mx-auto max-w-7xl">
+        <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute -right-24 top-32 h-80 w-80 rounded-full bg-purple-500/20 blur-3xl" />
 
-          <h1 className="mb-6 text-5xl font-black">EGStat-N</h1>
-
-          <p className="mx-auto max-w-4xl text-lg leading-8 text-slate-300">
-            Epidemiological Graphics and Statistics Tool for Networks —
-            transmission dynamics, interactive heatmap mapping, risk-factor
-            analysis, network analysis, and evolutionary analysis for animal,
-            spatial, genomic, and circumstantial evidence.
-          </p>
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-cyan-300/20 bg-white/[0.06] p-8 shadow-2xl backdrop-blur-xl">
-            <p className="mb-3 text-sm font-black uppercase tracking-[0.3em] text-cyan-300">
-              Existing Tool
-            </p>
-
-            <h2 className="mb-4 text-3xl font-black text-cyan-300">
-              EGStat-N
-            </h2>
-
-            <p className="mb-6 leading-8 text-slate-300">
-              Epidemiological Graphics and Statistics Tool for Networks —
-              transmission dynamics, interactive heatmap mapping, risk-factor
-              analysis, statistics, network movement analysis, and evolutionary
-              evidence integration.
-            </p>
-
-            <div className="mb-6 grid gap-3 text-sm font-semibold text-slate-300">
-              <div className="rounded-xl bg-white/5 p-3">Multi-farm SEIR Transmission</div>
-              <div className="rounded-xl bg-white/5 p-3">Interactive Heatmap + Satellite View</div>
-              <div className="rounded-xl bg-white/5 p-3">Risk Factor and Statistics</div>
-              <div className="rounded-xl bg-white/5 p-3">Network Movement + Evolutionary Evidence</div>
+        <div className="relative mb-10 rounded-[2rem] border border-white/10 bg-white/[0.05] p-8 shadow-2xl backdrop-blur-xl md:p-10">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="mb-3 text-sm font-black uppercase tracking-[0.35em] text-cyan-300">
+                Research workspace
+              </p>
+              <h1 className="text-5xl font-black tracking-tight md:text-7xl">
+                Tools
+              </h1>
+              <p className="mt-5 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
+                Select a tool, upload or enter data, run analysis, visualize results, and download outputs from one clean dashboard.
+              </p>
             </div>
 
-            <button
-              onClick={() => setOpen(true)}
-              className="rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white"
-            >
-              Open EGStat-N
-            </button>
-          </div>
-
-          <div className="rounded-[2rem] border border-purple-300/20 bg-purple-500/[0.08] p-8 shadow-2xl backdrop-blur-xl">
-            <p className="mb-3 text-sm font-black uppercase tracking-[0.3em] text-purple-300">
-              Google Cloud Powered
-            </p>
-
-            <h2 className="mb-4 text-3xl font-black text-purple-300">
-              QI-GeneX-N
-            </h2>
-
-            <p className="mb-6 leading-8 text-slate-300">
-              Quantum-Inspired Gene Evolution and Fitness Prediction Network
-              powered by Google Cloud, PyTorch, and Qiskit quantum circuits.
-              Analyze sequences, aligned genomes, mutation hotspots, antigenic
-              drift/shift, vaccine escape, fitness landscape, geospatial
-              context, animal-level metadata, and predictive evolution.
-            </p>
-
-            <div className="mb-6 grid gap-3 text-sm font-semibold text-slate-300">
-              <div className="rounded-xl bg-white/5 p-3">Sequence upload, paste, and aligned sequence input</div>
-              <div className="rounded-xl bg-white/5 p-3">Antigenic drift/shift + mutation prediction</div>
-              <div className="rounded-xl bg-white/5 p-3">Vaccine escape using vaccine strain sequence</div>
-              <div className="rounded-xl bg-white/5 p-3">Geospatial + animal-level metadata suggestions</div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => setOpen(true)}
+                className="rounded-2xl bg-cyan-400 px-6 py-4 font-black text-slate-950 shadow-lg shadow-cyan-400/20 transition hover:-translate-y-1 hover:bg-white"
+              >
+                Open EGStat-N
+              </button>
+              <button
+                onClick={() => setQigenexOpen(true)}
+                className="rounded-2xl bg-purple-400 px-6 py-4 font-black text-slate-950 shadow-lg shadow-purple-400/20 transition hover:-translate-y-1 hover:bg-white"
+              >
+                Open QI-GeneX-N
+              </button>
             </div>
-
-            <button
-              onClick={() => setQigenexOpen(true)}
-              className="rounded-2xl bg-purple-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white"
-            >
-              Open QI-GeneX-N
-            </button>
           </div>
         </div>
 
+        <div className="relative grid gap-6 lg:grid-cols-2">
+          <button
+            onClick={() => setOpen(true)}
+            className="group rounded-[2rem] border border-cyan-300/20 bg-gradient-to-br from-cyan-400/15 via-white/[0.06] to-slate-950 p-7 text-left shadow-2xl backdrop-blur-xl transition hover:-translate-y-2 hover:border-cyan-300/60"
+          >
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div className="rounded-2xl bg-cyan-400 px-4 py-2 text-sm font-black text-slate-950">
+                Epidemiology
+              </div>
+              <span className="rounded-full border border-cyan-300/30 px-4 py-2 text-sm font-black text-cyan-200 group-hover:bg-cyan-400 group-hover:text-slate-950">
+                Launch →
+              </span>
+            </div>
+            <h2 className="text-4xl font-black text-cyan-200">EGStat-N</h2>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {[
+                "SEIR transmission",
+                "Interactive heatmap",
+                "Risk analysis",
+                "Network + evolution",
+              ].map((item) => (
+                <div key={item} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-slate-200">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </button>
+
+          <button
+            onClick={() => setQigenexOpen(true)}
+            className="group rounded-[2rem] border border-purple-300/20 bg-gradient-to-br from-purple-500/20 via-white/[0.06] to-slate-950 p-7 text-left shadow-2xl backdrop-blur-xl transition hover:-translate-y-2 hover:border-purple-300/60"
+          >
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div className="rounded-2xl bg-purple-400 px-4 py-2 text-sm font-black text-slate-950">
+                Genomics
+              </div>
+              <span className="rounded-full border border-purple-300/30 px-4 py-2 text-sm font-black text-purple-200 group-hover:bg-purple-400 group-hover:text-slate-950">
+                Launch →
+              </span>
+            </div>
+            <h2 className="text-4xl font-black text-purple-200">QI-GeneX-N</h2>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {[
+                "FASTA input",
+                "Mutation profile",
+                "Vaccine mismatch",
+                "Reports + figures",
+              ].map((item) => (
+                <div key={item} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-slate-200">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </button>
+        </div>
       </section>
 
       {open && (
@@ -1094,7 +1103,7 @@ export default function Tools() {
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div>
                 <h2 className="text-2xl font-black text-cyan-300">
-                  EGStat-N Analysis Window
+                  EGStat-N
                 </h2>
                 <p className="text-sm text-slate-400">
                   Transmission • Heatmap • Risk • Statistics • Network • Evolutionary
@@ -1183,7 +1192,6 @@ export default function Tools() {
                   farmSummary={farmSummary}
                   downloadJSON={downloadJSON}
                   downloadCSV={downloadCSV}
-                  log={log}
                 />
               )}
 
@@ -1279,10 +1287,10 @@ export default function Tools() {
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div>
                 <h2 className="text-2xl font-black text-purple-300">
-                  QI-GeneX-N Analysis Window
+                  QI-GeneX-N
                 </h2>
                 <p className="text-sm text-slate-400">
-                  Google Cloud • PyTorch • Qiskit quantum circuit • genome evolution prediction
+                  Sequence analysis • mutation profile • reports
                 </p>
               </div>
 
@@ -1468,13 +1476,13 @@ function TransmissionSection(props: any) {
       </div>
 
       {tStep === "farm" && (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Panel className="lg:col-span-2">
+        <div className="grid gap-6">
+          <Panel>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-2xl font-black text-cyan-300">Create New Farm</h3>
                 <p className="text-sm text-slate-400">
-                  RBPT is removed. Confirmatory Diagnosis is automatically treated as I.
+                  Confirmatory Diagnosis is automatically treated as I.
                 </p>
               </div>
 
@@ -1486,10 +1494,6 @@ function TransmissionSection(props: any) {
               </button>
             </div>
 
-            <div className="mb-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4 text-sm leading-7 text-slate-300">
-              Initial rule: Culled=0, Quarantined=0, Pending_Quarantined=max(0, I - Pending_Culled),
-              and S=N-(E+I+R). Lat/lon are saved for the heatmap.
-            </div>
 
             <div className="grid gap-4 md:grid-cols-3">
               {Object.entries(setup).map(([key, value]: any) => (
@@ -1542,14 +1546,12 @@ function TransmissionSection(props: any) {
               </div>
             )}
           </Panel>
-
-          <Console log={log} />
         </div>
       )}
 
       {tStep === "observe" && (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Panel className="lg:col-span-2">
+        <div className="grid gap-6">
+          <Panel>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-2xl font-black text-cyan-300">Add Farm-wise Observation</h3>
@@ -1650,8 +1652,6 @@ function TransmissionSection(props: any) {
               </button>
             </div>
           </Panel>
-
-          <Console log={log} />
         </div>
       )}
 
@@ -1663,7 +1663,7 @@ function TransmissionSection(props: any) {
                 Farm-wise Observation Table
               </h3>
               <p className="text-sm text-slate-400">
-                RBPT removed. Only I and Confirmatory Diagnosis are shown.
+                Only I and Confirmatory Diagnosis are shown.
               </p>
             </div>
 
@@ -1708,8 +1708,8 @@ function TransmissionSection(props: any) {
       )}
 
       {tStep === "analysis" && (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Panel className="lg:col-span-2">
+        <div className="grid gap-6">
+          <Panel>
             <div className="mb-5 flex flex-wrap justify-between gap-3">
               <h3 className="text-2xl font-black text-cyan-300">
                 Overall SEIR Dynamics
@@ -1775,8 +1775,6 @@ function TransmissionSection(props: any) {
               </p>
             )}
           </Panel>
-
-          <Console log={log} />
         </div>
       )}
 
@@ -2328,56 +2326,56 @@ function QigenexSection(props: any) {
     {
       id: "complete",
       title: "Full analysis",
-      subtitle: "Best for complete results, figures, reports, and downloads.",
+      subtitle: "Complete workflow.",
       accent: "border-purple-300/40 bg-purple-400/10 text-purple-100",
       chips: ["QC", "genes", "mutations", "figures", "ZIP"],
     },
     {
       id: "mutation",
       title: "Mutation profile",
-      subtitle: "Find substitutions, indels, mutation burden, and ranked changes.",
+      subtitle: "Variants and hotspots.",
       accent: "border-rose-300/40 bg-rose-400/10 text-rose-100",
       chips: ["variants", "indels", "hotspots"],
     },
     {
       id: "vaccine_escape",
       title: "Vaccine mismatch",
-      subtitle: "Compare sequence divergence and GP5-related mismatch signals.",
+      subtitle: "Mismatch screening.",
       accent: "border-amber-300/40 bg-amber-400/10 text-amber-100",
       chips: ["GP5", "mismatch", "screening"],
     },
     {
       id: "fitness",
       title: "Fitness landscape",
-      subtitle: "Estimate strain expansion signal and feature contributions.",
+      subtitle: "Expansion score.",
       accent: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100",
       chips: ["fitness", "expansion", "3D plot"],
     },
     {
       id: "phylogeny",
       title: "Relationship analysis",
-      subtitle: "Build tree, distance heatmap, PCA, and network views when multiple sequences are provided.",
+      subtitle: "Tree and distance views.",
       accent: "border-blue-300/40 bg-blue-400/10 text-blue-100",
       chips: ["tree", "PCA", "network"],
     },
     {
       id: "geo_spatiotemporal",
       title: "Map and timeline",
-      subtitle: "Use dates and coordinates to create map-ready and timeline-ready outputs.",
+      subtitle: "Map and timeline outputs.",
       accent: "border-lime-300/40 bg-lime-400/10 text-lime-100",
       chips: ["map", "timeline", "region"],
     },
     {
       id: "visualization",
       title: "Figures only",
-      subtitle: "Generate publication-style PNG, SVG, and PDF figure sets.",
+      subtitle: "Figure export.",
       accent: "border-fuchsia-300/40 bg-fuchsia-400/10 text-fuchsia-100",
       chips: ["PNG", "SVG", "PDF"],
     },
     {
       id: "report_package",
       title: "Report package",
-      subtitle: "Create report, key findings, manifests, and downloadable archives.",
+      subtitle: "Report downloads.",
       accent: "border-slate-300/40 bg-white/10 text-slate-100",
       chips: ["report", "tables", "downloads"],
     },
@@ -2402,11 +2400,8 @@ function QigenexSection(props: any) {
               QI-GeneX-N
             </p>
             <h3 className="text-3xl font-black text-purple-100">
-              Select analysis option, then run
+              Select, upload, run, download
             </h3>
-            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">
-              Upload FASTA data, add metadata when available, and download reports, figures, and result packages after completion.
-            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -2429,7 +2424,6 @@ function QigenexSection(props: any) {
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h4 className="text-2xl font-black text-purple-300">Analysis option</h4>
-              <p className="mt-1 text-sm text-slate-400">Pick one focused workflow.</p>
             </div>
             <select
               value={analysisMode}
@@ -2648,7 +2642,7 @@ function QigenexSection(props: any) {
           <div>
             <h4 className="text-2xl font-black text-purple-300">Run</h4>
             <p className="mt-1 text-sm text-slate-400">
-              {hasSequence ? "Ready to submit." : "Add a FASTA sequence first."}
+              {hasSequence ? "Ready." : "FASTA required."}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -2674,7 +2668,6 @@ function QigenexSection(props: any) {
       <Panel>
         <div className="mb-5">
           <h4 className="text-2xl font-black text-purple-300">Results</h4>
-          <p className="mt-1 text-sm text-slate-400">Live status, output links, figures, reports, and downloads.</p>
         </div>
         <QigenexResultsDashboard result={result} />
       </Panel>
