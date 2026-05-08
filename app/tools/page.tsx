@@ -439,7 +439,7 @@ export default function Tools() {
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
   const [log, setLog] = useState<string[]>([
-    "> Tools page ready.",
+    "> Hello! I'm Nahiduzzaman, A prospected member of Dr. Kimberly VanderWaal's Lab (UMN) and the developer of this tool. Thank you using my tool :).",
     "> EGStat-N initialized.",
     "> QI-GeneX-N ready.",
   ]);
