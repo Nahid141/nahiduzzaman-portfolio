@@ -152,6 +152,40 @@ async function readSpreadsheetLikeFile(file: File): Promise<Record<string, any>[
   return XLSX.utils.sheet_to_json(sheet) as Record<string, any>[];
 }
 
+function tableColumns(rows: Record<string, any>[]) {
+  const cols: string[] = [];
+
+  rows.forEach((row) => {
+    Object.keys(row ?? {}).forEach((key) => {
+      if (!cols.includes(key)) cols.push(key);
+    });
+  });
+
+  return cols;
+}
+
+function csvFromGenericRows(rows: Record<string, any>[]) {
+  const headers = tableColumns(rows);
+  const escape = (value: any) => {
+    const raw = String(value ?? "");
+    return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+  };
+
+  return [headers.join(","), ...rows.map((row) => headers.map((h) => escape(row[h])).join(","))].join("\n");
+}
+
+function rowsAsUploadFile(rows: Record<string, any>[], fallbackName: string) {
+  const csv = csvFromGenericRows(rows);
+  return new File([csv], fallbackName, { type: "text/csv;charset=utf-8" });
+}
+
+function numericColumnNames(rows: Record<string, any>[]) {
+  return tableColumns(rows).filter((column) => {
+    const values = rows.map((row) => row[column]).filter((value) => value !== "" && value !== null && value !== undefined);
+    return values.length > 0 && values.every((value) => Number.isFinite(Number(value)));
+  });
+}
+
 function normalizeExcelNetworkRows(rows: Record<string, any>[]): NetworkEdge[] {
   return rows
     .map((r, i) => ({
@@ -249,6 +283,7 @@ export default function Tools() {
   const [riskPredictors, setRiskPredictors] = useState("");
   const [riskThreshold, setRiskThreshold] = useState("0.2");
   const [riskResult, setRiskResult] = useState<any>(null);
+  const [riskRows, setRiskRows] = useState<Record<string, any>[]>([]);
 
   const [statsFile, setStatsFile] = useState<File | null>(null);
   const [statsFileName, setStatsFileName] = useState("");
@@ -257,6 +292,7 @@ export default function Tools() {
   const [statsValueColumns, setStatsValueColumns] = useState("");
   const [statsTests, setStatsTests] = useState("descriptive,t_test,paired_t_test,anova,welch_anova,chi_square,correlation,normality,kruskal_wallis,mann_whitney,linear_regression");
   const [statsAlpha, setStatsAlpha] = useState("0.05");
+  const [statsRows, setStatsRows] = useState<Record<string, any>[]>([]);
 
   const [networkSource, setNetworkSource] = useState<"manual" | "import">("manual");
   const [networkEdges, setNetworkEdges] = useState<NetworkEdge[]>([]);
@@ -329,7 +365,7 @@ export default function Tools() {
     Pending_Culled: "0",
   });
 
-  const farmIds = Array.from(new Set(farms.map((r) => r.Farm_ID)));
+  const farmIds: string[] = Array.from(new Set(farms.map((r) => r.Farm_ID)));
 
   const selectedRows = farms
     .filter((r) => r.Farm_ID === selectedFarmId)
@@ -609,15 +645,15 @@ export default function Tools() {
   }
 
   async function runRiskAnalysis() {
-    if (!riskFile || !riskOutcome || !riskPredictors) {
-      pushLog(["> ERROR: Risk file, outcome, and predictors are required."]);
+    if ((!riskFile && riskRows.length === 0) || !riskOutcome || !riskPredictors) {
+      pushLog(["> ERROR: Upload/view data first, then select dependent and independent variables."]);
       return;
     }
 
     const formData = new FormData();
 
     formData.append("module", "risk");
-    formData.append("file", riskFile);
+    formData.append("file", riskRows.length > 0 ? rowsAsUploadFile(riskRows, riskFileName || "egstat_n_risk_live_data.csv") : riskFile!);
     formData.append("outcome", riskOutcome);
     formData.append("predictors", riskPredictors);
     formData.append("threshold", riskThreshold);
@@ -635,19 +671,22 @@ export default function Tools() {
     }
 
     setRiskResult(data);
-    pushLog(["> Risk-factor analysis completed."]);
+    pushLog([
+      "> Risk-factor analysis completed from the current live-edited table.",
+      `> Dependent variable=${riskOutcome}; independent variables=${riskPredictors}.`,
+    ]);
   }
 
   async function runStatistics() {
-    if (!statsFile) {
-      pushLog(["> ERROR: Upload a statistics CSV file first."]);
+    if (!statsFile && statsRows.length === 0) {
+      pushLog(["> ERROR: Upload/view a statistics dataset first."]);
       return;
     }
 
     const formData = new FormData();
 
     formData.append("module", "statistics");
-    formData.append("file", statsFile);
+    formData.append("file", statsRows.length > 0 ? rowsAsUploadFile(statsRows, statsFileName || "egstat_n_statistics_live_data.csv") : statsFile!);
     formData.append("groupColumn", statsGroupColumn);
     formData.append("valueColumns", statsValueColumns);
     formData.append("tests", statsTests);
@@ -666,7 +705,10 @@ export default function Tools() {
     }
 
     setStatsResult(data);
-    pushLog(["> Statistical summary completed."]);
+    pushLog([
+      "> Statistical analysis completed from the current live-edited table.",
+      `> Group/factor=${statsGroupColumn || "auto"}; value columns=${statsValueColumns || "auto numeric"}.`,
+    ]);
   }
 
   async function importNetworkFile(file: File) {
@@ -1132,9 +1174,12 @@ export default function Tools() {
                   setRiskPredictors={setRiskPredictors}
                   riskThreshold={riskThreshold}
                   setRiskThreshold={setRiskThreshold}
+                  riskRows={riskRows}
+                  setRiskRows={setRiskRows}
                   riskResult={riskResult}
                   runRiskAnalysis={runRiskAnalysis}
                   downloadJSON={downloadJSON}
+                  downloadCSV={downloadCSV}
                 />
               )}
 
@@ -1152,8 +1197,11 @@ export default function Tools() {
                   setStatsTests={setStatsTests}
                   statsAlpha={statsAlpha}
                   setStatsAlpha={setStatsAlpha}
+                  statsRows={statsRows}
+                  setStatsRows={setStatsRows}
                   runStatistics={runStatistics}
                   downloadJSON={downloadJSON}
+                  downloadCSV={downloadCSV}
                 />
               )}
 
@@ -1716,6 +1764,218 @@ function TransmissionSection(props: any) {
   );
 }
 
+function VariablePicker({
+  label,
+  value,
+  onChange,
+  columns,
+  placeholder = "Click to select variable",
+  multiple = false,
+  helper,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  columns: string[];
+  placeholder?: string;
+  multiple?: boolean;
+  helper?: string;
+}) {
+  const selected = String(value || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  function toggleColumn(column: string) {
+    if (!multiple) {
+      onChange(column);
+      return;
+    }
+
+    const next = new Set(selected);
+    if (next.has(column)) next.delete(column);
+    else next.add(column);
+    onChange(Array.from(next).join(","));
+  }
+
+  return (
+    <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4">
+      <label className="mb-2 block text-xs font-black uppercase tracking-[0.25em] text-cyan-200">
+        {label}
+      </label>
+
+      <select
+        value={multiple ? "" : value}
+        onChange={(e) => {
+          if (!e.target.value) return;
+          toggleColumn(e.target.value);
+        }}
+        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-3 font-bold text-white outline-none focus:border-cyan-300"
+      >
+        <option value="">{placeholder}</option>
+        {columns.map((column) => (
+          <option key={column} value={column}>
+            {column}
+          </option>
+        ))}
+      </select>
+
+      {helper && <p className="mt-2 text-xs leading-5 text-slate-400">{helper}</p>}
+
+      {selected.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {selected.map((column) => (
+            <button
+              key={column}
+              type="button"
+              onClick={() => toggleColumn(column)}
+              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-black text-cyan-100 hover:bg-red-500 hover:text-white"
+            >
+              {column} ×
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditableDataGrid({
+  title,
+  rows,
+  setRows,
+  selectedColumns = [],
+  maxRows = 200,
+}: {
+  title: string;
+  rows: Record<string, any>[];
+  setRows: (rows: Record<string, any>[]) => void;
+  selectedColumns?: string[];
+  maxRows?: number;
+}) {
+  const columns = tableColumns(rows);
+  const visibleRows = rows.slice(0, maxRows);
+  const selected = new Set(selectedColumns.filter(Boolean));
+
+  function updateCell(rowIndex: number, column: string, value: string) {
+    setRows(
+      rows.map((row, i) =>
+        i === rowIndex
+          ? {
+              ...row,
+              [column]: value,
+            }
+          : row
+      )
+    );
+  }
+
+  function addEmptyRow() {
+    const next: Record<string, any> = {};
+    columns.forEach((column) => {
+      next[column] = "";
+    });
+    setRows([...rows, next]);
+  }
+
+  function removeRow(index: number) {
+    setRows(rows.filter((_, i) => i !== index));
+  }
+
+  function addColumn() {
+    const name = window.prompt("New column name");
+    if (!name?.trim()) return;
+    const clean = name.trim();
+    if (columns.includes(clean)) return;
+    setRows(rows.length > 0 ? rows.map((row) => ({ ...row, [clean]: "" })) : [{ [clean]: "" }]);
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-3xl border border-dashed border-white/15 bg-slate-900/70 p-6 text-slate-300">
+        Upload a CSV/XLSX file to preview and edit the {title.toLowerCase()} table live.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-lg font-black text-cyan-200">{title}</h4>
+          <p className="text-xs text-slate-400">
+            Live editable table. Edit any cell before running analysis. Showing {visibleRows.length} of {rows.length} rows.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={addEmptyRow}
+            className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-black text-slate-950 hover:bg-white"
+          >
+            + Row
+          </button>
+          <button
+            onClick={addColumn}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm font-black hover:border-cyan-300 hover:text-cyan-300"
+          >
+            + Column
+          </button>
+        </div>
+      </div>
+
+      <div className="max-h-[560px] overflow-auto rounded-2xl border border-white/10">
+        <table className="min-w-full border-collapse text-left text-xs">
+          <thead className="sticky top-0 z-10 bg-slate-900">
+            <tr>
+              <th className="border-b border-white/10 px-3 py-3 font-black text-slate-400">#</th>
+              {columns.map((column) => (
+                <th
+                  key={column}
+                  className={`border-b border-white/10 px-3 py-3 font-black ${
+                    selected.has(column) ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"
+                  }`}
+                >
+                  {column}
+                </th>
+              ))}
+              <th className="border-b border-white/10 px-3 py-3 font-black text-slate-400">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="odd:bg-white/[0.03] hover:bg-cyan-300/5">
+                <td className="border-b border-white/5 px-3 py-2 text-slate-500">{rowIndex + 1}</td>
+                {columns.map((column) => (
+                  <td key={column} className="border-b border-white/5 p-1 align-top">
+                    <input
+                      value={String(row[column] ?? "")}
+                      onChange={(e) => updateCell(rowIndex, column, e.target.value)}
+                      className={`min-w-[140px] rounded-lg border px-2 py-2 outline-none ${
+                        selected.has(column)
+                          ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-50"
+                          : "border-white/10 bg-black/30 text-slate-100 focus:border-cyan-300"
+                      }`}
+                    />
+                  </td>
+                ))}
+                <td className="border-b border-white/5 p-1">
+                  <button
+                    onClick={() => removeRow(rowIndex)}
+                    className="rounded-lg bg-red-500/80 px-3 py-2 font-black text-white hover:bg-red-600"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function RiskSection(props: any) {
   const {
     riskFileName,
@@ -1727,69 +1987,130 @@ function RiskSection(props: any) {
     setRiskPredictors,
     riskThreshold,
     setRiskThreshold,
+    riskRows,
+    setRiskRows,
     riskResult,
     runRiskAnalysis,
     downloadJSON,
+    downloadCSV,
   } = props;
 
+  const columns = tableColumns(riskRows ?? []);
+  const selectedColumns = [riskOutcome, ...String(riskPredictors || "").split(",").map((x) => x.trim())].filter(Boolean);
+
+  async function handleRiskFile(file: File | null) {
+    setRiskFile(file);
+    setRiskFileName(file?.name || "");
+    if (!file) {
+      setRiskRows([]);
+      return;
+    }
+
+    const rows = await readSpreadsheetLikeFile(file);
+    setRiskRows(rows);
+  }
+
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <Panel>
-        <h3 className="mb-4 text-2xl font-black text-cyan-300">
+    <div className="grid gap-6 xl:grid-cols-12">
+      <Panel className="xl:col-span-4">
+        <h3 className="mb-2 text-2xl font-black text-cyan-300">
           Risk Factor Analysis
         </h3>
+        <p className="mb-4 text-sm leading-6 text-slate-400">
+          Upload data, inspect it, edit values live, then click the two empty variable fields to choose the dependent and independent variables.
+        </p>
 
         <input
           type="file"
-          accept=".csv"
-          onChange={(e) => {
-            const f = e.target.files?.[0] || null;
-            setRiskFile(f);
-            setRiskFileName(f?.name || "");
-          }}
+          accept=".csv,.xlsx,.xls"
+          onChange={(e) => handleRiskFile(e.target.files?.[0] || null)}
           className="block w-full rounded-xl border border-white/10 bg-slate-900 p-3"
         />
 
         {riskFileName && <p className="mt-2 text-sm text-cyan-300">Loaded: {riskFileName}</p>}
 
         <div className="mt-5 grid gap-4">
-          <Input label="Outcome variable" value={riskOutcome} onChange={setRiskOutcome} />
-          <Input label="Predictors comma-separated" value={riskPredictors} onChange={setRiskPredictors} />
+          <VariablePicker
+            label="Dependent variable / outcome"
+            value={riskOutcome}
+            onChange={setRiskOutcome}
+            columns={columns}
+            placeholder="Select dependent variable"
+            helper="This should usually be binary for odds ratio/logistic regression, such as Positive/Negative or 1/0."
+          />
+
+          <VariablePicker
+            label="Independent variable(s) / predictors"
+            value={riskPredictors}
+            onChange={setRiskPredictors}
+            columns={columns.filter((c) => c !== riskOutcome)}
+            placeholder="Select independent variable"
+            multiple
+            helper="Select one or more predictors. Click a selected chip to remove it."
+          />
+
           <Input label="Selection threshold" value={riskThreshold} onChange={setRiskThreshold} />
         </div>
 
-        <button
-          onClick={runRiskAnalysis}
-          className="mt-6 w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
-        >
-          Run Risk Analysis
-        </button>
-
-        {riskResult && (
+        <div className="mt-6 grid gap-3">
           <button
-            onClick={() => downloadJSON(riskResult, "egstat_n_risk_analysis.json")}
-            className="mt-4 w-full rounded-2xl bg-blue-500 px-5 py-3 font-black text-white hover:bg-blue-600"
+            onClick={runRiskAnalysis}
+            className="w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
           >
-            Download JSON
+            Run Risk Analysis on Edited Data
           </button>
-        )}
+
+          {riskRows?.length > 0 && (
+            <button
+              onClick={() => downloadCSV(csvFromGenericRows(riskRows), "egstat_n_risk_live_edited_data.csv")}
+              className="w-full rounded-2xl border border-white/10 px-5 py-3 font-black hover:border-cyan-300 hover:text-cyan-300"
+            >
+              Download Edited Data CSV
+            </button>
+          )}
+
+          {riskResult && (
+            <button
+              onClick={() => downloadJSON(riskResult, "egstat_n_risk_analysis.json")}
+              className="w-full rounded-2xl bg-blue-500 px-5 py-3 font-black text-white hover:bg-blue-600"
+            >
+              Download Result JSON
+            </button>
+          )}
+        </div>
       </Panel>
 
-      <Panel className="lg:col-span-2">
+      <Panel className="xl:col-span-8">
+        <div className="mb-5 grid gap-4 md:grid-cols-4">
+          <ResultCard title="Rows" value={String(riskRows?.length ?? 0)} />
+          <ResultCard title="Columns" value={String(columns.length)} />
+          <ResultCard title="Dependent" value={riskOutcome || "Not selected"} />
+          <ResultCard title="Predictors" value={riskPredictors || "Not selected"} />
+        </div>
+
+        <EditableDataGrid
+          title="Risk Dataset Preview and Live Editor"
+          rows={riskRows ?? []}
+          setRows={setRiskRows}
+          selectedColumns={selectedColumns}
+        />
+      </Panel>
+
+      <Panel className="xl:col-span-12">
         <h3 className="mb-4 text-2xl font-black text-cyan-300">Risk Results</h3>
 
         {riskResult ? (
           <>
             <div className="grid gap-4 md:grid-cols-4">
-              <ResultCard title="Predictors" value={String(riskResult.risk.summary.totalPredictors)} />
-              <ResultCard title="p < 0.05" value={String(riskResult.risk.summary.significantAt005)} />
-              <ResultCard title="Selected" value={String(riskResult.risk.summary.selectedForMultivariable)} />
-              <ResultCard title="Strongest" value={riskResult.risk.summary.strongestPredictor?.variable ?? "NA"} />
+              <ResultCard title="Predictors" value={String(riskResult.risk?.summary?.totalPredictors ?? 0)} />
+              <ResultCard title="p < 0.05" value={String(riskResult.risk?.summary?.significantAt005 ?? 0)} />
+              <ResultCard title="Selected" value={String(riskResult.risk?.summary?.selectedForMultivariable ?? 0)} />
+              <ResultCard title="Strongest" value={riskResult.risk?.summary?.strongestPredictor?.variable ?? "NA"} />
             </div>
 
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
-              <RankingBars title="p-value Ranking" data={riskResult.risk.visualization?.pValueBars ?? []} labelKey="variable" valueKey="pValue" inverse />
-              <RiskForestPlot data={riskResult.risk.visualization?.forestData ?? []} />
+              <RankingBars title="p-value Ranking" data={riskResult.risk?.visualization?.pValueBars ?? []} labelKey="variable" valueKey="pValue" inverse />
+              <RiskForestPlot data={riskResult.risk?.visualization?.forestData ?? []} />
             </div>
 
             <pre className="mt-6 max-h-96 overflow-auto rounded-2xl bg-black p-5 text-sm text-slate-300">
@@ -1798,7 +2119,7 @@ function RiskSection(props: any) {
           </>
         ) : (
           <p className="rounded-2xl bg-slate-900 p-6 text-slate-300">
-            Upload CSV and run analysis.
+            Upload data, select variables, optionally edit cells, then run analysis.
           </p>
         )}
       </Panel>
@@ -1820,8 +2141,11 @@ function StatisticsSection(props: any) {
     setStatsTests,
     statsAlpha,
     setStatsAlpha,
+    statsRows,
+    setStatsRows,
     runStatistics,
     downloadJSON,
+    downloadCSV,
   } = props;
 
   const availableTests = [
@@ -1843,7 +2167,12 @@ function StatisticsSection(props: any) {
     { key: "logistic_regression", label: "Logistic regression" },
   ];
 
+  const columns = tableColumns(statsRows ?? []);
+  const numericColumns = numericColumnNames(statsRows ?? []);
   const selectedTests = new Set(String(statsTests || "").split(",").map((x) => x.trim()).filter(Boolean));
+  const selectedColumns = [statsGroupColumn, ...String(statsValueColumns || "").split(",").map((x) => x.trim())].filter(Boolean);
+  const inferential = statsResult?.statistics?.inferentialTests ?? statsResult?.statistics?.tests ?? statsResult?.statistics?.inferential ?? [];
+  const correlations = statsResult?.statistics?.correlationMatrix ?? statsResult?.statistics?.correlations ?? [];
 
   function toggleTest(key: string) {
     const next = new Set(selectedTests);
@@ -1852,8 +2181,26 @@ function StatisticsSection(props: any) {
     setStatsTests(Array.from(next).join(","));
   }
 
-  const inferential = statsResult?.statistics?.inferentialTests ?? statsResult?.statistics?.tests ?? statsResult?.statistics?.inferential ?? [];
-  const correlations = statsResult?.statistics?.correlationMatrix ?? statsResult?.statistics?.correlations ?? [];
+  async function handleStatsFile(file: File | null) {
+    setStatsFile(file);
+    setStatsFileName(file?.name || "");
+
+    if (!file) {
+      setStatsRows([]);
+      return;
+    }
+
+    const rows = await readSpreadsheetLikeFile(file);
+    setStatsRows(rows);
+
+    const cols = tableColumns(rows);
+    const nums = numericColumnNames(rows);
+    if (!statsGroupColumn && cols.length > 0) {
+      const possibleGroup = cols.find((column) => !nums.includes(column));
+      if (possibleGroup) setStatsGroupColumn(possibleGroup);
+    }
+    if (!statsValueColumns && nums.length > 0) setStatsValueColumns(nums.slice(0, 3).join(","));
+  }
 
   return (
     <div className="grid gap-6 xl:grid-cols-12">
@@ -1861,136 +2208,154 @@ function StatisticsSection(props: any) {
         <h3 className="mb-2 text-2xl font-black text-cyan-300">
           Advanced Statistics
         </h3>
-        <p className="mb-5 text-sm leading-7 text-slate-400">
-          Upload a CSV, choose variables, then request descriptive, t-test, ANOVA, non-parametric, correlation, and regression outputs from the backend.
+        <p className="mb-4 text-sm leading-6 text-slate-400">
+          Upload data, view and edit it live, then use the empty selection fields to choose group/factor and outcome/value columns.
         </p>
 
         <input
           type="file"
           accept=".csv,.xlsx,.xls"
-          onChange={(e) => {
-            const f = e.target.files?.[0] || null;
-            setStatsFile(f);
-            setStatsFileName(f?.name || "");
-          }}
+          onChange={(e) => handleStatsFile(e.target.files?.[0] || null)}
           className="block w-full rounded-xl border border-white/10 bg-slate-900 p-3"
         />
 
         {statsFileName && <p className="mt-2 text-sm text-cyan-300">Loaded: {statsFileName}</p>}
 
         <div className="mt-5 grid gap-4">
-          <Input label="Group / factor column" value={statsGroupColumn} onChange={setStatsGroupColumn} />
-          <Input label="Numeric value columns, comma-separated" value={statsValueColumns} onChange={setStatsValueColumns} />
-          <Input label="Alpha / significance level" value={statsAlpha} onChange={setStatsAlpha} />
+          <VariablePicker
+            label="Group / factor column"
+            value={statsGroupColumn}
+            onChange={setStatsGroupColumn}
+            columns={columns}
+            placeholder="Select group/factor column"
+            helper="For two-way ANOVA, select one factor here and add the second factor manually as Factor1,Factor2 if your backend expects two factors."
+          />
+
+          <VariablePicker
+            label="Outcome / value column(s)"
+            value={statsValueColumns}
+            onChange={setStatsValueColumns}
+            columns={numericColumns.length > 0 ? numericColumns : columns}
+            placeholder="Select outcome/value column"
+            multiple
+            helper="Select one or more numeric columns for t-tests, ANOVA, correlation, and regression."
+          />
+
+          <Input label="Alpha" value={statsAlpha} onChange={setStatsAlpha} />
         </div>
 
-        <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="font-black text-cyan-300">Select analyses</h4>
-            <button
-              onClick={() => setStatsTests(availableTests.map((t) => t.key).join(","))}
-              className="rounded-lg border border-white/10 px-3 py-1 text-xs font-black hover:border-cyan-300"
-            >
-              Select all
-            </button>
-          </div>
-
+        <div className="mt-5 rounded-2xl border border-white/10 bg-slate-900 p-4">
+          <p className="mb-3 text-sm font-black text-cyan-300">Choose tests</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {availableTests.map((test) => (
-              <label
+              <button
                 key={test.key}
-                className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                type="button"
+                onClick={() => toggleTest(test.key)}
+                className={`rounded-xl px-3 py-2 text-left text-xs font-black transition ${
                   selectedTests.has(test.key)
-                    ? "border-cyan-300 bg-cyan-300/15 text-cyan-100"
-                    : "border-white/10 bg-slate-900 text-slate-300"
+                    ? "bg-cyan-400 text-slate-950"
+                    : "border border-white/10 bg-black/20 text-slate-300 hover:border-cyan-300"
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={selectedTests.has(test.key)}
-                  onChange={() => toggleTest(test.key)}
-                />
                 {test.label}
-              </label>
+              </button>
             ))}
           </div>
         </div>
 
-        <button
-          onClick={runStatistics}
-          className="mt-6 w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
-        >
-          Run Advanced Statistical Analysis
-        </button>
-
-        {statsResult && (
+        <div className="mt-6 grid gap-3">
           <button
-            onClick={() => downloadJSON(statsResult, "egstat_n_advanced_statistics.json")}
-            className="mt-4 w-full rounded-2xl bg-blue-500 px-5 py-3 font-black text-white hover:bg-blue-600"
+            onClick={runStatistics}
+            className="w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
           >
-            Download JSON
+            Run Statistics on Edited Data
           </button>
-        )}
+
+          {statsRows?.length > 0 && (
+            <button
+              onClick={() => downloadCSV(csvFromGenericRows(statsRows), "egstat_n_statistics_live_edited_data.csv")}
+              className="w-full rounded-2xl border border-white/10 px-5 py-3 font-black hover:border-cyan-300 hover:text-cyan-300"
+            >
+              Download Edited Data CSV
+            </button>
+          )}
+
+          {statsResult && (
+            <button
+              onClick={() => downloadJSON(statsResult, "egstat_n_statistics.json")}
+              className="w-full rounded-2xl bg-blue-500 px-5 py-3 font-black text-white hover:bg-blue-600"
+            >
+              Download Result JSON
+            </button>
+          )}
+        </div>
       </Panel>
 
       <Panel className="xl:col-span-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-2xl font-black text-cyan-300">Statistical Results</h3>
-            <p className="text-sm text-slate-400">Descriptive summaries plus inferential-test cards when returned by the API.</p>
-          </div>
-          <div className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-xs font-black text-cyan-200">
-            α = {statsAlpha || "0.05"}
-          </div>
+        <div className="mb-5 grid gap-4 md:grid-cols-4">
+          <ResultCard title="Rows" value={String(statsRows?.length ?? 0)} />
+          <ResultCard title="Columns" value={String(columns.length)} />
+          <ResultCard title="Group" value={statsGroupColumn || "Not selected"} />
+          <ResultCard title="Values" value={statsValueColumns || "Not selected"} />
         </div>
+
+        <EditableDataGrid
+          title="Statistics Dataset Preview and Live Editor"
+          rows={statsRows ?? []}
+          setRows={setStatsRows}
+          selectedColumns={selectedColumns}
+        />
+      </Panel>
+
+      <Panel className="xl:col-span-12">
+        <h3 className="mb-4 text-2xl font-black text-cyan-300">Statistical Results</h3>
 
         {statsResult ? (
           <>
             <div className="grid gap-4 md:grid-cols-4">
-              <ResultCard title="Rows" value={String(statsResult.statistics.dataset.rows)} />
-              <ResultCard title="Columns" value={String(statsResult.statistics.dataset.columns)} />
-              <ResultCard title="Numeric Variables" value={String(statsResult.statistics.numericColumns.length)} />
-              <ResultCard title="Tests Requested" value={String(selectedTests.size)} />
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {Array.isArray(inferential) && inferential.length > 0 ? (
-                inferential.slice(0, 12).map((test: any, i: number) => (
-                  <div key={i} className="rounded-2xl border border-white/10 bg-slate-900 p-4">
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <h4 className="font-black text-cyan-200">{test.test ?? test.name ?? test.method ?? `Test ${i + 1}`}</h4>
-                      <span className={`rounded-full px-2 py-1 text-xs font-black ${Number(test.pValue ?? test.p_value ?? 1) <= Number(statsAlpha || 0.05) ? "bg-emerald-400/20 text-emerald-200" : "bg-slate-700 text-slate-200"}`}>
-                        p={valueText(test.pValue ?? test.p_value, 4)}
-                      </span>
-                    </div>
-                    <div className="grid gap-2 text-sm text-slate-300">
-                      <p>Statistic: <b>{valueText(test.statistic ?? test.fStatistic ?? test.tStatistic ?? test.chiSquare, 4)}</b></p>
-                      <p>DF: <b>{valueText(test.df ?? test.degreesOfFreedom, 2)}</b></p>
-                      <p>Effect: <b>{valueText(test.effectSize ?? test.etaSquared ?? test.cohensD ?? test.r, 4)}</b></p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4 text-sm text-slate-300 md:col-span-2 xl:col-span-3">
-                  No inferential-test array was returned yet. The frontend already sends requested tests as <code className="text-cyan-200">tests</code>, <code className="text-cyan-200">groupColumn</code>, <code className="text-cyan-200">valueColumns</code>, and <code className="text-cyan-200">alpha</code> for backend support.
-                </div>
-              )}
+              <ResultCard title="Rows" value={String(statsResult.statistics?.dataset?.rows ?? statsRows.length)} />
+              <ResultCard title="Numeric columns" value={String(statsResult.statistics?.numericColumns?.length ?? numericColumns.length)} />
+              <ResultCard title="Tests returned" value={String(inferential.length)} />
+              <ResultCard title="Correlations" value={String(correlations.length)} />
             </div>
 
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
-              <div>
-                <h4 className="mb-3 text-lg font-black text-cyan-300">Descriptive Statistics</h4>
-                <StatsTable rows={statsResult.statistics.descriptiveStatistics ?? []} />
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                <h4 className="mb-3 text-lg font-black text-cyan-300">Correlation / Extra Outputs</h4>
-                {Array.isArray(correlations) && correlations.length > 0 ? (
-                  <pre className="max-h-80 overflow-auto rounded-xl bg-black p-4 text-xs text-slate-300">{JSON.stringify(correlations, null, 2)}</pre>
-                ) : (
-                  <p className="rounded-xl bg-slate-900 p-4 text-sm text-slate-300">Correlation, model, or assumption-test outputs will appear here when returned by the backend.</p>
-                )}
-              </div>
+              <RankingBars
+                title="Mean Summary"
+                data={statsResult.statistics?.visualization?.numericSummaryBars ?? []}
+                labelKey="variable"
+                valueKey="mean"
+              />
+              <CorrelationHeatmap data={correlations} />
             </div>
+
+            {inferential.length > 0 && (
+              <div className="mt-6 overflow-auto rounded-2xl border border-white/10">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-900 text-xs uppercase tracking-wider text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3">Test</th>
+                      <th className="px-4 py-3">Variable</th>
+                      <th className="px-4 py-3">Statistic</th>
+                      <th className="px-4 py-3">p-value</th>
+                      <th className="px-4 py-3">Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inferential.slice(0, 80).map((test: any, index: number) => (
+                      <tr key={index} className="border-t border-white/5 odd:bg-white/[0.03]">
+                        <td className="px-4 py-3 font-bold text-cyan-100">{test.test ?? test.method ?? "NA"}</td>
+                        <td className="px-4 py-3 text-slate-300">{test.variable ?? test.valueColumn ?? test.outcome ?? test.x ?? "NA"}</td>
+                        <td className="px-4 py-3 text-slate-300">{valueText(test.statistic ?? test.tStatistic ?? test.fStatistic ?? test.chiSquare ?? test.zStatistic ?? test.rho ?? test.r, 4)}</td>
+                        <td className="px-4 py-3 text-slate-300">{valueText(test.pValue, 6)}</td>
+                        <td className="px-4 py-3 text-slate-300">{test.significance ?? test.interpretation ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             <pre className="mt-6 max-h-96 overflow-auto rounded-2xl bg-black p-5 text-sm text-slate-300">
               {JSON.stringify(statsResult.statistics, null, 2)}
@@ -1998,10 +2363,53 @@ function StatisticsSection(props: any) {
           </>
         ) : (
           <p className="rounded-2xl bg-slate-900 p-6 text-slate-300">
-            Upload CSV and run advanced statistical analysis.
+            Upload data, select group/value columns, optionally edit cells, select tests, then run analysis.
           </p>
         )}
       </Panel>
+    </div>
+  );
+}
+
+
+function CorrelationHeatmap({ data }: { data: any[] }) {
+  const clean = (data ?? []).filter((item) => Number.isFinite(Number(item.correlation ?? item.r ?? item.rho)));
+
+  if (clean.length === 0) {
+    return (
+      <div className="rounded-3xl border border-white/10 bg-slate-900 p-5 text-slate-300">
+        No correlation matrix available yet.
+      </div>
+    );
+  }
+
+  const maxAbs = Math.max(...clean.map((item) => Math.abs(Number(item.correlation ?? item.r ?? item.rho))), 0.01);
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
+      <h4 className="mb-4 text-lg font-black text-cyan-300">Correlation Matrix</h4>
+      <div className="grid max-h-96 gap-2 overflow-auto sm:grid-cols-2 xl:grid-cols-3">
+        {clean.slice(0, 90).map((item, index) => {
+          const r = Number(item.correlation ?? item.r ?? item.rho);
+          const intensity = Math.min(1, Math.abs(r) / maxAbs);
+          return (
+            <div key={index} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="truncate text-xs font-black text-slate-300">
+                  {item.x ?? item.variableX ?? item.var1 ?? "X"} ↔ {item.y ?? item.variableY ?? item.var2 ?? "Y"}
+                </p>
+                <span className="text-sm font-black text-cyan-200">{r.toFixed(3)}</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                <div className="h-full rounded-full bg-cyan-300" style={{ width: `${Math.max(6, intensity * 100)}%` }} />
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">
+                {r >= 0 ? "Positive" : "Negative"} association
+              </p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
