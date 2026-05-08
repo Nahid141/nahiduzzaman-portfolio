@@ -5,7 +5,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 
 // ---------- Data ----------
 const researchStats = {
-  citations: 12,
+  citations: 14,
   hIndex: 2,
   i10Index: 0,
   q1: 60,

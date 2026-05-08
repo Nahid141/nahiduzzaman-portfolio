@@ -186,6 +186,92 @@ function numericColumnNames(rows: Record<string, any>[]) {
   });
 }
 
+function categoricalColumnNames(rows: Record<string, any>[]) {
+  const numeric = new Set(numericColumnNames(rows));
+  return tableColumns(rows).filter((column) => !numeric.has(column));
+}
+
+function uniqueColumnValues(rows: Record<string, any>[], column: string, limit = 50) {
+  if (!column) return [];
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => row[column])
+        .filter((value) => value !== "" && value !== null && value !== undefined)
+        .map((value) => String(value))
+    )
+  ).slice(0, limit);
+}
+
+function shortValue(value: any, digits = 4) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "NA";
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(digits);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function flattenForTable(value: any, prefix = ""): Record<string, any> {
+  if (value === null || value === undefined) return { [prefix || "value"]: value };
+  if (typeof value !== "object") return { [prefix || "value"]: value };
+  if (Array.isArray(value)) return { [prefix || "items"]: value.length };
+
+  const out: Record<string, any> = {};
+  Object.entries(value).forEach(([key, val]) => {
+    const nextKey = prefix ? `${prefix}.${key}` : key;
+    if (val === null || val === undefined || typeof val !== "object") {
+      out[nextKey] = val;
+    } else if (Array.isArray(val)) {
+      out[nextKey] = val.length;
+    } else {
+      Object.assign(out, flattenForTable(val, nextKey));
+    }
+  });
+  return out;
+}
+
+function resultTableSources(result: any) {
+  const sources: { label: string; rows: Record<string, any>[] }[] = [];
+
+  function visit(node: any, path: string) {
+    if (!node || typeof node !== "object") return;
+
+    if (Array.isArray(node)) {
+      if (node.length > 0 && node.some((item) => item && typeof item === "object")) {
+        sources.push({
+          label: `${path} (${node.length})`,
+          rows: node.map((item, index) => ({ row: index + 1, ...flattenForTable(item) })),
+        });
+      }
+      return;
+    }
+
+    Object.entries(node).forEach(([key, val]) => {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (Array.isArray(val)) {
+        if (val.length > 0 && val.some((item) => item && typeof item === "object")) {
+          sources.push({
+            label: `${nextPath} (${val.length})`,
+            rows: val.map((item, index) => ({ row: index + 1, ...flattenForTable(item) })),
+          });
+        }
+      } else if (val && typeof val === "object") {
+        visit(val, nextPath);
+      }
+    });
+  }
+
+  visit(result, "result");
+
+  const seen = new Set<string>();
+  return sources.filter((source) => {
+    const key = source.label;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function normalizeExcelNetworkRows(rows: Record<string, any>[]): NetworkEdge[] {
   return rows
     .map((r, i) => ({
@@ -282,6 +368,7 @@ export default function Tools() {
   const [riskOutcome, setRiskOutcome] = useState("");
   const [riskPredictors, setRiskPredictors] = useState("");
   const [riskThreshold, setRiskThreshold] = useState("0.2");
+  const [riskClarification, setRiskClarification] = useState("");
   const [riskResult, setRiskResult] = useState<any>(null);
   const [riskRows, setRiskRows] = useState<Record<string, any>[]>([]);
 
@@ -292,6 +379,24 @@ export default function Tools() {
   const [statsValueColumns, setStatsValueColumns] = useState("");
   const [statsTests, setStatsTests] = useState("descriptive,t_test,paired_t_test,anova,welch_anova,chi_square,correlation,normality,kruskal_wallis,mann_whitney,linear_regression");
   const [statsAlpha, setStatsAlpha] = useState("0.05");
+  const [statsTTestValueColumn, setStatsTTestValueColumn] = useState("");
+  const [statsTTestGroupColumn, setStatsTTestGroupColumn] = useState("");
+  const [statsTTestGroupA, setStatsTTestGroupA] = useState("");
+  const [statsTTestGroupB, setStatsTTestGroupB] = useState("");
+  const [statsPairedColumnA, setStatsPairedColumnA] = useState("");
+  const [statsPairedColumnB, setStatsPairedColumnB] = useState("");
+  const [statsOneSampleMean, setStatsOneSampleMean] = useState("0");
+  const [statsOutcomeColumn, setStatsOutcomeColumn] = useState("");
+  const [statsPredictorColumns, setStatsPredictorColumns] = useState("");
+  const [statsSubjectColumn, setStatsSubjectColumn] = useState("");
+  const [statsAnovaValueColumn, setStatsAnovaValueColumn] = useState("");
+  const [statsAnovaFactorColumns, setStatsAnovaFactorColumns] = useState("");
+  const [statsAnovaPrimaryFactor, setStatsAnovaPrimaryFactor] = useState("");
+  const [statsAnovaSecondaryFactor, setStatsAnovaSecondaryFactor] = useState("");
+  const [statsDataClarification, setStatsDataClarification] = useState("");
+  const [statsTTestClarification, setStatsTTestClarification] = useState("");
+  const [statsAnovaClarification, setStatsAnovaClarification] = useState("");
+  const [statsRegressionClarification, setStatsRegressionClarification] = useState("");
   const [statsRows, setStatsRows] = useState<Record<string, any>[]>([]);
 
   const [networkSource, setNetworkSource] = useState<"manual" | "import">("manual");
@@ -334,7 +439,7 @@ export default function Tools() {
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
   const [log, setLog] = useState<string[]>([
-    "> Hello! I'm Nahiduzzaman, the Developer of this tool. Thank you for using my tool.",
+    "> Tools page ready.",
     "> EGStat-N initialized.",
     "> QI-GeneX-N ready.",
   ]);
@@ -657,6 +762,11 @@ export default function Tools() {
     formData.append("outcome", riskOutcome);
     formData.append("predictors", riskPredictors);
     formData.append("threshold", riskThreshold);
+    formData.append("outcomeColumn", riskOutcome);
+    formData.append("predictorColumns", riskPredictors);
+    formData.append("dataClarification", riskClarification);
+    formData.append("outcomeClarification", riskClarification);
+    formData.append("predictorClarification", riskClarification);
 
     const response = await fetch("/api/analyze", {
       method: "POST",
@@ -691,6 +801,26 @@ export default function Tools() {
     formData.append("valueColumns", statsValueColumns);
     formData.append("tests", statsTests);
     formData.append("alpha", statsAlpha);
+    formData.append("tTestValueColumn", statsTTestValueColumn || statsValueColumns.split(",")[0] || "");
+    formData.append("tTestGroupColumn", statsTTestGroupColumn || statsGroupColumn);
+    formData.append("tTestGroupA", statsTTestGroupA);
+    formData.append("tTestGroupB", statsTTestGroupB);
+    formData.append("pairedColumnA", statsPairedColumnA);
+    formData.append("pairedColumnB", statsPairedColumnB);
+    formData.append("oneSampleMean", statsOneSampleMean);
+    formData.append("outcomeColumn", statsOutcomeColumn || statsValueColumns.split(",")[0] || "");
+    formData.append("predictorColumns", statsPredictorColumns);
+    formData.append("subjectColumn", statsSubjectColumn);
+    formData.append("anovaValueColumn", statsAnovaValueColumn || statsValueColumns.split(",")[0] || "");
+    formData.append("anovaFactorColumns", statsAnovaFactorColumns || statsGroupColumn);
+    formData.append("anovaPrimaryFactor", statsAnovaPrimaryFactor || statsGroupColumn.split(",")[0] || "");
+    formData.append("anovaSecondaryFactor", statsAnovaSecondaryFactor || statsGroupColumn.split(",")[1] || "");
+    formData.append("dataClarification", statsDataClarification);
+    formData.append("fieldClarifications", statsDataClarification);
+    formData.append("testClarifications", [statsTTestClarification, statsAnovaClarification, statsRegressionClarification].filter(Boolean).join(" | "));
+    formData.append("groupClarification", statsDataClarification);
+    formData.append("anovaClarification", statsAnovaClarification);
+    formData.append("tTestClarification", statsTTestClarification);
 
     const response = await fetch("/api/analyze", {
       method: "POST",
@@ -1174,6 +1304,8 @@ export default function Tools() {
                   setRiskPredictors={setRiskPredictors}
                   riskThreshold={riskThreshold}
                   setRiskThreshold={setRiskThreshold}
+                  riskClarification={riskClarification}
+                  setRiskClarification={setRiskClarification}
                   riskRows={riskRows}
                   setRiskRows={setRiskRows}
                   riskResult={riskResult}
@@ -1197,6 +1329,42 @@ export default function Tools() {
                   setStatsTests={setStatsTests}
                   statsAlpha={statsAlpha}
                   setStatsAlpha={setStatsAlpha}
+                  statsTTestValueColumn={statsTTestValueColumn}
+                  setStatsTTestValueColumn={setStatsTTestValueColumn}
+                  statsTTestGroupColumn={statsTTestGroupColumn}
+                  setStatsTTestGroupColumn={setStatsTTestGroupColumn}
+                  statsTTestGroupA={statsTTestGroupA}
+                  setStatsTTestGroupA={setStatsTTestGroupA}
+                  statsTTestGroupB={statsTTestGroupB}
+                  setStatsTTestGroupB={setStatsTTestGroupB}
+                  statsPairedColumnA={statsPairedColumnA}
+                  setStatsPairedColumnA={setStatsPairedColumnA}
+                  statsPairedColumnB={statsPairedColumnB}
+                  setStatsPairedColumnB={setStatsPairedColumnB}
+                  statsOneSampleMean={statsOneSampleMean}
+                  setStatsOneSampleMean={setStatsOneSampleMean}
+                  statsOutcomeColumn={statsOutcomeColumn}
+                  setStatsOutcomeColumn={setStatsOutcomeColumn}
+                  statsPredictorColumns={statsPredictorColumns}
+                  setStatsPredictorColumns={setStatsPredictorColumns}
+                  statsSubjectColumn={statsSubjectColumn}
+                  setStatsSubjectColumn={setStatsSubjectColumn}
+                  statsAnovaValueColumn={statsAnovaValueColumn}
+                  setStatsAnovaValueColumn={setStatsAnovaValueColumn}
+                  statsAnovaFactorColumns={statsAnovaFactorColumns}
+                  setStatsAnovaFactorColumns={setStatsAnovaFactorColumns}
+                  statsAnovaPrimaryFactor={statsAnovaPrimaryFactor}
+                  setStatsAnovaPrimaryFactor={setStatsAnovaPrimaryFactor}
+                  statsAnovaSecondaryFactor={statsAnovaSecondaryFactor}
+                  setStatsAnovaSecondaryFactor={setStatsAnovaSecondaryFactor}
+                  statsDataClarification={statsDataClarification}
+                  setStatsDataClarification={setStatsDataClarification}
+                  statsTTestClarification={statsTTestClarification}
+                  setStatsTTestClarification={setStatsTTestClarification}
+                  statsAnovaClarification={statsAnovaClarification}
+                  setStatsAnovaClarification={setStatsAnovaClarification}
+                  statsRegressionClarification={statsRegressionClarification}
+                  setStatsRegressionClarification={setStatsRegressionClarification}
                   statsRows={statsRows}
                   setStatsRows={setStatsRows}
                   runStatistics={runStatistics}
@@ -1218,6 +1386,7 @@ export default function Tools() {
                   runNetworkAnalysis={runNetworkAnalysis}
                   networkResult={networkResult}
                   downloadJSON={downloadJSON}
+                  downloadCSV={downloadCSV}
                 />
               )}
 
@@ -1976,6 +2145,117 @@ function EditableDataGrid({
   );
 }
 
+function OutputTableExplorer({
+  title,
+  result,
+  downloadCSV,
+}: {
+  title: string;
+  result: any;
+  downloadCSV?: (text: string, name: string) => void;
+}) {
+  const sources = resultTableSources(result);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selected = sources[selectedIndex] ?? sources[0];
+  const rows = selected?.rows ?? [];
+  const columns = tableColumns(rows).slice(0, 18);
+
+  if (!result || sources.length === 0) {
+    return (
+      <div className="rounded-3xl border border-white/10 bg-slate-900 p-5 text-sm text-slate-400">
+        No table-form output is available yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-cyan-300/20 bg-slate-900/80 p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-lg font-black text-cyan-200">{title}</h4>
+          <p className="text-xs text-slate-400">
+            Select any returned array and inspect it as a table. Showing up to 120 rows and 18 columns.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={selectedIndex}
+            onChange={(e) => setSelectedIndex(Number(e.target.value))}
+            className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm font-bold text-white outline-none focus:border-cyan-300"
+          >
+            {sources.map((source, index) => (
+              <option key={source.label} value={index}>
+                {source.label}
+              </option>
+            ))}
+          </select>
+
+          {downloadCSV && rows.length > 0 && (
+            <button
+              onClick={() => downloadCSV(csvFromGenericRows(rows), `${title.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.csv`)}
+              className="rounded-xl border border-white/10 px-4 py-2 text-sm font-black hover:border-cyan-300 hover:text-cyan-300"
+            >
+              Export Table CSV
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="max-h-[520px] overflow-auto rounded-2xl border border-white/10">
+        <table className="min-w-full text-left text-xs">
+          <thead className="sticky top-0 z-10 bg-slate-950 text-slate-300">
+            <tr>
+              {columns.map((column) => (
+                <th key={column} className="border-b border-white/10 px-3 py-3 font-black">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 120).map((row, rowIndex) => (
+              <tr key={rowIndex} className="border-t border-white/5 odd:bg-white/[0.03] hover:bg-cyan-300/5">
+                {columns.map((column) => (
+                  <td key={column} className="max-w-[260px] truncate px-3 py-2 text-slate-300" title={shortValue(row[column])}>
+                    {shortValue(row[column])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AnalysisClarificationBox({
+  title,
+  value,
+  onChange,
+  placeholder,
+}: {
+  title: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <label className="mb-2 block text-xs font-black uppercase tracking-[0.25em] text-slate-300">
+        {title}
+      </label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="min-h-[96px] w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+      />
+    </div>
+  );
+}
+
 function RiskSection(props: any) {
   const {
     riskFileName,
@@ -1987,6 +2267,8 @@ function RiskSection(props: any) {
     setRiskPredictors,
     riskThreshold,
     setRiskThreshold,
+    riskClarification,
+    setRiskClarification,
     riskRows,
     setRiskRows,
     riskResult,
@@ -2050,6 +2332,13 @@ function RiskSection(props: any) {
           />
 
           <Input label="Selection threshold" value={riskThreshold} onChange={setRiskThreshold} />
+
+          <AnalysisClarificationBox
+            title="Data and variable clarification"
+            value={riskClarification}
+            onChange={setRiskClarification}
+            placeholder="Example: Outcome is antimicrobial inhibition zone diameter, predictors are treatment group and dose. Numeric outcome should use linear regression/ANOVA style risk-factor screening."
+          />
         </div>
 
         <div className="mt-6 grid gap-3">
@@ -2113,6 +2402,10 @@ function RiskSection(props: any) {
               <RiskForestPlot data={riskResult.risk?.visualization?.forestData ?? []} />
             </div>
 
+            <div className="mt-6">
+              <OutputTableExplorer title="Risk Output Tables" result={riskResult.risk} downloadCSV={downloadCSV} />
+            </div>
+
             <pre className="mt-6 max-h-96 overflow-auto rounded-2xl bg-black p-5 text-sm text-slate-300">
               {JSON.stringify(riskResult.risk, null, 2)}
             </pre>
@@ -2141,6 +2434,42 @@ function StatisticsSection(props: any) {
     setStatsTests,
     statsAlpha,
     setStatsAlpha,
+    statsTTestValueColumn,
+    setStatsTTestValueColumn,
+    statsTTestGroupColumn,
+    setStatsTTestGroupColumn,
+    statsTTestGroupA,
+    setStatsTTestGroupA,
+    statsTTestGroupB,
+    setStatsTTestGroupB,
+    statsPairedColumnA,
+    setStatsPairedColumnA,
+    statsPairedColumnB,
+    setStatsPairedColumnB,
+    statsOneSampleMean,
+    setStatsOneSampleMean,
+    statsOutcomeColumn,
+    setStatsOutcomeColumn,
+    statsPredictorColumns,
+    setStatsPredictorColumns,
+    statsSubjectColumn,
+    setStatsSubjectColumn,
+    statsAnovaValueColumn,
+    setStatsAnovaValueColumn,
+    statsAnovaFactorColumns,
+    setStatsAnovaFactorColumns,
+    statsAnovaPrimaryFactor,
+    setStatsAnovaPrimaryFactor,
+    statsAnovaSecondaryFactor,
+    setStatsAnovaSecondaryFactor,
+    statsDataClarification,
+    setStatsDataClarification,
+    statsTTestClarification,
+    setStatsTTestClarification,
+    statsAnovaClarification,
+    setStatsAnovaClarification,
+    statsRegressionClarification,
+    setStatsRegressionClarification,
     statsRows,
     setStatsRows,
     runStatistics,
@@ -2170,7 +2499,23 @@ function StatisticsSection(props: any) {
   const columns = tableColumns(statsRows ?? []);
   const numericColumns = numericColumnNames(statsRows ?? []);
   const selectedTests = new Set(String(statsTests || "").split(",").map((x) => x.trim()).filter(Boolean));
-  const selectedColumns = [statsGroupColumn, ...String(statsValueColumns || "").split(",").map((x) => x.trim())].filter(Boolean);
+  const selectedColumns = [
+    statsGroupColumn,
+    statsTTestGroupColumn,
+    statsTTestValueColumn,
+    statsTTestGroupA,
+    statsTTestGroupB,
+    statsAnovaValueColumn,
+    statsAnovaPrimaryFactor,
+    statsAnovaSecondaryFactor,
+    statsOutcomeColumn,
+    statsSubjectColumn,
+    ...String(statsValueColumns || "").split(",").map((x) => x.trim()),
+    ...String(statsAnovaFactorColumns || "").split(",").map((x) => x.trim()),
+    ...String(statsPredictorColumns || "").split(",").map((x) => x.trim()),
+  ].filter(Boolean);
+  const tTestGroupValues = uniqueColumnValues(statsRows ?? [], statsTTestGroupColumn || statsGroupColumn);
+  const categoricalColumns = categoricalColumnNames(statsRows ?? []);
   const inferential = statsResult?.statistics?.inferentialTests ?? statsResult?.statistics?.tests ?? statsResult?.statistics?.inferential ?? [];
   const correlations = statsResult?.statistics?.correlationMatrix ?? statsResult?.statistics?.correlations ?? [];
 
@@ -2200,6 +2545,12 @@ function StatisticsSection(props: any) {
       if (possibleGroup) setStatsGroupColumn(possibleGroup);
     }
     if (!statsValueColumns && nums.length > 0) setStatsValueColumns(nums.slice(0, 3).join(","));
+    if (!statsTTestValueColumn && nums.length > 0) setStatsTTestValueColumn(nums[0]);
+    if (!statsAnovaValueColumn && nums.length > 0) setStatsAnovaValueColumn(nums[0]);
+    if (!statsPairedColumnA && nums.length > 0) setStatsPairedColumnA(nums[0]);
+    if (!statsPairedColumnB && nums.length > 1) setStatsPairedColumnB(nums[1]);
+    if (!statsOutcomeColumn && nums.length > 0) setStatsOutcomeColumn(nums[0]);
+    if (!statsPredictorColumns && cols.length > 1) setStatsPredictorColumns(cols.filter((c) => c !== nums[0]).slice(0, 5).join(","));
   }
 
   return (
@@ -2242,6 +2593,131 @@ function StatisticsSection(props: any) {
           />
 
           <Input label="Alpha" value={statsAlpha} onChange={setStatsAlpha} />
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-cyan-300/20 bg-cyan-300/5 p-4">
+          <h4 className="mb-3 text-lg font-black text-cyan-200">Test-specific setup</h4>
+
+          <div className="grid gap-4">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="mb-3 text-sm font-black text-cyan-300">Independent t-test</p>
+              <VariablePicker
+                label="T-test numeric value"
+                value={statsTTestValueColumn}
+                onChange={setStatsTTestValueColumn}
+                columns={numericColumns.length > 0 ? numericColumns : columns}
+                placeholder="Select numeric outcome"
+              />
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <VariablePicker
+                  label="T-test group column"
+                  value={statsTTestGroupColumn}
+                  onChange={setStatsTTestGroupColumn}
+                  columns={columns}
+                  placeholder="Select grouping variable"
+                />
+                <Input label="T-test clarification" value={statsTTestClarification} onChange={setStatsTTestClarification} />
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <select
+                  value={statsTTestGroupA}
+                  onChange={(e) => setStatsTTestGroupA(e.target.value)}
+                  className="rounded-xl border border-white/10 bg-slate-900 px-3 py-3 font-bold text-white outline-none focus:border-cyan-300"
+                >
+                  <option value="">Group A / first category</option>
+                  {tTestGroupValues.map((level) => <option key={level} value={level}>{level}</option>)}
+                </select>
+                <select
+                  value={statsTTestGroupB}
+                  onChange={(e) => setStatsTTestGroupB(e.target.value)}
+                  className="rounded-xl border border-white/10 bg-slate-900 px-3 py-3 font-bold text-white outline-none focus:border-cyan-300"
+                >
+                  <option value="">Group B / second category</option>
+                  {tTestGroupValues.map((level) => <option key={level} value={level}>{level}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="mb-3 text-sm font-black text-cyan-300">ANOVA / category factors</p>
+              <VariablePicker
+                label="ANOVA value column"
+                value={statsAnovaValueColumn}
+                onChange={setStatsAnovaValueColumn}
+                columns={numericColumns.length > 0 ? numericColumns : columns}
+                placeholder="Select numeric outcome"
+              />
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <VariablePicker
+                  label="ANOVA factor columns"
+                  value={statsAnovaFactorColumns}
+                  onChange={setStatsAnovaFactorColumns}
+                  columns={columns}
+                  placeholder="Select categorical factor"
+                  multiple
+                />
+                <Input label="ANOVA clarification" value={statsAnovaClarification} onChange={setStatsAnovaClarification} />
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <VariablePicker
+                  label="Primary factor"
+                  value={statsAnovaPrimaryFactor}
+                  onChange={setStatsAnovaPrimaryFactor}
+                  columns={categoricalColumns.length > 0 ? categoricalColumns : columns}
+                  placeholder="Select main factor"
+                />
+                <VariablePicker
+                  label="Secondary factor"
+                  value={statsAnovaSecondaryFactor}
+                  onChange={setStatsAnovaSecondaryFactor}
+                  columns={categoricalColumns.length > 0 ? categoricalColumns : columns}
+                  placeholder="Select second factor"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="mb-3 text-sm font-black text-cyan-300">Regression / repeated-measures setup</p>
+              <VariablePicker
+                label="Regression outcome"
+                value={statsOutcomeColumn}
+                onChange={setStatsOutcomeColumn}
+                columns={columns}
+                placeholder="Select dependent variable"
+              />
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <VariablePicker
+                  label="Regression predictors"
+                  value={statsPredictorColumns}
+                  onChange={setStatsPredictorColumns}
+                  columns={columns.filter((c) => c !== statsOutcomeColumn)}
+                  placeholder="Select predictor"
+                  multiple
+                />
+                <VariablePicker
+                  label="Subject ID / block"
+                  value={statsSubjectColumn}
+                  onChange={setStatsSubjectColumn}
+                  columns={columns}
+                  placeholder="Select subject column"
+                />
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <VariablePicker label="Paired column A" value={statsPairedColumnA} onChange={setStatsPairedColumnA} columns={numericColumns.length > 0 ? numericColumns : columns} />
+                <VariablePicker label="Paired column B" value={statsPairedColumnB} onChange={setStatsPairedColumnB} columns={numericColumns.length > 0 ? numericColumns : columns} />
+                <Input label="One-sample mean" value={statsOneSampleMean} onChange={setStatsOneSampleMean} />
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <Input label="Regression clarification" value={statsRegressionClarification} onChange={setStatsRegressionClarification} />
+                <AnalysisClarificationBox
+                  title="General data clarification"
+                  value={statsDataClarification}
+                  onChange={setStatsDataClarification}
+                  placeholder="Explain column meanings, units, group coding, repeated-measure structure, or which categories should be compared."
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="mt-5 rounded-2xl border border-white/10 bg-slate-900 p-4">
@@ -2328,6 +2804,10 @@ function StatisticsSection(props: any) {
                 valueKey="mean"
               />
               <CorrelationHeatmap data={correlations} />
+            </div>
+
+            <div className="mt-6">
+              <OutputTableExplorer title="Statistics Output Tables" result={statsResult.statistics} downloadCSV={downloadCSV} />
             </div>
 
             {inferential.length > 0 && (
@@ -2427,6 +2907,7 @@ function NetworkSection(props: any) {
     runNetworkAnalysis,
     networkResult,
     downloadJSON,
+    downloadCSV,
   } = props;
 
   return (
@@ -2523,6 +3004,15 @@ function NetworkSection(props: any) {
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
               <RankingBars title="Node Degree Ranking" data={networkResult.network.visualization?.degreeBars ?? []} labelKey="node" valueKey="degree" />
               <NetworkComplexityPanel data={networkResult.network} />
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <RankingBars title="Movement Strength" data={networkResult.network.visualization?.movementStrengthBars ?? networkResult.network.statistics?.topNodesByMovement ?? []} labelKey="node" valueKey="weightedMovements" />
+              <RankingBars title="Strongest Edges" data={networkResult.network.visualization?.strongestEdges ?? networkResult.network.strongestEdges ?? []} labelKey="edgeId" valueKey="movements" />
+            </div>
+
+            <div className="mt-6">
+              <OutputTableExplorer title="Network Output Tables" result={networkResult.network} downloadCSV={downloadCSV} />
             </div>
           </>
         ) : (
@@ -4110,10 +4600,14 @@ function NetworkPlot({ data }: { data: any }) {
   const [selectedNode, setSelectedNode] = useState<string>(nodes[0]?.id ?? "");
   const [hoveredEdge, setHoveredEdge] = useState<any>(null);
   const [minMovements, setMinMovements] = useState(0);
-  const [labelMode, setLabelMode] = useState<"all" | "selected" | "none">("all");
-  const size = 680;
+  const [labelMode, setLabelMode] = useState<"all" | "selected" | "none">("selected");
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState<{ x: number; y: number; panX: number; panY: number } | null>(null);
+
+  const size = 760;
   const center = size / 2;
-  const scale = 260;
+  const scale = 285;
 
   useEffect(() => {
     if (!selectedNode && nodes[0]?.id) setSelectedNode(nodes[0].id);
@@ -4131,6 +4625,18 @@ function NetworkPlot({ data }: { data: any }) {
   const shownNodeIds = new Set(filteredEdges.flatMap((e: any) => [e.source, e.target]));
   nodes.forEach((n: any) => shownNodeIds.add(n.id));
 
+  const viewSize = size / zoom;
+  const viewBox = `${(size - viewSize) / 2 + pan.x} ${(size - viewSize) / 2 + pan.y} ${viewSize} ${viewSize}`;
+
+  function clampZoom(value: number) {
+    return Math.min(3.5, Math.max(0.55, value));
+  }
+
+  function resetView() {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
+
   function nodeXY(id: string) {
     const n = nodes.find((x: any) => x.id === id);
     if (!n) return null;
@@ -4141,12 +4647,26 @@ function NetworkPlot({ data }: { data: any }) {
     };
   }
 
+  function curvedPath(s: { x: number; y: number }, t: { x: number; y: number }, index: number) {
+    const dx = t.x - s.x;
+    const dy = t.y - s.y;
+    const length = Math.sqrt(dx * dx + dy * dy) || 1;
+    const normalX = -dy / length;
+    const normalY = dx / length;
+    const bend = ((index % 5) - 2) * 10;
+    const midX = (s.x + t.x) / 2 + normalX * bend;
+    const midY = (s.y + t.y) / 2 + normalY * bend;
+    return `M ${s.x} ${s.y} Q ${midX} ${midY} ${t.x} ${t.y}`;
+  }
+
   return (
-    <div className="mt-6 rounded-[2rem] border border-cyan-300/20 bg-gradient-to-br from-black via-slate-950 to-cyan-950/30 p-5 shadow-2xl">
+    <div className="mt-6 rounded-[2rem] border border-cyan-300/20 bg-gradient-to-br from-slate-950 via-black to-cyan-950/30 p-5 shadow-2xl">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h4 className="text-xl font-black text-cyan-300">Interactive Network Intelligence</h4>
-          <p className="text-sm text-slate-400">Click nodes, filter movement intensity, inspect edges, and identify network hubs.</p>
+          <p className="text-sm text-slate-400">
+            Zoom, pan, click nodes, filter movement intensity, and inspect contact pathways without arrows.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -4172,78 +4692,180 @@ function NetworkPlot({ data }: { data: any }) {
         </div>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+        <button
+          onClick={() => setZoom((z) => clampZoom(z + 0.18))}
+          className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-black text-slate-950 hover:bg-white"
+        >
+          Zoom +
+        </button>
+        <button
+          onClick={() => setZoom((z) => clampZoom(z - 0.18))}
+          className="rounded-xl bg-cyan-400/20 px-4 py-2 text-sm font-black text-cyan-100 hover:bg-cyan-400 hover:text-slate-950"
+        >
+          Zoom −
+        </button>
+        <button
+          onClick={resetView}
+          className="rounded-xl border border-white/10 px-4 py-2 text-sm font-black text-slate-200 hover:border-cyan-300 hover:text-cyan-200"
+        >
+          Reset view
+        </button>
+        <button
+          onClick={() => setPan((p) => ({ ...p, x: p.x - 45 }))}
+          className="rounded-xl border border-white/10 px-3 py-2 text-sm font-black hover:border-cyan-300"
+        >
+          ←
+        </button>
+        <button
+          onClick={() => setPan((p) => ({ ...p, x: p.x + 45 }))}
+          className="rounded-xl border border-white/10 px-3 py-2 text-sm font-black hover:border-cyan-300"
+        >
+          →
+        </button>
+        <button
+          onClick={() => setPan((p) => ({ ...p, y: p.y - 45 }))}
+          className="rounded-xl border border-white/10 px-3 py-2 text-sm font-black hover:border-cyan-300"
+        >
+          ↑
+        </button>
+        <button
+          onClick={() => setPan((p) => ({ ...p, y: p.y + 45 }))}
+          className="rounded-xl border border-white/10 px-3 py-2 text-sm font-black hover:border-cyan-300"
+        >
+          ↓
+        </button>
+        <span className="ml-auto rounded-xl bg-black/40 px-3 py-2 text-xs font-black text-slate-300">
+          Zoom {zoom.toFixed(2)}× • drag canvas to pan
+        </span>
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-4">
         <div className="xl:col-span-3">
-          <svg width="100%" viewBox={`0 0 ${size} ${size}`} className="rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-inner">
-            <defs>
-              <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="rgb(255,255,255)" stopOpacity="0.95" />
-                <stop offset="45%" stopColor="rgb(34,211,238)" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="rgb(14,165,233)" stopOpacity="0.35" />
-              </radialGradient>
-              <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L9,3 z" fill="rgba(34,211,238,.75)" />
-              </marker>
-            </defs>
+          <div className="relative h-[540px] overflow-hidden rounded-[1.5rem] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(8,145,178,.18),rgba(2,6,23,.98)_58%)] shadow-inner">
+            <svg
+              width="100%"
+              height="100%"
+              viewBox={viewBox}
+              className="h-full w-full cursor-grab active:cursor-grabbing"
+              onWheel={(e) => {
+                e.preventDefault();
+                const direction = e.deltaY > 0 ? -0.12 : 0.12;
+                setZoom((z) => clampZoom(z + direction));
+              }}
+              onMouseDown={(e) => setDragStart({ x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y })}
+              onMouseMove={(e) => {
+                if (!dragStart) return;
+                const factor = viewSize / Math.max(1, e.currentTarget.clientWidth);
+                setPan({
+                  x: dragStart.panX - (e.clientX - dragStart.x) * factor,
+                  y: dragStart.panY - (e.clientY - dragStart.y) * factor,
+                });
+              }}
+              onMouseUp={() => setDragStart(null)}
+              onMouseLeave={() => setDragStart(null)}
+            >
+              <defs>
+                <radialGradient id="networkNodeFill" cx="35%" cy="28%" r="70%">
+                  <stop offset="0%" stopColor="rgb(255,255,255)" stopOpacity="1" />
+                  <stop offset="42%" stopColor="rgb(103,232,249)" stopOpacity="0.96" />
+                  <stop offset="100%" stopColor="rgb(14,165,233)" stopOpacity="0.72" />
+                </radialGradient>
+                <linearGradient id="networkEdgeStroke" x1="0%" x2="100%" y1="0%" y2="0%">
+                  <stop offset="0%" stopColor="rgb(34,211,238)" stopOpacity="0.28" />
+                  <stop offset="50%" stopColor="rgb(125,211,252)" stopOpacity="0.88" />
+                  <stop offset="100%" stopColor="rgb(168,85,247)" stopOpacity="0.34" />
+                </linearGradient>
+                <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="5" result="coloredBlur" />
+                  <feMerge>
+                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
 
-            {filteredEdges.map((e: any, i: number) => {
-              const s = nodeXY(e.source);
-              const t = nodeXY(e.target);
-              if (!s || !t) return null;
-              const isFocused = selectedNode && (e.source === selectedNode || e.target === selectedNode);
-              const width = 1 + (Number(e.movements ?? 1) / maxMovements) * 8;
+              {filteredEdges.map((e: any, i: number) => {
+                const s = nodeXY(e.source);
+                const t = nodeXY(e.target);
+                if (!s || !t) return null;
+                const isFocused = selectedNode && (e.source === selectedNode || e.target === selectedNode);
+                const width = 1.25 + (Number(e.movements ?? 1) / maxMovements) * 9;
+                const path = curvedPath(s, t, i);
 
-              return (
-                <g key={`${e.source}-${e.target}-${i}`} onMouseEnter={() => setHoveredEdge(e)} onMouseLeave={() => setHoveredEdge(null)}>
-                  <line
-                    x1={s.x}
-                    y1={s.y}
-                    x2={t.x}
-                    y2={t.y}
-                    stroke={isFocused ? "rgba(251,191,36,.95)" : "rgba(34,211,238,.35)"}
-                    strokeWidth={width + 8}
-                    strokeLinecap="round"
-                    opacity="0.14"
-                  />
-                  <line
-                    x1={s.x}
-                    y1={s.y}
-                    x2={t.x}
-                    y2={t.y}
-                    stroke={isFocused ? "rgba(251,191,36,.95)" : "rgba(34,211,238,.75)"}
-                    strokeWidth={width}
-                    strokeLinecap="round"
-                    markerEnd="url(#arrowHead)"
-                  />
-                </g>
-              );
-            })}
+                return (
+                  <g key={`${e.source}-${e.target}-${i}`} onMouseEnter={() => setHoveredEdge(e)} onMouseLeave={() => setHoveredEdge(null)}>
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={isFocused ? "rgba(251,191,36,.35)" : "rgba(34,211,238,.16)"}
+                      strokeWidth={width + 12}
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={isFocused ? "rgba(251,191,36,.95)" : "url(#networkEdgeStroke)"}
+                      strokeWidth={width}
+                      strokeLinecap="round"
+                      strokeDasharray={isFocused ? "none" : "1 0"}
+                      opacity={isFocused ? 0.98 : 0.72}
+                    />
+                  </g>
+                );
+              })}
 
-            {nodes.map((n: any) => {
-              const x = center + Number(n.x ?? 0) * scale;
-              const y = center + Number(n.y ?? 0) * scale;
-              const degree = Number(n.degree ?? 0);
-              const isSelected = n.id === selectedNode;
-              const isNeighbor = neighborIds.has(n.id);
-              const radius = 11 + (degree / maxDegree) * 22;
-              const showLabel = labelMode === "all" || (labelMode === "selected" && (isSelected || isNeighbor));
+              {nodes.map((n: any) => {
+                const x = center + Number(n.x ?? 0) * scale;
+                const y = center + Number(n.y ?? 0) * scale;
+                const degree = Number(n.degree ?? 0);
+                const isSelected = n.id === selectedNode;
+                const isNeighbor = neighborIds.has(n.id);
+                const movementStrength = Number(n.weightedMovements ?? n.totalMovements ?? 0);
+                const radius = 12 + (degree / maxDegree) * 24 + Math.min(10, Math.log1p(movementStrength));
+                const showLabel = labelMode === "all" || (labelMode === "selected" && (isSelected || isNeighbor));
 
-              return (
-                <g key={n.id} onClick={() => setSelectedNode(n.id)} className="cursor-pointer">
-                  <circle cx={x} cy={y} r={radius + 10} fill={isSelected ? "rgba(251,191,36,.18)" : isNeighbor ? "rgba(34,211,238,.13)" : "rgba(15,23,42,.1)"} />
-                  <circle cx={x} cy={y} r={radius} fill="url(#nodeGlow)" stroke={isSelected ? "rgb(251,191,36)" : "rgba(255,255,255,.65)"} strokeWidth={isSelected ? 4 : 1.5} />
-                  <text x={x} y={y + 4} textAnchor="middle" fill="rgb(15,23,42)" fontSize="11" fontWeight="900">
-                    {degree}
-                  </text>
-                  {showLabel && (
-                    <text x={x + radius + 8} y={y + 5} fill="white" fontSize="13" fontWeight="800">
-                      {n.id}
+                return (
+                  <g key={n.id} onClick={() => setSelectedNode(n.id)} className="cursor-pointer">
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={radius + 14}
+                      fill={isSelected ? "rgba(251,191,36,.2)" : isNeighbor ? "rgba(34,211,238,.16)" : "rgba(15,23,42,.18)"}
+                    />
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={radius + 5}
+                      fill="none"
+                      stroke={isSelected ? "rgba(251,191,36,.85)" : isNeighbor ? "rgba(34,211,238,.55)" : "rgba(255,255,255,.14)"}
+                      strokeWidth={isSelected ? 4 : 1.5}
+                    />
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={radius}
+                      fill="url(#networkNodeFill)"
+                      stroke={isSelected ? "rgb(251,191,36)" : "rgba(255,255,255,.76)"}
+                      strokeWidth={isSelected ? 4 : 1.5}
+                      filter={isSelected || isNeighbor ? "url(#softGlow)" : undefined}
+                    />
+                    <text x={x} y={y + 4} textAnchor="middle" fill="rgb(15,23,42)" fontSize="12" fontWeight="900">
+                      {degree}
                     </text>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
+                    {showLabel && (
+                      <g>
+                        <rect x={x + radius + 6} y={y - 13} width={String(n.id).length * 7.5 + 14} height="25" rx="10" fill="rgba(2,6,23,.78)" stroke="rgba(255,255,255,.12)" />
+                        <text x={x + radius + 13} y={y + 5} fill="white" fontSize="13" fontWeight="900">
+                          {n.id}
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
         </div>
 
         <div className="grid content-start gap-4">
@@ -4258,6 +4880,7 @@ function NetworkPlot({ data }: { data: any }) {
             </select>
             <div className="grid gap-2 text-sm text-slate-300">
               <p>Degree: <b className="text-white">{valueText(selectedNodeData?.degree, 0)}</b></p>
+              <p>Movement strength: <b className="text-white">{valueText(selectedNodeData?.weightedMovements ?? selectedNodeData?.totalMovements, 0)}</b></p>
               <p>Neighbors: <b className="text-white">{Math.max(0, neighborIds.size - 1)}</b></p>
               <p>Visible edges: <b className="text-white">{filteredEdges.length}</b></p>
             </div>
@@ -4267,13 +4890,13 @@ function NetworkPlot({ data }: { data: any }) {
             <h5 className="mb-3 font-black text-cyan-300">Edge Inspector</h5>
             {hoveredEdge ? (
               <div className="grid gap-2 text-sm text-slate-300">
-                <p><b className="text-white">{hoveredEdge.source}</b> → <b className="text-white">{hoveredEdge.target}</b></p>
+                <p><b className="text-white">{hoveredEdge.source}</b> — <b className="text-white">{hoveredEdge.target}</b></p>
                 <p>Type: <b>{hoveredEdge.edgeType ?? hoveredEdge.type ?? "movement"}</b></p>
                 <p>Distance: <b>{valueText(hoveredEdge.distanceKm, 2)} km</b></p>
                 <p>Movements: <b>{valueText(hoveredEdge.movements, 0)}</b></p>
               </div>
             ) : (
-              <p className="text-sm text-slate-400">Hover any edge to inspect movement, distance, and direction.</p>
+              <p className="text-sm text-slate-400">Hover any curved connection to inspect movement and distance.</p>
             )}
           </div>
 
@@ -4283,6 +4906,7 @@ function NetworkPlot({ data }: { data: any }) {
               <ResultCard title="Visible Nodes" value={String(shownNodeIds.size)} />
               <ResultCard title="Visible Edges" value={String(filteredEdges.length)} />
               <ResultCard title="Max Degree" value={String(maxDegree)} />
+              <ResultCard title="Zoom" value={`${zoom.toFixed(2)}×`} />
             </div>
           </div>
         </div>
