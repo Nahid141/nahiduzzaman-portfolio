@@ -14,19 +14,21 @@ function getBackendUrl() {
 }
 
 function modeFromAnalysisMode(analysisMode: FormDataEntryValue | null) {
-  const mode = String(analysisMode || "complete");
+  const mode = String(analysisMode || "complete").trim().toLowerCase();
 
-  if (
-    [
-      "alignment",
-      "evolution",
-      "antigenic_drift",
-      "antigenic_shift",
-      "vaccine_escape",
-      "geo_spatiotemporal",
-      "animal_host",
-    ].includes(mode)
-  ) {
+  const standardModes = [
+    "alignment",
+    "evolution",
+    "phylogeny",
+    "genomic_intelligence",
+    "antigenic_drift",
+    "antigenic_shift",
+    "vaccine_escape",
+    "geo_spatiotemporal",
+    "animal_host",
+  ];
+
+  if (standardModes.includes(mode)) {
     return "standard";
   }
 
@@ -41,8 +43,19 @@ function appendIfPresent(
 ) {
   const value = source.get(sourceKey);
 
-  if (value !== null && value !== undefined && String(value).trim() !== "") {
-    target.append(targetKey, value);
+  if (value === null || value === undefined) return;
+
+  if (value instanceof File) {
+    if (value.size > 0) {
+      target.append(targetKey, value, value.name || sourceKey);
+    }
+    return;
+  }
+
+  const text = String(value).trim();
+
+  if (text !== "") {
+    target.append(targetKey, text);
   }
 }
 
@@ -57,6 +70,29 @@ function safeFilename(path: string) {
 
 function isAllowedResultPath(path: string) {
   return path.startsWith("/results/");
+}
+
+async function readJsonResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+
+    return {
+      ok: false,
+      data: {
+        status: "error",
+        error: "Backend did not return JSON.",
+        backendStatus: response.status,
+        details: text.slice(0, 1500),
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    data: await response.json(),
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -78,9 +114,12 @@ export async function GET(req: NextRequest) {
     const jobId = searchParams.get("job_id");
     const resultPath = searchParams.get("path");
 
-    // Proxy file downloads through Next.js/Vercel.
-    // Example:
-    // /api/qigenex?path=/results/JOB_ID/qigenex_complete_results.zip
+    /**
+     * Download/proxy backend result file.
+     *
+     * Example:
+     * /api/qigenex?path=/results/JOB_ID/qigenex_complete_results.zip
+     */
     if (resultPath) {
       const cleanPath = resultPath.startsWith("/") ? resultPath : `/${resultPath}`;
 
@@ -95,9 +134,9 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      const url = `${backendUrl}${cleanPath}`;
+      const backendFileUrl = `${backendUrl}${cleanPath}`;
 
-      const backendResponse = await fetch(url, {
+      const backendResponse = await fetch(backendFileUrl, {
         method: "GET",
         cache: "no-store",
       });
@@ -109,7 +148,7 @@ export async function GET(req: NextRequest) {
             error: "Failed to download backend result file.",
             backendStatus: backendResponse.status,
             path: cleanPath,
-            url,
+            backendFileUrl,
           },
           { status: backendResponse.status }
         );
@@ -119,6 +158,7 @@ export async function GET(req: NextRequest) {
       const filename = safeFilename(cleanPath);
 
       const headers = new Headers();
+
       headers.set(
         "Content-Type",
         backendResponse.headers.get("content-type") || "application/octet-stream"
@@ -132,36 +172,27 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Poll job status.
-    // Example:
-    // /api/qigenex?job_id=JOB_ID
+    /**
+     * Poll job status.
+     *
+     * Example:
+     * /api/qigenex?job_id=JOB_ID
+     */
     if (jobId) {
       const response = await fetch(`${backendUrl}/jobs/${jobId}`, {
         method: "GET",
         cache: "no-store",
       });
 
-      const contentType = response.headers.get("content-type") || "";
+      const parsed = await readJsonResponse(response);
 
-      if (!contentType.includes("application/json")) {
-        const text = await response.text();
-
-        return NextResponse.json(
-          {
-            status: "error",
-            error: "Backend job-status endpoint did not return JSON.",
-            backendStatus: response.status,
-            details: text.slice(0, 1500),
-          },
-          { status: 502 }
-        );
+      if (!parsed.ok) {
+        return NextResponse.json(parsed.data, { status: 502 });
       }
-
-      const data = await response.json();
 
       return NextResponse.json(
         {
-          ...data,
+          ...parsed.data,
           bridge: {
             route: "/api/qigenex",
             backendUrl,
@@ -173,7 +204,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Health check.
+    /**
+     * Health check.
+     */
     return NextResponse.json({
       status: "running",
       route: "/api/qigenex",
@@ -217,15 +250,31 @@ export async function POST(req: NextRequest) {
     const backendForm = new FormData();
 
     const requestedMode = incoming.get("mode");
-    const analysisMode = incoming.get("analysisMode");
+    const analysisModeRaw = incoming.get("analysisMode");
+    const selectedAnalysisRaw =
+      incoming.get("selected_analysis") || incoming.get("analysisMode") || "complete";
+
+    const analysisMode = String(analysisModeRaw || "complete").trim().toLowerCase();
+    const selectedAnalysis = String(selectedAnalysisRaw || "complete")
+      .trim()
+      .toLowerCase();
 
     backendForm.append(
       "mode",
       requestedMode ? String(requestedMode) : modeFromAnalysisMode(analysisMode)
     );
 
-    // FASTA input mapping.
-    // FastAPI expects: fasta
+    /**
+     * This is the important selector.
+     * FastAPI/run_job.py must receive this and run only the chosen analysis group.
+     */
+    backendForm.append("selected_analysis", selectedAnalysis);
+    backendForm.append("analysisMode", analysisMode);
+
+    /**
+     * FASTA input mapping.
+     * FastAPI backend expects field name: fasta
+     */
     const fastaDirect = incoming.get("fasta");
     const fastaFile = incoming.get("fastaFile");
     const alignedFile = incoming.get("alignedFile");
@@ -237,7 +286,11 @@ export async function POST(req: NextRequest) {
     } else if (fastaFile instanceof File && fastaFile.size > 0) {
       backendForm.append("fasta", fastaFile, fastaFile.name || "input.fasta");
     } else if (alignedFile instanceof File && alignedFile.size > 0) {
-      backendForm.append("fasta", alignedFile, alignedFile.name || "aligned_input.fasta");
+      backendForm.append(
+        "fasta",
+        alignedFile,
+        alignedFile.name || "aligned_input.fasta"
+      );
     } else if (fastaText) {
       backendForm.append(
         "fasta",
@@ -259,8 +312,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Metadata mapping.
-    // FastAPI expects: metadata
+    /**
+     * Metadata mapping.
+     * FastAPI backend expects field name: metadata
+     */
     const metadataDirect = incoming.get("metadata");
     const geoFile = incoming.get("geoFile");
     const animalFile = incoming.get("animalFile");
@@ -269,7 +324,11 @@ export async function POST(req: NextRequest) {
     const animalRowsText = String(incoming.get("animalRowsText") || "").trim();
 
     if (metadataDirect instanceof File && metadataDirect.size > 0) {
-      backendForm.append("metadata", metadataDirect, metadataDirect.name || "metadata.tsv");
+      backendForm.append(
+        "metadata",
+        metadataDirect,
+        metadataDirect.name || "metadata.tsv"
+      );
     } else if (geoFile instanceof File && geoFile.size > 0) {
       backendForm.append("metadata", geoFile, geoFile.name || "metadata.tsv");
     } else if (metadataText) {
@@ -283,7 +342,11 @@ export async function POST(req: NextRequest) {
         makeTextFile(geoRowsText, "geospatial_metadata.csv", "text/csv")
       );
     } else if (animalFile instanceof File && animalFile.size > 0) {
-      backendForm.append("metadata", animalFile, animalFile.name || "animal_metadata.tsv");
+      backendForm.append(
+        "metadata",
+        animalFile,
+        animalFile.name || "animal_metadata.tsv"
+      );
     } else if (animalRowsText) {
       backendForm.append(
         "metadata",
@@ -291,7 +354,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Backend analysis options.
+    /**
+     * Optional reference/vaccine/circumstantial text.
+     * These are forwarded for future backend use.
+     */
+    appendIfPresent(backendForm, incoming, "referenceText");
+    appendIfPresent(backendForm, incoming, "vaccineStrainText");
+    appendIfPresent(backendForm, incoming, "notes");
+
+    /**
+     * Backend analysis options.
+     */
     [
       "run_phylogeny",
       "run_ml",
@@ -308,34 +381,35 @@ export async function POST(req: NextRequest) {
       "figure_dpi",
     ].forEach((key) => appendIfPresent(backendForm, incoming, key));
 
+    /**
+     * Force one professional figure style.
+     */
+    backendForm.set("figure_styles", "professional_clean");
+    backendForm.set("figure_formats", "png,svg,pdf");
+    backendForm.set("figure_dpi", "900");
+
     const response = await fetch(`${backendUrl}/jobs/analyze`, {
       method: "POST",
       body: backendForm,
       cache: "no-store",
     });
 
-    const contentType = response.headers.get("content-type") || "";
+    const parsed = await readJsonResponse(response);
 
-    if (!contentType.includes("application/json")) {
-      const text = await response.text();
-
+    if (!parsed.ok) {
       return NextResponse.json(
         {
-          status: "error",
-          error: "Google Cloud QI-GeneX-N backend did not return JSON.",
-          backendStatus: response.status,
+          ...parsed.data,
           backendUrl,
-          details: text.slice(0, 1500),
         },
         { status: 502 }
       );
     }
 
-    const data = await response.json();
-
     return NextResponse.json(
       {
-        ...data,
+        ...parsed.data,
+        selected_analysis: selectedAnalysis,
         bridge: {
           route: "/api/qigenex",
           backendUrl,
