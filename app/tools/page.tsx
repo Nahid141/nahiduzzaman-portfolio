@@ -39,8 +39,7 @@ type MainTab =
   | "transmission"
   | "risk"
   | "statistics"
-  | "network"
-  | "evolutionary";
+  | "network";
 
 type TransmissionStep = "farm" | "observe" | "table" | "analysis" | "map";
 
@@ -254,6 +253,10 @@ export default function Tools() {
   const [statsFile, setStatsFile] = useState<File | null>(null);
   const [statsFileName, setStatsFileName] = useState("");
   const [statsResult, setStatsResult] = useState<any>(null);
+  const [statsGroupColumn, setStatsGroupColumn] = useState("");
+  const [statsValueColumns, setStatsValueColumns] = useState("");
+  const [statsTests, setStatsTests] = useState("descriptive,t_test,paired_t_test,anova,welch_anova,chi_square,correlation,normality,kruskal_wallis,mann_whitney,linear_regression");
+  const [statsAlpha, setStatsAlpha] = useState("0.05");
 
   const [networkSource, setNetworkSource] = useState<"manual" | "import">("manual");
   const [networkEdges, setNetworkEdges] = useState<NetworkEdge[]>([]);
@@ -267,20 +270,6 @@ export default function Tools() {
     movements: 1,
   });
   const [networkResult, setNetworkResult] = useState<any>(null);
-
-  const [evoAnimalFile, setEvoAnimalFile] = useState<File | null>(null);
-  const [evoAnimalFileName, setEvoAnimalFileName] = useState("");
-  const [evoGeoFile, setEvoGeoFile] = useState<File | null>(null);
-  const [evoGeoFileName, setEvoGeoFileName] = useState("");
-  const [evoCircFile, setEvoCircFile] = useState<File | null>(null);
-  const [evoCircFileName, setEvoCircFileName] = useState("");
-  const [evoFastaFile, setEvoFastaFile] = useState<File | null>(null);
-  const [evoFastaFileName, setEvoFastaFileName] = useState("");
-  const [evoFastaText, setEvoFastaText] = useState("");
-  const [evoAnimalRowsText, setEvoAnimalRowsText] = useState("");
-  const [evoGeoRowsText, setEvoGeoRowsText] = useState("");
-  const [evoCircRowsText, setEvoCircRowsText] = useState("");
-  const [evoResult, setEvoResult] = useState<any>(null);
 
   const [qigenexOpen, setQigenexOpen] = useState(false);
   const [qigenexFullscreen, setQigenexFullscreen] = useState(false);
@@ -659,6 +648,10 @@ export default function Tools() {
 
     formData.append("module", "statistics");
     formData.append("file", statsFile);
+    formData.append("groupColumn", statsGroupColumn);
+    formData.append("valueColumns", statsValueColumns);
+    formData.append("tests", statsTests);
+    formData.append("alpha", statsAlpha);
 
     const response = await fetch("/api/analyze", {
       method: "POST",
@@ -734,68 +727,6 @@ export default function Tools() {
     pushLog([
       "> Network analysis completed.",
       `> Nodes=${data.network.statistics.nodeCount}; Edges=${data.network.statistics.edgeCount}.`,
-    ]);
-  }
-
-  async function runEvolutionaryAnalysis() {
-    const formData = new FormData();
-
-    formData.append("module", "evolutionary");
-
-    if (evoAnimalFile) formData.append("animalFile", evoAnimalFile);
-    if (evoGeoFile) formData.append("geoFile", evoGeoFile);
-    if (evoCircFile) formData.append("circumstantialFile", evoCircFile);
-    if (evoFastaFile) formData.append("fastaFile", evoFastaFile);
-
-    if (evoFastaText.trim()) formData.append("fastaText", evoFastaText);
-
-    if (evoAnimalRowsText.trim()) {
-      try {
-        JSON.parse(evoAnimalRowsText);
-        formData.append("animalRows", evoAnimalRowsText);
-      } catch {
-        pushLog(["> ERROR: Animal-level manual JSON is invalid."]);
-        return;
-      }
-    }
-
-    if (evoGeoRowsText.trim()) {
-      try {
-        JSON.parse(evoGeoRowsText);
-        formData.append("geoRows", evoGeoRowsText);
-      } catch {
-        pushLog(["> ERROR: Geospatial/temporal manual JSON is invalid."]);
-        return;
-      }
-    }
-
-    if (evoCircRowsText.trim()) {
-      try {
-        JSON.parse(evoCircRowsText);
-        formData.append("circumstantialRows", evoCircRowsText);
-      } catch {
-        pushLog(["> ERROR: Circumstantial manual JSON is invalid."]);
-        return;
-      }
-    }
-
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      body: formData,
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      pushLog([`> ERROR: ${data.error}`]);
-      return;
-    }
-
-    setEvoResult(data);
-    pushLog([
-      "> Evolutionary analysis completed.",
-      `> Sequences analyzed=${data.evolutionary?.genomics?.count ?? 0}.`,
-      `> Risk category=${data.evolutionary?.integratedSummary?.riskCategory ?? "NA"}.`,
     ]);
   }
 
@@ -1053,7 +984,7 @@ export default function Tools() {
                 "SEIR transmission",
                 "Interactive heatmap",
                 "Risk analysis",
-                "Network + evolution",
+                "Network analytics",
               ].map((item) => (
                 <div key={item} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-slate-200">
                   {item}
@@ -1106,7 +1037,7 @@ export default function Tools() {
                   EGStat-N
                 </h2>
                 <p className="text-sm text-slate-400">
-                  Transmission • Heatmap • Risk • Statistics • Network • Evolutionary
+                  Transmission • Heatmap • Risk • Statistics • Network
                 </p>
               </div>
 
@@ -1128,7 +1059,7 @@ export default function Tools() {
             </div>
 
             <div className="h-[calc(100%-88px)] overflow-auto p-6">
-              <div className="mb-6 grid gap-3 md:grid-cols-5">
+              <div className="mb-6 grid gap-3 md:grid-cols-4">
                 <TabButton
                   label="Transmission"
                   active={mainTab === "transmission"}
@@ -1153,11 +1084,6 @@ export default function Tools() {
                   onClick={() => setMainTab("network")}
                 />
 
-                <TabButton
-                  label="Evolutionary"
-                  active={mainTab === "evolutionary"}
-                  onClick={() => setMainTab("evolutionary")}
-                />
               </div>
 
               {mainTab === "transmission" && (
@@ -1218,6 +1144,14 @@ export default function Tools() {
                   setStatsFile={setStatsFile}
                   setStatsFileName={setStatsFileName}
                   statsResult={statsResult}
+                  statsGroupColumn={statsGroupColumn}
+                  setStatsGroupColumn={setStatsGroupColumn}
+                  statsValueColumns={statsValueColumns}
+                  setStatsValueColumns={setStatsValueColumns}
+                  statsTests={statsTests}
+                  setStatsTests={setStatsTests}
+                  statsAlpha={statsAlpha}
+                  setStatsAlpha={setStatsAlpha}
                   runStatistics={runStatistics}
                   downloadJSON={downloadJSON}
                 />
@@ -1239,33 +1173,6 @@ export default function Tools() {
                 />
               )}
 
-              {mainTab === "evolutionary" && (
-                <EvolutionarySection
-                  evoAnimalFileName={evoAnimalFileName}
-                  setEvoAnimalFile={setEvoAnimalFile}
-                  setEvoAnimalFileName={setEvoAnimalFileName}
-                  evoGeoFileName={evoGeoFileName}
-                  setEvoGeoFile={setEvoGeoFile}
-                  setEvoGeoFileName={setEvoGeoFileName}
-                  evoCircFileName={evoCircFileName}
-                  setEvoCircFile={setEvoCircFile}
-                  setEvoCircFileName={setEvoCircFileName}
-                  evoFastaFileName={evoFastaFileName}
-                  setEvoFastaFile={setEvoFastaFile}
-                  setEvoFastaFileName={setEvoFastaFileName}
-                  evoFastaText={evoFastaText}
-                  setEvoFastaText={setEvoFastaText}
-                  evoAnimalRowsText={evoAnimalRowsText}
-                  setEvoAnimalRowsText={setEvoAnimalRowsText}
-                  evoGeoRowsText={evoGeoRowsText}
-                  setEvoGeoRowsText={setEvoGeoRowsText}
-                  evoCircRowsText={evoCircRowsText}
-                  setEvoCircRowsText={setEvoCircRowsText}
-                  evoResult={evoResult}
-                  runEvolutionaryAnalysis={runEvolutionaryAnalysis}
-                  downloadJSON={downloadJSON}
-                />
-              )}
 
               <div className="mt-8">
                 <Console log={log} />
@@ -1905,20 +1812,62 @@ function StatisticsSection(props: any) {
     setStatsFile,
     setStatsFileName,
     statsResult,
+    statsGroupColumn,
+    setStatsGroupColumn,
+    statsValueColumns,
+    setStatsValueColumns,
+    statsTests,
+    setStatsTests,
+    statsAlpha,
+    setStatsAlpha,
     runStatistics,
     downloadJSON,
   } = props;
 
+  const availableTests = [
+    { key: "descriptive", label: "Descriptive summary" },
+    { key: "t_test", label: "Independent t-test" },
+    { key: "paired_t_test", label: "Paired t-test" },
+    { key: "one_sample_t_test", label: "One-sample t-test" },
+    { key: "anova", label: "One-way ANOVA" },
+    { key: "two_way_anova", label: "Two-way ANOVA" },
+    { key: "welch_anova", label: "Welch ANOVA" },
+    { key: "repeated_measures_anova", label: "Repeated-measures ANOVA" },
+    { key: "chi_square", label: "Chi-square / Fisher exact" },
+    { key: "correlation", label: "Pearson/Spearman correlation" },
+    { key: "normality", label: "Normality tests" },
+    { key: "levene", label: "Levene variance test" },
+    { key: "kruskal_wallis", label: "Kruskal-Wallis" },
+    { key: "mann_whitney", label: "Mann-Whitney U" },
+    { key: "linear_regression", label: "Linear regression" },
+    { key: "logistic_regression", label: "Logistic regression" },
+  ];
+
+  const selectedTests = new Set(String(statsTests || "").split(",").map((x) => x.trim()).filter(Boolean));
+
+  function toggleTest(key: string) {
+    const next = new Set(selectedTests);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setStatsTests(Array.from(next).join(","));
+  }
+
+  const inferential = statsResult?.statistics?.inferentialTests ?? statsResult?.statistics?.tests ?? statsResult?.statistics?.inferential ?? [];
+  const correlations = statsResult?.statistics?.correlationMatrix ?? statsResult?.statistics?.correlations ?? [];
+
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <Panel>
-        <h3 className="mb-4 text-2xl font-black text-cyan-300">
-          Statistical Summary
+    <div className="grid gap-6 xl:grid-cols-12">
+      <Panel className="xl:col-span-4">
+        <h3 className="mb-2 text-2xl font-black text-cyan-300">
+          Advanced Statistics
         </h3>
+        <p className="mb-5 text-sm leading-7 text-slate-400">
+          Upload a CSV, choose variables, then request descriptive, t-test, ANOVA, non-parametric, correlation, and regression outputs from the backend.
+        </p>
 
         <input
           type="file"
-          accept=".csv"
+          accept=".csv,.xlsx,.xls"
           onChange={(e) => {
             const f = e.target.files?.[0] || null;
             setStatsFile(f);
@@ -1929,16 +1878,54 @@ function StatisticsSection(props: any) {
 
         {statsFileName && <p className="mt-2 text-sm text-cyan-300">Loaded: {statsFileName}</p>}
 
+        <div className="mt-5 grid gap-4">
+          <Input label="Group / factor column" value={statsGroupColumn} onChange={setStatsGroupColumn} />
+          <Input label="Numeric value columns, comma-separated" value={statsValueColumns} onChange={setStatsValueColumns} />
+          <Input label="Alpha / significance level" value={statsAlpha} onChange={setStatsAlpha} />
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h4 className="font-black text-cyan-300">Select analyses</h4>
+            <button
+              onClick={() => setStatsTests(availableTests.map((t) => t.key).join(","))}
+              className="rounded-lg border border-white/10 px-3 py-1 text-xs font-black hover:border-cyan-300"
+            >
+              Select all
+            </button>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {availableTests.map((test) => (
+              <label
+                key={test.key}
+                className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                  selectedTests.has(test.key)
+                    ? "border-cyan-300 bg-cyan-300/15 text-cyan-100"
+                    : "border-white/10 bg-slate-900 text-slate-300"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedTests.has(test.key)}
+                  onChange={() => toggleTest(test.key)}
+                />
+                {test.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={runStatistics}
           className="mt-6 w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
         >
-          Run Statistical Summary
+          Run Advanced Statistical Analysis
         </button>
 
         {statsResult && (
           <button
-            onClick={() => downloadJSON(statsResult, "egstat_n_statistics.json")}
+            onClick={() => downloadJSON(statsResult, "egstat_n_advanced_statistics.json")}
             className="mt-4 w-full rounded-2xl bg-blue-500 px-5 py-3 font-black text-white hover:bg-blue-600"
           >
             Download JSON
@@ -1946,18 +1933,64 @@ function StatisticsSection(props: any) {
         )}
       </Panel>
 
-      <Panel className="lg:col-span-2">
-        <h3 className="mb-4 text-2xl font-black text-cyan-300">Statistical Results</h3>
+      <Panel className="xl:col-span-8">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-2xl font-black text-cyan-300">Statistical Results</h3>
+            <p className="text-sm text-slate-400">Descriptive summaries plus inferential-test cards when returned by the API.</p>
+          </div>
+          <div className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-xs font-black text-cyan-200">
+            α = {statsAlpha || "0.05"}
+          </div>
+        </div>
 
         {statsResult ? (
           <>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <ResultCard title="Rows" value={String(statsResult.statistics.dataset.rows)} />
               <ResultCard title="Columns" value={String(statsResult.statistics.dataset.columns)} />
               <ResultCard title="Numeric Variables" value={String(statsResult.statistics.numericColumns.length)} />
+              <ResultCard title="Tests Requested" value={String(selectedTests.size)} />
             </div>
 
-            <StatsTable rows={statsResult.statistics.descriptiveStatistics ?? []} />
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.isArray(inferential) && inferential.length > 0 ? (
+                inferential.slice(0, 12).map((test: any, i: number) => (
+                  <div key={i} className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <h4 className="font-black text-cyan-200">{test.test ?? test.name ?? test.method ?? `Test ${i + 1}`}</h4>
+                      <span className={`rounded-full px-2 py-1 text-xs font-black ${Number(test.pValue ?? test.p_value ?? 1) <= Number(statsAlpha || 0.05) ? "bg-emerald-400/20 text-emerald-200" : "bg-slate-700 text-slate-200"}`}>
+                        p={valueText(test.pValue ?? test.p_value, 4)}
+                      </span>
+                    </div>
+                    <div className="grid gap-2 text-sm text-slate-300">
+                      <p>Statistic: <b>{valueText(test.statistic ?? test.fStatistic ?? test.tStatistic ?? test.chiSquare, 4)}</b></p>
+                      <p>DF: <b>{valueText(test.df ?? test.degreesOfFreedom, 2)}</b></p>
+                      <p>Effect: <b>{valueText(test.effectSize ?? test.etaSquared ?? test.cohensD ?? test.r, 4)}</b></p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4 text-sm text-slate-300 md:col-span-2 xl:col-span-3">
+                  No inferential-test array was returned yet. The frontend already sends requested tests as <code className="text-cyan-200">tests</code>, <code className="text-cyan-200">groupColumn</code>, <code className="text-cyan-200">valueColumns</code>, and <code className="text-cyan-200">alpha</code> for backend support.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <div>
+                <h4 className="mb-3 text-lg font-black text-cyan-300">Descriptive Statistics</h4>
+                <StatsTable rows={statsResult.statistics.descriptiveStatistics ?? []} />
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                <h4 className="mb-3 text-lg font-black text-cyan-300">Correlation / Extra Outputs</h4>
+                {Array.isArray(correlations) && correlations.length > 0 ? (
+                  <pre className="max-h-80 overflow-auto rounded-xl bg-black p-4 text-xs text-slate-300">{JSON.stringify(correlations, null, 2)}</pre>
+                ) : (
+                  <p className="rounded-xl bg-slate-900 p-4 text-sm text-slate-300">Correlation, model, or assumption-test outputs will appear here when returned by the backend.</p>
+                )}
+              </div>
+            </div>
 
             <pre className="mt-6 max-h-96 overflow-auto rounded-2xl bg-black p-5 text-sm text-slate-300">
               {JSON.stringify(statsResult.statistics, null, 2)}
@@ -1965,7 +1998,7 @@ function StatisticsSection(props: any) {
           </>
         ) : (
           <p className="rounded-2xl bg-slate-900 p-6 text-slate-300">
-            Upload CSV and run statistical summary.
+            Upload CSV and run advanced statistical analysis.
           </p>
         )}
       </Panel>
@@ -2079,7 +2112,10 @@ function NetworkSection(props: any) {
             </div>
 
             <NetworkPlot data={networkResult.network} />
-            <RankingBars title="Node Degree Ranking" data={networkResult.network.visualization?.degreeBars ?? []} labelKey="node" valueKey="degree" />
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <RankingBars title="Node Degree Ranking" data={networkResult.network.visualization?.degreeBars ?? []} labelKey="node" valueKey="degree" />
+              <NetworkComplexityPanel data={networkResult.network} />
+            </div>
           </>
         ) : (
           <>
@@ -2092,189 +2128,6 @@ function NetworkSection(props: any) {
         )}
       </Panel>
     </div>
-  );
-}
-
-function EvolutionarySection(props: any) {
-  const {
-    evoAnimalFileName,
-    setEvoAnimalFile,
-    setEvoAnimalFileName,
-    evoGeoFileName,
-    setEvoGeoFile,
-    setEvoGeoFileName,
-    evoCircFileName,
-    setEvoCircFile,
-    setEvoCircFileName,
-    evoFastaFileName,
-    setEvoFastaFile,
-    setEvoFastaFileName,
-    evoFastaText,
-    setEvoFastaText,
-    evoAnimalRowsText,
-    setEvoAnimalRowsText,
-    evoGeoRowsText,
-    setEvoGeoRowsText,
-    evoCircRowsText,
-    setEvoCircRowsText,
-    evoResult,
-    runEvolutionaryAnalysis,
-    downloadJSON,
-  } = props;
-
-  return (
-    <section>
-      <Panel>
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-2xl font-black text-cyan-300">
-              Evolutionary Analysis
-            </h3>
-
-            <p className="mt-2 max-w-4xl text-sm leading-7 text-slate-400">
-              Integrates animal-level epidemiology, geospatial-temporal evidence,
-              isolated pathogen FASTA sequence data, and circumstantial outbreak
-              evidence to generate an evolutionary-risk summary.
-            </p>
-          </div>
-
-          {evoResult && (
-            <button
-              onClick={() => downloadJSON(evoResult, "egstat_n_evolutionary_analysis.json")}
-              className="rounded-xl bg-blue-500 px-4 py-2 font-black text-white"
-            >
-              Download JSON
-            </button>
-          )}
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <EvidenceCard
-            title="1) Animal-level data"
-            description="CSV columns may include species, age, sex, disease_state, immunity_score, serum_pathogen_load, vaccine_strain, vaccine_strain_sequence, vaccination_date, antibody_titer, co_infections, body_temperature, clinical_score, weight, farm_id, and location."
-            filename={evoAnimalFileName}
-            accept=".csv"
-            onFile={(f) => {
-              setEvoAnimalFile(f);
-              setEvoAnimalFileName(f?.name || "");
-            }}
-          >
-            <Textarea
-              label="Optional manual JSON array"
-              value={evoAnimalRowsText}
-              onChange={setEvoAnimalRowsText}
-              placeholder='[{"species":"cattle","age":24,"sex":"female","disease_state":"infected","immunity_score":35,"serum_pathogen_load":8.2}]'
-            />
-          </EvidenceCard>
-
-          <EvidenceCard
-            title="2) Geospatial + temporal data"
-            description="CSV columns may include farm_id, location, latitude, longitude, date, cases, deaths, cluster_id, site_type, and movement_exposure."
-            filename={evoGeoFileName}
-            accept=".csv"
-            onFile={(f) => {
-              setEvoGeoFile(f);
-              setEvoGeoFileName(f?.name || "");
-            }}
-          >
-            <Textarea
-              label="Optional manual JSON array"
-              value={evoGeoRowsText}
-              onChange={setEvoGeoRowsText}
-              placeholder='[{"farm_id":"Farm_1","location":"Mymensingh","latitude":24.7471,"longitude":90.4203,"date":"2026-01-01","cases":5}]'
-            />
-          </EvidenceCard>
-
-          <EvidenceCard
-            title="3) Genomics data"
-            description="Upload or paste FASTA sequence data from the isolated pathogen. The backend calculates sequence summaries, GC content, pairwise distances, consensus preview, and mutation hotspots."
-            filename={evoFastaFileName}
-            accept=".fasta,.fa,.txt"
-            onFile={(f) => {
-              setEvoFastaFile(f);
-              setEvoFastaFileName(f?.name || "");
-            }}
-          >
-            <Textarea
-              label="Paste FASTA sequence"
-              value={evoFastaText}
-              onChange={setEvoFastaText}
-              placeholder=">isolate_1&#10;ATGCGTACGTAGCTAGCTA&#10;>isolate_2&#10;ATGCGTACGTAGCTAGTTA"
-            />
-          </EvidenceCard>
-
-          <EvidenceCard
-            title="4) Circumstantial evidence"
-            description="CSV columns may include number_of_animals_reared, how_many_ill, similar_symptoms_seen_in, duration_days, drug_administered, management_system, biosecurity_score, feed_source, water_source, vector_exposure, and recent_animal_introduction."
-            filename={evoCircFileName}
-            accept=".csv"
-            onFile={(f) => {
-              setEvoCircFile(f);
-              setEvoCircFileName(f?.name || "");
-            }}
-          >
-            <Textarea
-              label="Optional manual JSON array"
-              value={evoCircRowsText}
-              onChange={setEvoCircRowsText}
-              placeholder='[{"farm_id":"Farm_1","number_of_animals_reared":100,"how_many_ill":15,"duration_days":7,"drug_administered":"oxytetracycline"}]'
-            />
-          </EvidenceCard>
-        </div>
-
-        <button
-          onClick={runEvolutionaryAnalysis}
-          className="mt-6 rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 hover:bg-white"
-        >
-          Run Evolutionary Analysis
-        </button>
-
-        {evoResult && (
-          <>
-            <div className="mt-6 grid gap-4 md:grid-cols-4">
-              <ResultCard title="Animal rows" value={String(evoResult.evolutionary.animalLevel?.count ?? 0)} />
-              <ResultCard title="Geo rows" value={String(evoResult.evolutionary.geoTemporal?.count ?? 0)} />
-              <ResultCard title="Sequences" value={String(evoResult.evolutionary.genomics?.count ?? 0)} />
-              <ResultCard title="Risk Category" value={String(evoResult.evolutionary.integratedSummary?.riskCategory ?? "NA")} />
-            </div>
-
-            <div className="mt-6 grid gap-6 xl:grid-cols-2">
-              <RankingBars
-                title="Disease State Distribution"
-                data={evoResult.evolutionary.visualization?.diseaseStateDistribution ?? []}
-                labelKey="level"
-                valueKey="count"
-              />
-
-              <RankingBars
-                title="Mutation Hotspots"
-                data={evoResult.evolutionary.visualization?.genomicHotspots ?? []}
-                labelKey="position"
-                valueKey="variabilityScore"
-              />
-
-              <RankingBars
-                title="Species Distribution"
-                data={evoResult.evolutionary.visualization?.speciesDistribution ?? []}
-                labelKey="level"
-                valueKey="count"
-              />
-
-              <RankingBars
-                title="Vaccine Strain Distribution"
-                data={evoResult.evolutionary.visualization?.vaccineStrainDistribution ?? []}
-                labelKey="level"
-                valueKey="count"
-              />
-            </div>
-
-            <pre className="mt-6 max-h-[520px] overflow-auto rounded-2xl bg-black p-5 text-sm text-slate-300">
-              {JSON.stringify(evoResult.evolutionary, null, 2)}
-            </pre>
-          </>
-        )}
-      </Panel>
-    </section>
   );
 }
 
@@ -3780,6 +3633,38 @@ function StatsTable({ rows }: { rows: any[] }) {
   );
 }
 
+function NetworkComplexityPanel({ data }: { data: any }) {
+  const stats = data?.statistics ?? {};
+  const edges = data?.edges ?? [];
+  const totalMovements = edges.reduce((sum: number, e: any) => sum + Number(e.movements ?? 0), 0);
+  const totalDistance = edges.reduce((sum: number, e: any) => sum + Number(e.distanceKm ?? 0), 0);
+  const meanDistance = edges.length ? totalDistance / edges.length : 0;
+  const density = Number(stats.density ?? 0);
+  const complexityScore = Math.min(100, Math.round((density * 45 + Math.log1p(totalMovements) * 8 + Math.log1p(edges.length) * 12)));
+
+  const cards = [
+    ["Total Movements", valueText(totalMovements, 0)],
+    ["Mean Distance", `${valueText(meanDistance, 2)} km`],
+    ["Density", valueText(density, 4)],
+    ["Complexity Score", `${complexityScore}/100`],
+  ];
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
+      <h4 className="mb-4 text-lg font-black text-cyan-300">Network Complexity Dashboard</h4>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {cards.map(([title, value]) => <ResultCard key={title} title={title} value={value} />)}
+      </div>
+      <div className="mt-4 h-4 overflow-hidden rounded-full bg-slate-800">
+        <div className="h-full rounded-full bg-cyan-300" style={{ width: `${complexityScore}%` }} />
+      </div>
+      <p className="mt-3 text-sm leading-7 text-slate-400">
+        Higher score means denser contact structure, stronger movement volume, and more outbreak connectivity.
+      </p>
+    </div>
+  );
+}
+
 function NetworkEdgeTable({ edges }: { edges: NetworkEdge[] }) {
   return (
     <div className="overflow-auto rounded-xl border border-white/10">
@@ -3814,93 +3699,186 @@ function NetworkEdgeTable({ edges }: { edges: NetworkEdge[] }) {
 function NetworkPlot({ data }: { data: any }) {
   const nodes = data?.nodes ?? [];
   const edges = data?.edges ?? [];
-  const size = 560;
+  const [selectedNode, setSelectedNode] = useState<string>(nodes[0]?.id ?? "");
+  const [hoveredEdge, setHoveredEdge] = useState<any>(null);
+  const [minMovements, setMinMovements] = useState(0);
+  const [labelMode, setLabelMode] = useState<"all" | "selected" | "none">("all");
+  const size = 680;
   const center = size / 2;
-  const scale = 210;
+  const scale = 260;
 
-  return (
-    <div className="mt-6 rounded-2xl border border-white/10 bg-black p-5">
-      <h4 className="mb-4 text-lg font-black text-cyan-300">
-        Network Visualization
-      </h4>
+  useEffect(() => {
+    if (!selectedNode && nodes[0]?.id) setSelectedNode(nodes[0].id);
+  }, [nodes, selectedNode]);
 
-      <svg width="100%" viewBox={`0 0 ${size} ${size}`} className="rounded-xl bg-slate-950">
-        {edges.map((e: any, i: number) => {
-          const s = nodes.find((n: any) => n.id === e.source);
-          const t = nodes.find((n: any) => n.id === e.target);
-
-          if (!s || !t) return null;
-
-          return (
-            <line
-              key={i}
-              x1={center + s.x * scale}
-              y1={center + s.y * scale}
-              x2={center + t.x * scale}
-              y2={center + t.y * scale}
-              stroke="rgba(34,211,238,.45)"
-              strokeWidth={Math.max(1, Math.min(8, Number(e.movements ?? 1)))}
-            />
-          );
-        })}
-
-        {nodes.map((n: any) => (
-          <g key={n.id}>
-            <circle
-              cx={center + n.x * scale}
-              cy={center + n.y * scale}
-              r={10 + Number(n.degree ?? 0) * 3}
-              fill="rgb(34,211,238)"
-            />
-
-            <text
-              x={center + n.x * scale + 12}
-              y={center + n.y * scale + 4}
-              fill="white"
-              fontSize="13"
-            >
-              {n.id}
-            </text>
-          </g>
-        ))}
-      </svg>
-    </div>
+  const filteredEdges = edges.filter((e: any) => Number(e.movements ?? 0) >= minMovements);
+  const selectedNodeData = nodes.find((n: any) => n.id === selectedNode);
+  const neighborIds = new Set(
+    filteredEdges
+      .filter((e: any) => e.source === selectedNode || e.target === selectedNode)
+      .flatMap((e: any) => [e.source, e.target])
   );
-}
+  const maxDegree = Math.max(1, ...nodes.map((n: any) => Number(n.degree ?? 0)));
+  const maxMovements = Math.max(1, ...edges.map((e: any) => Number(e.movements ?? 0)));
+  const shownNodeIds = new Set(filteredEdges.flatMap((e: any) => [e.source, e.target]));
+  nodes.forEach((n: any) => shownNodeIds.add(n.id));
 
-function EvidenceCard({
-  title,
-  description,
-  filename,
-  accept,
-  onFile,
-  children,
-}: {
-  title: string;
-  description: string;
-  filename: string;
-  accept: string;
-  onFile: (file: File | null) => void;
-  children: ReactNode;
-}) {
+  function nodeXY(id: string) {
+    const n = nodes.find((x: any) => x.id === id);
+    if (!n) return null;
+    return {
+      node: n,
+      x: center + Number(n.x ?? 0) * scale,
+      y: center + Number(n.y ?? 0) * scale,
+    };
+  }
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-slate-900 p-5">
-      <h4 className="mb-3 font-black text-cyan-300">{title}</h4>
+    <div className="mt-6 rounded-[2rem] border border-cyan-300/20 bg-gradient-to-br from-black via-slate-950 to-cyan-950/30 p-5 shadow-2xl">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-xl font-black text-cyan-300">Interactive Network Intelligence</h4>
+          <p className="text-sm text-slate-400">Click nodes, filter movement intensity, inspect edges, and identify network hubs.</p>
+        </div>
 
-      <p className="mb-4 text-sm leading-7 text-slate-400">
-        {description}
-      </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs font-black uppercase tracking-widest text-slate-400">Min movements</label>
+          <input
+            type="range"
+            min="0"
+            max={String(Math.ceil(maxMovements))}
+            value={minMovements}
+            onChange={(e) => setMinMovements(Number(e.target.value))}
+            className="w-36"
+          />
+          <span className="rounded-lg bg-cyan-300/10 px-3 py-1 text-sm font-black text-cyan-200">{minMovements}</span>
+          <select
+            value={labelMode}
+            onChange={(e) => setLabelMode(e.target.value as any)}
+            className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+          >
+            <option value="all">All labels</option>
+            <option value="selected">Selected labels</option>
+            <option value="none">No labels</option>
+          </select>
+        </div>
+      </div>
 
-      <input
-        type="file"
-        accept={accept}
-        onChange={(e) => onFile(e.target.files?.[0] || null)}
-        className="block w-full rounded-xl border border-white/10 bg-black p-3"
-      />
+      <div className="grid gap-5 xl:grid-cols-4">
+        <div className="xl:col-span-3">
+          <svg width="100%" viewBox={`0 0 ${size} ${size}`} className="rounded-[1.5rem] border border-white/10 bg-slate-950 shadow-inner">
+            <defs>
+              <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="rgb(255,255,255)" stopOpacity="0.95" />
+                <stop offset="45%" stopColor="rgb(34,211,238)" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="rgb(14,165,233)" stopOpacity="0.35" />
+              </radialGradient>
+              <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="rgba(34,211,238,.75)" />
+              </marker>
+            </defs>
 
-      {filename && <p className="mt-2 text-sm text-cyan-300">Loaded: {filename}</p>}
+            {filteredEdges.map((e: any, i: number) => {
+              const s = nodeXY(e.source);
+              const t = nodeXY(e.target);
+              if (!s || !t) return null;
+              const isFocused = selectedNode && (e.source === selectedNode || e.target === selectedNode);
+              const width = 1 + (Number(e.movements ?? 1) / maxMovements) * 8;
 
-      {children}
+              return (
+                <g key={`${e.source}-${e.target}-${i}`} onMouseEnter={() => setHoveredEdge(e)} onMouseLeave={() => setHoveredEdge(null)}>
+                  <line
+                    x1={s.x}
+                    y1={s.y}
+                    x2={t.x}
+                    y2={t.y}
+                    stroke={isFocused ? "rgba(251,191,36,.95)" : "rgba(34,211,238,.35)"}
+                    strokeWidth={width + 8}
+                    strokeLinecap="round"
+                    opacity="0.14"
+                  />
+                  <line
+                    x1={s.x}
+                    y1={s.y}
+                    x2={t.x}
+                    y2={t.y}
+                    stroke={isFocused ? "rgba(251,191,36,.95)" : "rgba(34,211,238,.75)"}
+                    strokeWidth={width}
+                    strokeLinecap="round"
+                    markerEnd="url(#arrowHead)"
+                  />
+                </g>
+              );
+            })}
+
+            {nodes.map((n: any) => {
+              const x = center + Number(n.x ?? 0) * scale;
+              const y = center + Number(n.y ?? 0) * scale;
+              const degree = Number(n.degree ?? 0);
+              const isSelected = n.id === selectedNode;
+              const isNeighbor = neighborIds.has(n.id);
+              const radius = 11 + (degree / maxDegree) * 22;
+              const showLabel = labelMode === "all" || (labelMode === "selected" && (isSelected || isNeighbor));
+
+              return (
+                <g key={n.id} onClick={() => setSelectedNode(n.id)} className="cursor-pointer">
+                  <circle cx={x} cy={y} r={radius + 10} fill={isSelected ? "rgba(251,191,36,.18)" : isNeighbor ? "rgba(34,211,238,.13)" : "rgba(15,23,42,.1)"} />
+                  <circle cx={x} cy={y} r={radius} fill="url(#nodeGlow)" stroke={isSelected ? "rgb(251,191,36)" : "rgba(255,255,255,.65)"} strokeWidth={isSelected ? 4 : 1.5} />
+                  <text x={x} y={y + 4} textAnchor="middle" fill="rgb(15,23,42)" fontSize="11" fontWeight="900">
+                    {degree}
+                  </text>
+                  {showLabel && (
+                    <text x={x + radius + 8} y={y + 5} fill="white" fontSize="13" fontWeight="800">
+                      {n.id}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        <div className="grid content-start gap-4">
+          <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+            <h5 className="mb-3 font-black text-cyan-300">Selected Node</h5>
+            <select
+              value={selectedNode}
+              onChange={(e) => setSelectedNode(e.target.value)}
+              className="mb-3 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            >
+              {nodes.map((n: any) => <option key={n.id} value={n.id}>{n.id}</option>)}
+            </select>
+            <div className="grid gap-2 text-sm text-slate-300">
+              <p>Degree: <b className="text-white">{valueText(selectedNodeData?.degree, 0)}</b></p>
+              <p>Neighbors: <b className="text-white">{Math.max(0, neighborIds.size - 1)}</b></p>
+              <p>Visible edges: <b className="text-white">{filteredEdges.length}</b></p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+            <h5 className="mb-3 font-black text-cyan-300">Edge Inspector</h5>
+            {hoveredEdge ? (
+              <div className="grid gap-2 text-sm text-slate-300">
+                <p><b className="text-white">{hoveredEdge.source}</b> → <b className="text-white">{hoveredEdge.target}</b></p>
+                <p>Type: <b>{hoveredEdge.edgeType ?? hoveredEdge.type ?? "movement"}</b></p>
+                <p>Distance: <b>{valueText(hoveredEdge.distanceKm, 2)} km</b></p>
+                <p>Movements: <b>{valueText(hoveredEdge.movements, 0)}</b></p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">Hover any edge to inspect movement, distance, and direction.</p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+            <h5 className="mb-3 font-black text-cyan-300">Complexity Signals</h5>
+            <div className="grid gap-3">
+              <ResultCard title="Visible Nodes" value={String(shownNodeIds.size)} />
+              <ResultCard title="Visible Edges" value={String(filteredEdges.length)} />
+              <ResultCard title="Max Degree" value={String(maxDegree)} />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

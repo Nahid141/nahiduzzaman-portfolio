@@ -1319,137 +1319,955 @@ function analyzeRisk(
 function normalizeNetworkRows(rows: RawRow[]): NetworkEdge[] {
   return rows
     .map((r, i) => ({
-      edgeId: safeText(r.Edge_ID ?? r["Edge ID"] ?? r.edgeId, `E${i + 1}`),
-      source: safeText(r.From_Node ?? r["From Node"] ?? r.source ?? r.Source),
-      target: safeText(r.To_Node ?? r["To Node"] ?? r.target ?? r.Target),
-      edgeType: safeText(r.Edge_Type ?? r["Edge Type"] ?? r.type, "movement"),
+      edgeId: safeText(
+        r.Edge_ID ??
+          r["Edge ID"] ??
+          r.edgeId ??
+          r.edge_id ??
+          r.ID ??
+          r.id,
+        `E${i + 1}`
+      ),
+      source: safeText(
+        r.From_Node ??
+          r["From Node"] ??
+          r.Source ??
+          r.source ??
+          r.from ??
+          r.From ??
+          r.Origin ??
+          r.origin
+      ),
+      target: safeText(
+        r.To_Node ??
+          r["To Node"] ??
+          r.Target ??
+          r.target ??
+          r.to ??
+          r.To ??
+          r.Destination ??
+          r.destination
+      ),
+      edgeType: safeText(
+        r.Edge_Type ??
+          r["Edge Type"] ??
+          r.type ??
+          r.Type ??
+          r.relationship ??
+          r.Relationship,
+        "movement"
+      ),
       distanceKm: safeNumber(
-        r.Road_Distance_km ?? r["Road Distance (km)"] ?? r.distanceKm
+        r.Road_Distance_km ??
+          r["Road Distance (km)"] ??
+          r.distanceKm ??
+          r.distance_km ??
+          r.Distance ??
+          r.distance,
+        0
       ),
       movements: safeNumber(
-        r.Avg_Movements ?? r["Avg Movements"] ?? r.movements,
+        r.Avg_Movements ??
+          r["Avg Movements"] ??
+          r.movements ??
+          r.Movements ??
+          r.weight ??
+          r.Weight ??
+          r.count ??
+          r.Count,
         1
       ),
     }))
     .filter((e) => e.source && e.target);
 }
 
-function connectedComponents(nodes: string[], edges: NetworkEdge[]) {
-  const adj = new Map<string, Set<string>>();
-  nodes.forEach((n) => adj.set(n, new Set()));
+function rankNumeric(values: number[]) {
+  const indexed = values.map((value, index) => ({ value, index }));
+  const sorted = [...indexed].sort((a, b) => a.value - b.value);
+  const ranks = Array(values.length).fill(0);
 
-  edges.forEach((e) => {
-    adj.get(e.source)?.add(e.target);
-    adj.get(e.target)?.add(e.source);
-  });
-
-  const visited = new Set<string>();
-  const components: string[][] = [];
-
-  nodes.forEach((start) => {
-    if (visited.has(start)) return;
-
-    const stack = [start];
-    const comp: string[] = [];
-    visited.add(start);
-
-    while (stack.length) {
-      const node = stack.pop()!;
-      comp.push(node);
-
-      adj.get(node)?.forEach((nei) => {
-        if (!visited.has(nei)) {
-          visited.add(nei);
-          stack.push(nei);
-        }
-      });
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1].value === sorted[i].value) {
+      j += 1;
     }
 
-    components.push(comp);
-  });
+    const averageRank = (i + j + 2) / 2;
+    for (let k = i; k <= j; k++) {
+      ranks[sorted[k].index] = averageRank;
+    }
+    i = j + 1;
+  }
 
-  return components;
+  return ranks;
 }
 
-function analyzeNetwork(edges: NetworkEdge[]) {
-  const nodes = Array.from(
-    new Set(edges.flatMap((e) => [e.source, e.target]).filter(Boolean))
-  );
+function spearmanCorrelation(x: number[], y: number[]) {
+  const pairs = x
+    .map((v, i) => ({ x: v, y: y[i] }))
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
 
-  const adjacency = new Map<string, Set<string>>();
-  nodes.forEach((n) => adjacency.set(n, new Set()));
+  if (pairs.length < 3) return null;
 
-  edges.forEach((e) => {
-    adjacency.get(e.source)?.add(e.target);
-    adjacency.get(e.target)?.add(e.source);
-  });
+  const rx = rankNumeric(pairs.map((p) => p.x));
+  const ry = rankNumeric(pairs.map((p) => p.y));
+  return pearsonCorrelation(rx, ry);
+}
 
-  const degree = nodes.map((node) => ({
-    node,
-    degree: adjacency.get(node)?.size ?? 0,
-    weightedMovements: sum(
-      edges
-        .filter((e) => e.source === node || e.target === node)
-        .map((e) => e.movements)
-    ),
-    meanDistanceKm: mean(
-      edges
-        .filter((e) => e.source === node || e.target === node)
-        .map((e) => e.distanceKm)
-    ),
-  }));
+function twoSidedNormalPFromStatistic(statistic: number | null) {
+  if (statistic === null || !Number.isFinite(statistic)) return null;
+  return normalPValue(statistic);
+}
 
-  const components = connectedComponents(nodes, edges);
-  const sortedDegree = [...degree].sort((a, b) => b.degree - a.degree);
+function inferSignificance(pValue: number | null, alpha: number) {
+  if (pValue === null || !Number.isFinite(pValue)) return "not_available";
+  return pValue <= alpha ? "significant" : "not_significant";
+}
 
-  const density =
-    nodes.length > 1
-      ? (2 * edges.length) / (nodes.length * (nodes.length - 1))
-      : 0;
+function cleanNumericPairs(rows: RawRow[], a: string, b: string) {
+  return rows
+    .map((r) => ({ a: Number(r[a]), b: Number(r[b]) }))
+    .filter((p) => Number.isFinite(p.a) && Number.isFinite(p.b));
+}
 
-  const totalMovements = sum(edges.map((e) => e.movements));
-  const meanDistance = mean(edges.map((e) => e.distanceKm));
+function valuesByGroup(rows: RawRow[], groupColumn: string, valueColumn: string) {
+  const levels = uniqueValues(rows, groupColumn);
+  return levels
+    .map((level) => ({
+      level,
+      values: rows
+        .filter((r) => String(r[groupColumn]) === String(level))
+        .map((r) => Number(r[valueColumn]))
+        .filter((v) => Number.isFinite(v)),
+    }))
+    .filter((g) => g.values.length > 0);
+}
+
+function independentTTest(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const groups = valuesByGroup(rows, groupColumn, valueColumn);
+
+  if (groups.length < 2) {
+    return {
+      test: "Independent t-test",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Independent t-test requires exactly two non-empty groups.",
+    };
+  }
+
+  const [g1, g2] = groups.slice(0, 2);
+  const n1 = g1.values.length;
+  const n2 = g2.values.length;
+  const m1 = mean(g1.values);
+  const m2 = mean(g2.values);
+  const s1 = sd(g1.values);
+  const s2 = sd(g2.values);
+
+  if (n1 < 2 || n2 < 2 || m1 === null || m2 === null || s1 === null || s2 === null) {
+    return {
+      test: "Independent t-test",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Insufficient observations for two-sample t-test.",
+    };
+  }
+
+  const pooledVariance = ((n1 - 1) * s1 * s1 + (n2 - 1) * s2 * s2) / (n1 + n2 - 2);
+  const pooledSd = Math.sqrt(pooledVariance);
+  const standardError = pooledSd * Math.sqrt(1 / n1 + 1 / n2);
+  const tStatistic = standardError > 0 ? (m1 - m2) / standardError : null;
+  const pValue = twoSidedNormalPFromStatistic(tStatistic);
+  const cohensD = pooledSd > 0 ? (m1 - m2) / pooledSd : null;
 
   return {
-    nodes: nodes.map((node, idx) => {
-      const angle = (2 * Math.PI * idx) / Math.max(nodes.length, 1);
-      const deg = degree.find((d) => d.node === node);
-
-      return {
-        id: node,
-        degree: deg?.degree ?? 0,
-        weightedMovements: deg?.weightedMovements ?? 0,
-        x: Math.cos(angle),
-        y: Math.sin(angle),
-      };
-    }),
-    edges,
-    statistics: {
-      nodeCount: nodes.length,
-      edgeCount: edges.length,
-      density,
-      totalMovements,
-      meanDistanceKm: meanDistance,
-      componentCount: components.length,
-      largestComponentSize: Math.max(...components.map((c) => c.length), 0),
-      highestDegreeNode: sortedDegree[0] ?? null,
-      topNodesByDegree: sortedDegree.slice(0, 10),
-    },
-    components,
-    visualization: {
-      degreeBars: sortedDegree,
-      movementHistogram: edges.map((e) => ({
-        edgeId: e.edgeId,
-        movements: e.movements,
-        distanceKm: e.distanceKm,
-      })),
-    },
+    test: "Independent t-test",
+    method: "Two-sample pooled-variance t-test with normal p-value approximation",
+    variable: valueColumn,
+    groupColumn,
+    groups: [g1.level, g2.level],
+    n1,
+    n2,
+    mean1: m1,
+    mean2: m2,
+    sd1: s1,
+    sd2: s2,
+    meanDifference: m1 - m2,
+    statistic: tStatistic,
+    tStatistic,
+    df: n1 + n2 - 2,
+    standardError,
+    effectSize: cohensD,
+    cohensD,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "The two groups differ for this numeric variable at the selected alpha level."
+        : "No statistically significant two-group difference was detected at the selected alpha level.",
   };
 }
 
-function analyzeStatistics(rows: RawRow[]) {
+function welchTTest(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const groups = valuesByGroup(rows, groupColumn, valueColumn);
+
+  if (groups.length < 2) {
+    return {
+      test: "Welch t-test",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Welch t-test requires two non-empty groups.",
+    };
+  }
+
+  const [g1, g2] = groups.slice(0, 2);
+  const n1 = g1.values.length;
+  const n2 = g2.values.length;
+  const m1 = mean(g1.values);
+  const m2 = mean(g2.values);
+  const v1 = variance(g1.values);
+  const v2 = variance(g2.values);
+
+  if (n1 < 2 || n2 < 2 || m1 === null || m2 === null || v1 === null || v2 === null) {
+    return {
+      test: "Welch t-test",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Insufficient observations for Welch t-test.",
+    };
+  }
+
+  const standardError = Math.sqrt(v1 / n1 + v2 / n2);
+  const tStatistic = standardError > 0 ? (m1 - m2) / standardError : null;
+  const numerator = Math.pow(v1 / n1 + v2 / n2, 2);
+  const denominator = Math.pow(v1 / n1, 2) / (n1 - 1) + Math.pow(v2 / n2, 2) / (n2 - 1);
+  const df = denominator > 0 ? numerator / denominator : null;
+  const pValue = twoSidedNormalPFromStatistic(tStatistic);
+
+  return {
+    test: "Welch t-test",
+    method: "Unequal-variance two-sample t-test with Satterthwaite df and normal p-value approximation",
+    variable: valueColumn,
+    groupColumn,
+    groups: [g1.level, g2.level],
+    n1,
+    n2,
+    mean1: m1,
+    mean2: m2,
+    variance1: v1,
+    variance2: v2,
+    meanDifference: m1 - m2,
+    statistic: tStatistic,
+    tStatistic,
+    df,
+    standardError,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "Welch comparison suggests a significant difference while allowing unequal variances."
+        : "Welch comparison did not detect a statistically significant difference.",
+  };
+}
+
+function pairedTTest(rows: RawRow[], valueColumns: string[], alpha: number) {
+  if (valueColumns.length < 2) {
+    return {
+      test: "Paired t-test",
+      pValue: null,
+      status: "failed",
+      message: "Paired t-test requires two numeric value columns.",
+    };
+  }
+
+  const [first, second] = valueColumns;
+  const pairs = cleanNumericPairs(rows, first, second);
+  const differences = pairs.map((p) => p.a - p.b);
+  const n = differences.length;
+  const md = mean(differences);
+  const sdiff = sd(differences);
+
+  if (n < 2 || md === null || sdiff === null) {
+    return {
+      test: "Paired t-test",
+      variables: [first, second],
+      pValue: null,
+      status: "failed",
+      message: "Insufficient paired observations.",
+    };
+  }
+
+  const standardError = sdiff / Math.sqrt(n);
+  const tStatistic = standardError > 0 ? md / standardError : null;
+  const pValue = twoSidedNormalPFromStatistic(tStatistic);
+
+  return {
+    test: "Paired t-test",
+    method: "Paired mean-difference test with normal p-value approximation",
+    variables: [first, second],
+    n,
+    meanDifference: md,
+    sdDifference: sdiff,
+    standardError,
+    statistic: tStatistic,
+    tStatistic,
+    df: n - 1,
+    effectSize: sdiff > 0 ? md / sdiff : null,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "The paired measurements differ significantly at the selected alpha level."
+        : "No statistically significant paired difference was detected.",
+  };
+}
+
+function oneSampleTTest(rows: RawRow[], valueColumn: string, alpha: number, mu = 0) {
+  const values = rows
+    .map((r) => Number(r[valueColumn]))
+    .filter((v) => Number.isFinite(v));
+  const n = values.length;
+  const m = mean(values);
+  const s = sd(values);
+
+  if (n < 2 || m === null || s === null) {
+    return {
+      test: "One-sample t-test",
+      variable: valueColumn,
+      pValue: null,
+      status: "failed",
+      message: "One-sample t-test requires at least two numeric observations.",
+    };
+  }
+
+  const standardError = s / Math.sqrt(n);
+  const tStatistic = standardError > 0 ? (m - mu) / standardError : null;
+  const pValue = twoSidedNormalPFromStatistic(tStatistic);
+
+  return {
+    test: "One-sample t-test",
+    method: "One-sample mean test against mu=0 by default",
+    variable: valueColumn,
+    mu,
+    n,
+    mean: m,
+    sd: s,
+    meanDifference: m - mu,
+    standardError,
+    statistic: tStatistic,
+    tStatistic,
+    df: n - 1,
+    effectSize: s > 0 ? (m - mu) / s : null,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "The sample mean differs significantly from the reference value."
+        : "The sample mean was not significantly different from the reference value.",
+  };
+}
+
+function oneWayAnova(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const groups = valuesByGroup(rows, groupColumn, valueColumn).filter((g) => g.values.length >= 2);
+  const all = groups.flatMap((g) => g.values);
+  const grandMean = mean(all);
+
+  if (groups.length < 2 || all.length < 3 || grandMean === null) {
+    return {
+      test: "One-way ANOVA",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "ANOVA requires at least two groups with numeric observations.",
+    };
+  }
+
+  const ssBetween = sum(
+    groups.map((g) => {
+      const gm = mean(g.values) ?? 0;
+      return g.values.length * Math.pow(gm - grandMean, 2);
+    })
+  );
+
+  const ssWithin = sum(
+    groups.flatMap((g) => {
+      const gm = mean(g.values) ?? 0;
+      return g.values.map((v) => Math.pow(v - gm, 2));
+    })
+  );
+
+  const dfBetween = groups.length - 1;
+  const dfWithin = all.length - groups.length;
+  const msBetween = dfBetween > 0 ? ssBetween / dfBetween : null;
+  const msWithin = dfWithin > 0 ? ssWithin / dfWithin : null;
+  const fStatistic = msBetween !== null && msWithin !== null && msWithin > 0 ? msBetween / msWithin : null;
+
+  // This project route avoids heavy numerical libraries. We expose an interpretable F-like statistic
+  // and use a conservative chi-square-style approximation for dashboard triage.
+  const pValue = fStatistic === null ? null : Math.max(0, Math.min(1, Math.exp(-0.5 * fStatistic * dfBetween)));
+  const etaSquared = ssBetween + ssWithin > 0 ? ssBetween / (ssBetween + ssWithin) : null;
+
+  return {
+    test: "One-way ANOVA",
+    method: "Between-group ANOVA with lightweight p-value approximation",
+    variable: valueColumn,
+    groupColumn,
+    groups: groups.map((g) => ({
+      level: g.level,
+      n: g.values.length,
+      mean: mean(g.values),
+      sd: sd(g.values),
+    })),
+    ssBetween,
+    ssWithin,
+    dfBetween,
+    dfWithin,
+    msBetween,
+    msWithin,
+    statistic: fStatistic,
+    fStatistic,
+    df: `${dfBetween}, ${dfWithin}`,
+    effectSize: etaSquared,
+    etaSquared,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "At least one group mean appears different at the selected alpha level."
+        : "No significant between-group mean difference was detected.",
+  };
+}
+
+function welchAnova(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const groups = valuesByGroup(rows, groupColumn, valueColumn).filter((g) => g.values.length >= 2);
+
+  if (groups.length < 2) {
+    return {
+      test: "Welch ANOVA",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Welch ANOVA requires at least two groups with repeated numeric observations.",
+    };
+  }
+
+  const summaries = groups.map((g) => ({
+    level: g.level,
+    n: g.values.length,
+    mean: mean(g.values) ?? 0,
+    variance: variance(g.values) ?? 0,
+  }));
+
+  const weights = summaries.map((s) => (s.variance > 0 ? s.n / s.variance : 0));
+  const weightSum = sum(weights);
+  const weightedMean = weightSum > 0 ? sum(summaries.map((s, i) => weights[i] * s.mean)) / weightSum : null;
+
+  const numerator = weightedMean === null ? null : sum(summaries.map((s, i) => weights[i] * Math.pow(s.mean - weightedMean, 2))) / (groups.length - 1);
+  const correction = 1 + (2 * (groups.length - 2) / (groups.length * groups.length - 1)) * sum(
+    summaries.map((s, i) => (s.n > 1 && weightSum > 0 ? Math.pow(1 - weights[i] / weightSum, 2) / (s.n - 1) : 0))
+  );
+
+  const fStatistic = numerator !== null && correction > 0 ? numerator / correction : null;
+  const pValue = fStatistic === null ? null : Math.max(0, Math.min(1, Math.exp(-0.5 * fStatistic * (groups.length - 1))));
+
+  return {
+    test: "Welch ANOVA",
+    method: "Unequal-variance ANOVA approximation",
+    variable: valueColumn,
+    groupColumn,
+    groupSummaries: summaries,
+    statistic: fStatistic,
+    fStatistic,
+    df: groups.length - 1,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "Welch ANOVA suggests a difference among group means while allowing unequal variances."
+        : "Welch ANOVA did not detect a significant difference among group means.",
+  };
+}
+
+function leveneVarianceTest(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const groups = valuesByGroup(rows, groupColumn, valueColumn).filter((g) => g.values.length >= 2);
+
+  if (groups.length < 2) {
+    return {
+      test: "Levene variance test",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Levene test requires at least two groups.",
+    };
+  }
+
+  const transformed: RawRow[] = [];
+  groups.forEach((g) => {
+    const med = median(g.values) ?? 0;
+    g.values.forEach((v) => {
+      transformed.push({ group: g.level, z: Math.abs(v - med) });
+    });
+  });
+
+  const result = oneWayAnova(transformed, "group", "z", alpha);
+
+  return {
+    ...result,
+    test: "Levene variance test",
+    method: "ANOVA on absolute deviations from group medians",
+    originalVariable: valueColumn,
+    variable: valueColumn,
+    groupColumn,
+    interpretation:
+      result.pValue !== null && result.pValue <= alpha
+        ? "Group variances may be heterogeneous; Welch or non-parametric methods are preferable."
+        : "No strong evidence of unequal group variances was detected.",
+  };
+}
+
+function kruskalWallisTest(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const groups = valuesByGroup(rows, groupColumn, valueColumn).filter((g) => g.values.length > 0);
+  const pooled = groups.flatMap((g) => g.values.map((v) => ({ level: g.level, value: v })));
+
+  if (groups.length < 2 || pooled.length < 3) {
+    return {
+      test: "Kruskal-Wallis",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Kruskal-Wallis requires at least two groups.",
+    };
+  }
+
+  const ranks = rankNumeric(pooled.map((p) => p.value));
+  const n = pooled.length;
+  const rankSums = groups.map((g) => ({
+    level: g.level,
+    n: g.values.length,
+    rankSum: sum(pooled.map((p, i) => (p.level === g.level ? ranks[i] : 0))),
+  }));
+
+  const h = (12 / (n * (n + 1))) * sum(rankSums.map((r) => Math.pow(r.rankSum, 2) / r.n)) - 3 * (n + 1);
+  const pValue = Math.max(0, Math.min(1, Math.exp(-0.5 * h)));
+
+  return {
+    test: "Kruskal-Wallis",
+    method: "Rank-based comparison across groups with lightweight p-value approximation",
+    variable: valueColumn,
+    groupColumn,
+    groups: rankSums,
+    statistic: h,
+    hStatistic: h,
+    df: groups.length - 1,
+    effectSize: n > groups.length ? (h - groups.length + 1) / (n - groups.length) : null,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "Rank distributions differ among groups at the selected alpha level."
+        : "No significant rank-distribution difference was detected.",
+  };
+}
+
+function mannWhitneyUTest(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const groups = valuesByGroup(rows, groupColumn, valueColumn).filter((g) => g.values.length > 0);
+
+  if (groups.length < 2) {
+    return {
+      test: "Mann-Whitney U",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Mann-Whitney U requires two groups.",
+    };
+  }
+
+  const [g1, g2] = groups.slice(0, 2);
+  const pooled = [...g1.values.map((v) => ({ group: 1, value: v })), ...g2.values.map((v) => ({ group: 2, value: v }))];
+  const ranks = rankNumeric(pooled.map((p) => p.value));
+  const r1 = sum(pooled.map((p, i) => (p.group === 1 ? ranks[i] : 0)));
+  const n1 = g1.values.length;
+  const n2 = g2.values.length;
+  const u1 = r1 - (n1 * (n1 + 1)) / 2;
+  const meanU = (n1 * n2) / 2;
+  const sdU = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
+  const z = sdU > 0 ? (u1 - meanU) / sdU : null;
+  const pValue = twoSidedNormalPFromStatistic(z);
+
+  return {
+    test: "Mann-Whitney U",
+    method: "Rank-sum comparison with normal approximation",
+    variable: valueColumn,
+    groupColumn,
+    groups: [g1.level, g2.level],
+    n1,
+    n2,
+    uStatistic: u1,
+    statistic: z,
+    zStatistic: z,
+    effectSize: z !== null ? Math.abs(z) / Math.sqrt(n1 + n2) : null,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "The two groups differ in rank distribution at the selected alpha level."
+        : "No significant Mann-Whitney rank difference was detected.",
+  };
+}
+
+function normalityScreen(rows: RawRow[], valueColumn: string, alpha: number) {
+  const values = rows
+    .map((r) => Number(r[valueColumn]))
+    .filter((v) => Number.isFinite(v));
+  const n = values.length;
+  const m = mean(values);
+  const s = sd(values);
+
+  if (n < 3 || m === null || s === null || s === 0) {
+    return {
+      test: "Normality test",
+      variable: valueColumn,
+      pValue: null,
+      status: "failed",
+      message: "Normality screening requires at least three variable numeric observations.",
+    };
+  }
+
+  const skewness = sum(values.map((v) => Math.pow((v - m) / s, 3))) / n;
+  const kurtosis = sum(values.map((v) => Math.pow((v - m) / s, 4))) / n;
+  const jarqueBera = (n / 6) * (skewness * skewness + Math.pow(kurtosis - 3, 2) / 4);
+  const pValue = Math.max(0, Math.min(1, Math.exp(-0.5 * jarqueBera)));
+
+  return {
+    test: "Normality test",
+    method: "Jarque-Bera-style skewness/kurtosis screen",
+    variable: valueColumn,
+    n,
+    skewness,
+    kurtosis,
+    statistic: jarqueBera,
+    jarqueBera,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "Distribution departs from normality; non-parametric or transformed analysis may be preferred."
+        : "No strong skewness/kurtosis evidence against approximate normality was detected.",
+  };
+}
+
+function chiSquareAssociation(rows: RawRow[], groupColumn: string, valueColumn: string, alpha: number) {
+  const rowLevels = uniqueValues(rows, groupColumn);
+  const colLevels = uniqueValues(rows, valueColumn);
+
+  if (rowLevels.length < 2 || colLevels.length < 2) {
+    return {
+      test: "Chi-square / Fisher exact",
+      variable: valueColumn,
+      groupColumn,
+      pValue: null,
+      status: "failed",
+      message: "Association test requires two categorical variables with at least two levels each.",
+    };
+  }
+
+  const table = rowLevels.map((rLevel) =>
+    colLevels.map((cLevel) =>
+      rows.filter(
+        (r) => String(r[groupColumn]) === String(rLevel) && String(r[valueColumn]) === String(cLevel)
+      ).length
+    )
+  );
+
+  const rowTotals = table.map((row) => sum(row));
+  const colTotals = colLevels.map((_, j) => sum(table.map((row) => row[j])));
+  const total = sum(rowTotals);
+  const expected = table.map((row, i) =>
+    row.map((_, j) => (total > 0 ? (rowTotals[i] * colTotals[j]) / total : 0))
+  );
+
+  const chiSquare = sum(
+    table.flatMap((row, i) =>
+      row.map((observed, j) => {
+        const exp = expected[i][j];
+        return exp > 0 ? Math.pow(observed - exp, 2) / exp : 0;
+      })
+    )
+  );
+
+  const df = (rowLevels.length - 1) * (colLevels.length - 1);
+  const pValue = Math.max(0, Math.min(1, Math.exp(-0.5 * chiSquare)));
+  const cramersV = total > 0 && Math.min(rowLevels.length - 1, colLevels.length - 1) > 0
+    ? Math.sqrt(chiSquare / (total * Math.min(rowLevels.length - 1, colLevels.length - 1)))
+    : null;
+
+  return {
+    test: rowLevels.length === 2 && colLevels.length === 2 ? "Chi-square / Fisher exact" : "Chi-square association",
+    method: "Contingency-table association screen",
+    variable: valueColumn,
+    groupColumn,
+    rowLevels,
+    colLevels,
+    table,
+    expected,
+    statistic: chiSquare,
+    chiSquare,
+    df,
+    effectSize: cramersV,
+    cramersV,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "The two categorical variables show evidence of association."
+        : "No significant categorical association was detected.",
+  };
+}
+
+function linearRegressionSimple(rows: RawRow[], yColumn: string, xColumn: string, alpha: number) {
+  const pairs = cleanNumericPairs(rows, xColumn, yColumn);
+  const n = pairs.length;
+
+  if (n < 3) {
+    return {
+      test: "Linear regression",
+      outcome: yColumn,
+      predictor: xColumn,
+      pValue: null,
+      status: "failed",
+      message: "Linear regression requires at least three complete numeric pairs.",
+    };
+  }
+
+  const xs = pairs.map((p) => p.a);
+  const ys = pairs.map((p) => p.b);
+  const mx = mean(xs) ?? 0;
+  const my = mean(ys) ?? 0;
+  const ssx = sum(xs.map((x) => Math.pow(x - mx, 2)));
+  const ssy = sum(ys.map((y) => Math.pow(y - my, 2)));
+  const sp = sum(xs.map((x, i) => (x - mx) * (ys[i] - my)));
+  const slope = ssx > 0 ? sp / ssx : null;
+  const intercept = slope !== null ? my - slope * mx : null;
+  const fitted = slope === null || intercept === null ? [] : xs.map((x) => intercept + slope * x);
+  const residuals = fitted.map((f, i) => ys[i] - f);
+  const sse = sum(residuals.map((e) => e * e));
+  const rSquared = ssy > 0 ? 1 - sse / ssy : null;
+  const mse = n > 2 ? sse / (n - 2) : null;
+  const seSlope = mse !== null && ssx > 0 ? Math.sqrt(mse / ssx) : null;
+  const tStatistic = slope !== null && seSlope !== null && seSlope > 0 ? slope / seSlope : null;
+  const pValue = twoSidedNormalPFromStatistic(tStatistic);
+
+  return {
+    test: "Linear regression",
+    method: "Simple least-squares regression",
+    outcome: yColumn,
+    predictor: xColumn,
+    n,
+    intercept,
+    slope,
+    statistic: tStatistic,
+    tStatistic,
+    df: n - 2,
+    standardErrorSlope: seSlope,
+    r: pearsonCorrelation(xs, ys),
+    rSquared,
+    pValue,
+    significance: inferSignificance(pValue, alpha),
+    residualSummary: describeNumeric(residuals),
+    fittedPreview: pairs.slice(0, 25).map((p, i) => ({ x: p.a, observed: p.b, fitted: fitted[i], residual: residuals[i] })),
+    interpretation:
+      pValue !== null && pValue <= alpha
+        ? "The numeric predictor is associated with the outcome in simple linear regression."
+        : "No significant simple linear association was detected.",
+  };
+}
+
+function logisticRegressionScreen(rows: RawRow[], outcomeColumn: string, predictorColumn: string, alpha: number) {
+  const enc = binaryEncodeOutcome(rows, outcomeColumn);
+
+  if (!enc) {
+    return {
+      test: "Logistic regression",
+      outcome: outcomeColumn,
+      predictor: predictorColumn,
+      pValue: null,
+      status: "failed",
+      message: "Logistic regression screen requires a binary outcome.",
+    };
+  }
+
+  if (!isNumericColumn(rows, predictorColumn)) {
+    const cat = analyzeCategoricalRisk(rows, outcomeColumn, predictorColumn);
+    return {
+      test: "Logistic regression",
+      method: "Categorical predictor screening via odds ratio",
+      outcome: outcomeColumn,
+      predictor: predictorColumn,
+      ...cat,
+      significance: inferSignificance(cat.pValue, alpha),
+    };
+  }
+
+  const result = analyzeContinuousRisk(rows, outcomeColumn, predictorColumn);
+
+  return {
+    test: "Logistic regression",
+    method: "Continuous predictor screening by standardized mean-difference odds-ratio approximation",
+    outcome: outcomeColumn,
+    predictor: predictorColumn,
+    ...result,
+    significance: inferSignificance(result.pValue, alpha),
+  };
+}
+
+function twoWayAnovaScreen(rows: RawRow[], factorText: string, valueColumn: string, alpha: number) {
+  const factors = factorText
+    .split(/[,+;]/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (factors.length < 2) {
+    return {
+      test: "Two-way ANOVA",
+      variable: valueColumn,
+      pValue: null,
+      status: "failed",
+      message: "Two-way ANOVA requires two factor names in the group column field, separated by comma or semicolon.",
+    };
+  }
+
+  const [factorA, factorB] = factors;
+  const compositeRows = rows.map((r) => ({
+    ...r,
+    __factorA: r[factorA],
+    __factorB: r[factorB],
+    __interaction: `${safeText(r[factorA])} × ${safeText(r[factorB])}`,
+  }));
+
+  const mainA = oneWayAnova(compositeRows, "__factorA", valueColumn, alpha);
+  const mainB = oneWayAnova(compositeRows, "__factorB", valueColumn, alpha);
+  const interaction = oneWayAnova(compositeRows, "__interaction", valueColumn, alpha);
+
+  return {
+    test: "Two-way ANOVA",
+    method: "Two-factor screening by main-effect and interaction one-way decompositions",
+    variable: valueColumn,
+    factors: [factorA, factorB],
+    statistic: interaction.statistic,
+    pValue: interaction.pValue,
+    significance: inferSignificance(interaction.pValue, alpha),
+    mainEffects: [mainA, mainB],
+    interaction,
+    interpretation: "This lightweight route screens the two main effects and their composite interaction; for final publication, verify with a full two-way ANOVA model in R/Python.",
+  };
+}
+
+function repeatedMeasuresPlaceholder(valueColumns: string[], alpha: number) {
+  return {
+    test: "Repeated-measures ANOVA",
+    method: "Design check",
+    variables: valueColumns,
+    pValue: null,
+    alpha,
+    status: "not_computed_in_lightweight_route",
+    message:
+      "Repeated-measures ANOVA requires subject IDs and within-subject factor structure. The page can request this test, but this standalone route returns a design-check object unless those fields are added.",
+  };
+}
+
+function buildAdvancedStatistics(
+  rows: RawRow[],
+  groupColumn: string,
+  valueColumns: string[],
+  requestedTests: string[],
+  alpha: number
+) {
   const profile = describeDataset(rows);
   const numericColumns = profile.columnNames.filter((c) => isNumericColumn(rows, c));
+  const selectedNumericColumns = valueColumns.length > 0 ? valueColumns.filter((c) => numericColumns.includes(c)) : numericColumns;
+  const selectedTests = requestedTests.length > 0 ? requestedTests : ["descriptive", "correlation"];
+  const inferentialTests: any[] = [];
+
+  selectedNumericColumns.forEach((valueColumn) => {
+    if (selectedTests.includes("t_test") && groupColumn) {
+      inferentialTests.push(independentTTest(rows, groupColumn, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("welch_anova") && groupColumn) {
+      inferentialTests.push(welchAnova(rows, groupColumn, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("anova") && groupColumn) {
+      inferentialTests.push(oneWayAnova(rows, groupColumn, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("two_way_anova") && groupColumn) {
+      inferentialTests.push(twoWayAnovaScreen(rows, groupColumn, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("one_sample_t_test")) {
+      inferentialTests.push(oneSampleTTest(rows, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("normality")) {
+      inferentialTests.push(normalityScreen(rows, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("levene") && groupColumn) {
+      inferentialTests.push(leveneVarianceTest(rows, groupColumn, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("kruskal_wallis") && groupColumn) {
+      inferentialTests.push(kruskalWallisTest(rows, groupColumn, valueColumn, alpha));
+    }
+
+    if (selectedTests.includes("mann_whitney") && groupColumn) {
+      inferentialTests.push(mannWhitneyUTest(rows, groupColumn, valueColumn, alpha));
+    }
+  });
+
+  if (selectedTests.includes("paired_t_test")) {
+    inferentialTests.push(pairedTTest(rows, selectedNumericColumns, alpha));
+  }
+
+  if (selectedTests.includes("repeated_measures_anova")) {
+    inferentialTests.push(repeatedMeasuresPlaceholder(selectedNumericColumns, alpha));
+  }
+
+  if (selectedTests.includes("chi_square") && groupColumn) {
+    profile.columnNames
+      .filter((c) => c !== groupColumn && !isNumericColumn(rows, c))
+      .slice(0, 25)
+      .forEach((c) => inferentialTests.push(chiSquareAssociation(rows, groupColumn, c, alpha)));
+  }
+
+  if (selectedTests.includes("linear_regression") && selectedNumericColumns.length >= 2) {
+    const outcome = selectedNumericColumns[0];
+    selectedNumericColumns.slice(1, 10).forEach((predictor) => {
+      inferentialTests.push(linearRegressionSimple(rows, outcome, predictor, alpha));
+    });
+  }
+
+  if (selectedTests.includes("logistic_regression") && groupColumn) {
+    profile.columnNames
+      .filter((c) => c !== groupColumn)
+      .slice(0, 20)
+      .forEach((predictor) => inferentialTests.push(logisticRegressionScreen(rows, groupColumn, predictor, alpha)));
+  }
 
   const correlationMatrix = numericColumns.flatMap((a) =>
     numericColumns.map((b) => ({
@@ -1459,17 +2277,66 @@ function analyzeStatistics(rows: RawRow[]) {
         rows.map((r) => Number(r[a])),
         rows.map((r) => Number(r[b]))
       ),
+      spearman: spearmanCorrelation(
+        rows.map((r) => Number(r[a])),
+        rows.map((r) => Number(r[b]))
+      ),
+    }))
+  );
+
+  const correlationPairs = numericColumns.flatMap((a, i) =>
+    numericColumns.slice(i + 1).map((b) => ({
+      x: a,
+      y: b,
+      pearson: pearsonCorrelation(
+        rows.map((r) => Number(r[a])),
+        rows.map((r) => Number(r[b]))
+      ),
+      spearman: spearmanCorrelation(
+        rows.map((r) => Number(r[a])),
+        rows.map((r) => Number(r[b]))
+      ),
     }))
   );
 
   return {
     dataset: profile,
+    alpha,
+    groupColumn,
+    requestedTests: selectedTests,
+    valueColumns: selectedNumericColumns,
     numericColumns,
     descriptiveStatistics: numericColumns.map((col) => ({
       variable: col,
       ...describeNumeric(rows.map((r) => Number(r[col]))),
+      missing: missingCount(rows, col),
+      normalityScreen: normalityScreen(rows, col, alpha),
     })),
+    inferentialTests,
+    tests: inferentialTests,
+    inferential: inferentialTests,
     correlationMatrix,
+    correlations: correlationPairs,
+    modelOutputs: inferentialTests.filter((t) =>
+      ["Linear regression", "Logistic regression"].includes(String(t.test))
+    ),
+    assumptionChecks: inferentialTests.filter((t) =>
+      ["Normality test", "Levene variance test"].includes(String(t.test))
+    ),
+    significantFindings: inferentialTests.filter(
+      (t) => Number.isFinite(t.pValue) && Number(t.pValue) <= alpha
+    ),
+    publicationSummary: {
+      rows: rows.length,
+      columns: profile.columns,
+      numericVariables: numericColumns.length,
+      testsComputed: inferentialTests.length,
+      significantAtAlpha: inferentialTests.filter(
+        (t) => Number.isFinite(t.pValue) && Number(t.pValue) <= alpha
+      ).length,
+      note:
+        "This Next.js route provides an in-app statistical screening layer. For manuscript submission, validate exact p-values and model assumptions using a dedicated statistical package when required.",
+    },
     visualization: {
       variableCards: profile.variableProfile,
       correlationHeatmap: correlationMatrix,
@@ -1477,625 +2344,425 @@ function analyzeStatistics(rows: RawRow[]) {
         variable: col,
         mean: mean(rows.map((r) => Number(r[col]))),
         sd: sd(rows.map((r) => Number(r[col]))),
+        median: median(rows.map((r) => Number(r[col]))),
+        min: describeNumeric(rows.map((r) => Number(r[col]))).min,
+        max: describeNumeric(rows.map((r) => Number(r[col]))).max,
       })),
+      pValueBars: inferentialTests
+        .filter((t) => Number.isFinite(t.pValue))
+        .map((t) => ({
+          test: t.test,
+          variable: t.variable ?? t.outcome ?? t.predictor ?? "model",
+          pValue: t.pValue,
+          significant: Number(t.pValue) <= alpha,
+        })),
     },
   };
 }
 
-function parseFASTA(text: string): SequenceRecord[] {
-  const clean = text.trim();
-  if (!clean) return [];
 
-  const blocks = clean.split(/^>/m).filter(Boolean);
+function connectedComponents(nodes: string[], edges: NetworkEdge[]) {
+  const adjacency = new Map<string, Set<string>>();
+  nodes.forEach((node) => adjacency.set(node, new Set()));
 
-  return blocks
-    .map((block, index) => {
-      const lines = block.split(/\r?\n/).filter(Boolean);
-      const id = lines[0]?.trim() || `sequence_${index + 1}`;
-      const sequence = lines
-        .slice(1)
-        .join("")
-        .replace(/\s+/g, "")
-        .toUpperCase();
+  edges.forEach((edge) => {
+    adjacency.get(edge.source)?.add(edge.target);
+    adjacency.get(edge.target)?.add(edge.source);
+  });
 
-      return { id, sequence };
-    })
-    .filter((record) => record.sequence.length > 0);
+  const visited = new Set<string>();
+  const components: string[][] = [];
+
+  nodes.forEach((start) => {
+    if (visited.has(start)) return;
+
+    const stack = [start];
+    const component: string[] = [];
+    visited.add(start);
+
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      component.push(node);
+
+      adjacency.get(node)?.forEach((neighbor) => {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          stack.push(neighbor);
+        }
+      });
+    }
+
+    components.push(component);
+  });
+
+  return components;
 }
 
-function gcContent(sequence: string): number | null {
-  if (!sequence.length) return null;
+function shortestPathLengthsFrom(start: string, nodes: string[], adjacency: Map<string, Set<string>>) {
+  const distance = new Map<string, number>();
+  nodes.forEach((n) => distance.set(n, Number.POSITIVE_INFINITY));
+  distance.set(start, 0);
 
-  const gc = sequence
-    .split("")
-    .filter((base) => base === "G" || base === "C").length;
+  const queue = [start];
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    const currentDistance = distance.get(node) ?? 0;
 
-  return gc / sequence.length;
-}
-
-function countAmbiguousBases(sequence: string): number {
-  return sequence
-    .split("")
-    .filter((base) => !["A", "T", "G", "C", "-"].includes(base)).length;
-}
-
-function consensusSequence(sequences: string[]): string {
-  if (sequences.length === 0) return "";
-
-  const maxLen = Math.max(...sequences.map((seq) => seq.length));
-  const bases = ["A", "T", "G", "C", "N", "-"];
-  let consensus = "";
-
-  for (let i = 0; i < maxLen; i++) {
-    const counts: Record<string, number> = {};
-
-    bases.forEach((base) => {
-      counts[base] = 0;
+    adjacency.get(node)?.forEach((neighbor) => {
+      if ((distance.get(neighbor) ?? Number.POSITIVE_INFINITY) === Number.POSITIVE_INFINITY) {
+        distance.set(neighbor, currentDistance + 1);
+        queue.push(neighbor);
+      }
     });
-
-    sequences.forEach((seq) => {
-      const base = seq[i] ?? "N";
-      counts[base] = (counts[base] ?? 0) + 1;
-    });
-
-    const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-    consensus += best;
-  }
-
-  return consensus;
-}
-
-function hammingDistance(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let distance = Math.abs(a.length - b.length);
-
-  for (let i = 0; i < n; i++) {
-    if (a[i] !== b[i]) distance += 1;
   }
 
   return distance;
 }
 
-function analyzeGenomics(records: SequenceRecord[]) {
-  if (records.length === 0) {
-    return {
-      count: 0,
-      message: "No FASTA sequences supplied.",
-      sequenceSummaries: [],
-      mutationHotspots: [],
-      pairwiseDistances: [],
-    };
-  }
-
-  const sequences = records.map((record) => record.sequence);
-  const consensus = consensusSequence(sequences);
-
-  const sequenceSummaries = records.map((record) => ({
-    id: record.id,
-    length: record.sequence.length,
-    gcContent: gcContent(record.sequence),
-    ambiguousBases: countAmbiguousBases(record.sequence),
-    distanceToConsensus: hammingDistance(record.sequence, consensus),
-  }));
-
-  const mutationProfile = consensus.split("").map((base, index) => {
-    const column = sequences.map((seq) => seq[index] ?? "N");
-    const unique = Array.from(new Set(column));
-    const nonConsensusCount = column.filter((b) => b !== base).length;
-
-    return {
-      position: index + 1,
-      consensusBase: base,
-      variantCount: unique.length,
-      variants: unique.join(","),
-      nonConsensusCount,
-      variabilityScore: unique.length - 1,
-      frequencyNonConsensus:
-        column.length > 0 ? nonConsensusCount / column.length : null,
-    };
+function approximateBetweenness(nodes: string[], edges: NetworkEdge[]) {
+  const adjacency = new Map<string, Set<string>>();
+  nodes.forEach((n) => adjacency.set(n, new Set()));
+  edges.forEach((e) => {
+    adjacency.get(e.source)?.add(e.target);
+    adjacency.get(e.target)?.add(e.source);
   });
 
-  const mutationHotspots = mutationProfile
-    .filter((m) => m.variabilityScore > 0)
-    .sort((a, b) => {
-      if (b.variabilityScore !== a.variabilityScore) {
-        return b.variabilityScore - a.variabilityScore;
-      }
-      return b.nonConsensusCount - a.nonConsensusCount;
-    })
-    .slice(0, 50);
+  const betweenness = new Map<string, number>();
+  nodes.forEach((n) => betweenness.set(n, 0));
 
-  const pairwiseDistances: any[] = [];
+  for (let s = 0; s < nodes.length; s++) {
+    for (let t = s + 1; t < nodes.length; t++) {
+      const source = nodes[s];
+      const target = nodes[t];
+      const distances = shortestPathLengthsFrom(source, nodes, adjacency);
+      const shortest = distances.get(target);
+      if (!Number.isFinite(shortest) || shortest === 0) continue;
 
-  for (let i = 0; i < records.length; i++) {
-    for (let j = i + 1; j < records.length; j++) {
-      pairwiseDistances.push({
-        from: records[i].id,
-        to: records[j].id,
-        distance: hammingDistance(records[i].sequence, records[j].sequence),
+      nodes.forEach((candidate) => {
+        if (candidate === source || candidate === target) return;
+        const d1 = shortestPathLengthsFrom(source, nodes, adjacency).get(candidate);
+        const d2 = shortestPathLengthsFrom(candidate, nodes, adjacency).get(target);
+        if (Number.isFinite(d1) && Number.isFinite(d2) && (d1 ?? 0) + (d2 ?? 0) === shortest) {
+          betweenness.set(candidate, (betweenness.get(candidate) ?? 0) + 1);
+        }
       });
     }
   }
 
-  return {
-    count: records.length,
-    uniqueSequenceCount: new Set(sequences).size,
-    consensusLength: consensus.length,
-    meanLength: mean(records.map((record) => record.sequence.length)),
-    meanGCContent: mean(
-      records
-        .map((record) => gcContent(record.sequence))
-        .filter((x): x is number => x !== null)
-    ),
-    meanAmbiguousBases: mean(
-      records.map((record) => countAmbiguousBases(record.sequence))
-    ),
-    consensusPreview: consensus.slice(0, 500),
-    sequenceSummaries,
-    mutationHotspots,
-    pairwiseDistances,
-    nucleotideDiversityApproximation: mean(
-      pairwiseDistances.map((p) => p.distance)
-    ),
-    interpretation: {
-      diversity:
-        new Set(sequences).size > 1
-          ? "Multiple sequence types/haplotypes detected."
-          : "No sequence diversity detected among supplied sequences.",
-      hotspots:
-        mutationHotspots.length > 0
-          ? "Variable sites were detected and ranked as mutation hotspots."
-          : "No variable sites detected from supplied sequences.",
-    },
-  };
-}
-
-function normalizeAnimalRows(rows: RawRow[]) {
-  return rows.map((r, index) => ({
-    animalId: safeText(r.animal_id ?? r.Animal_ID ?? r.id, `animal_${index + 1}`),
-    species: safeText(r.species ?? r.Species),
-    age: safeNumber(r.age ?? r.Age, NaN),
-    sex: safeText(r.sex ?? r.Sex),
-    diseaseState: safeText(
-      r.disease_state ?? r["Disease State"] ?? r.Disease_State
-    ),
-    immunityScore: safeNumber(
-      r.immunity_score ?? r["Immunity Score"] ?? r.Immunity_Score,
-      NaN
-    ),
-    serumPathogenLoad: safeNumber(
-      r.serum_pathogen_load ??
-        r["Serum Pathogen Load"] ??
-        r.Serum_Pathogen_Load,
-      NaN
-    ),
-    vaccineStrain: safeText(
-      r.vaccine_strain ?? r["Vaccine Strain"] ?? r.Vaccine_Strain
-    ),
-    vaccineStrainSequence: safeText(
-      r.vaccine_strain_sequence ??
-        r["Vaccine Strain Sequence"] ??
-        r.Vaccine_Strain_Sequence
-    ),
-    vaccinationDate: safeText(
-      r.vaccination_date ?? r["Vaccination Date"] ?? r.Vaccination_Date
-    ),
-    antibodyTiter: safeNumber(
-      r.antibody_titer ?? r["Antibody Titer"] ?? r.Antibody_Titer,
-      NaN
-    ),
-    coInfections: safeText(
-      r.co_infections ?? r["Co-infections"] ?? r.coinfections
-    ),
-    bodyTemperature: safeNumber(
-      r.body_temperature ?? r["Body Temperature"] ?? r.Body_Temperature,
-      NaN
-    ),
-    clinicalScore: safeNumber(
-      r.clinical_score ?? r["Clinical Score"] ?? r.Clinical_Score,
-      NaN
-    ),
-    weight: safeNumber(r.weight ?? r.Weight, NaN),
-    farmId: safeText(r.farm_id ?? r.Farm_ID ?? r.Farm),
-    location: safeText(r.location ?? r.Location),
+  const normalizer = nodes.length > 2 ? ((nodes.length - 1) * (nodes.length - 2)) / 2 : 1;
+  return nodes.map((node) => ({
+    node,
+    betweenness: normalizer > 0 ? (betweenness.get(node) ?? 0) / normalizer : 0,
   }));
 }
 
-function analyzeAnimalLevel(rows: RawRow[]) {
-  const normalized = normalizeAnimalRows(rows);
+function eigenvectorCentrality(nodes: string[], edges: NetworkEdge[], iterations = 40) {
+  const index = new Map(nodes.map((node, i) => [node, i]));
+  let scores = Array(nodes.length).fill(1 / Math.max(nodes.length, 1));
 
-  if (normalized.length === 0) {
-    return {
-      count: 0,
-      message: "No animal-level data supplied.",
-    };
+  for (let iter = 0; iter < iterations; iter++) {
+    const next = Array(nodes.length).fill(0);
+    edges.forEach((edge) => {
+      const s = index.get(edge.source);
+      const t = index.get(edge.target);
+      if (s === undefined || t === undefined) return;
+      const weight = Math.max(1, edge.movements);
+      next[t] += scores[s] * weight;
+      next[s] += scores[t] * weight;
+    });
+
+    const norm = Math.sqrt(sum(next.map((v) => v * v))) || 1;
+    scores = next.map((v) => v / norm);
   }
 
-  const diseaseStates = Array.from(
-    new Set(normalized.map((r) => r.diseaseState).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.diseaseState === level).length,
-  }));
-
-  const speciesDistribution = Array.from(
-    new Set(normalized.map((r) => r.species).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.species === level).length,
-  }));
-
-  const sexDistribution = Array.from(
-    new Set(normalized.map((r) => r.sex).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.sex === level).length,
-  }));
-
-  const vaccineStrainDistribution = Array.from(
-    new Set(normalized.map((r) => r.vaccineStrain).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.vaccineStrain === level).length,
-  }));
-
-  const coInfectionDistribution = Array.from(
-    new Set(normalized.map((r) => r.coInfections).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.coInfections === level).length,
-  }));
-
-  return {
-    count: normalized.length,
-    speciesDistribution,
-    sexDistribution,
-    diseaseStates,
-    vaccineStrainDistribution,
-    coInfectionDistribution,
-    numericSummary: {
-      age: describeNumeric(normalized.map((r) => r.age)),
-      immunityScore: describeNumeric(normalized.map((r) => r.immunityScore)),
-      serumPathogenLoad: describeNumeric(
-        normalized.map((r) => r.serumPathogenLoad)
-      ),
-      antibodyTiter: describeNumeric(normalized.map((r) => r.antibodyTiter)),
-      bodyTemperature: describeNumeric(
-        normalized.map((r) => r.bodyTemperature)
-      ),
-      clinicalScore: describeNumeric(normalized.map((r) => r.clinicalScore)),
-      weight: describeNumeric(normalized.map((r) => r.weight)),
-    },
-    correlationSignals: [
-      {
-        x: "immunityScore",
-        y: "serumPathogenLoad",
-        correlation: pearsonCorrelation(
-          normalized.map((r) => r.immunityScore),
-          normalized.map((r) => r.serumPathogenLoad)
-        ),
-      },
-      {
-        x: "antibodyTiter",
-        y: "serumPathogenLoad",
-        correlation: pearsonCorrelation(
-          normalized.map((r) => r.antibodyTiter),
-          normalized.map((r) => r.serumPathogenLoad)
-        ),
-      },
-      {
-        x: "clinicalScore",
-        y: "serumPathogenLoad",
-        correlation: pearsonCorrelation(
-          normalized.map((r) => r.clinicalScore),
-          normalized.map((r) => r.serumPathogenLoad)
-        ),
-      },
-    ],
-    riskSignals: {
-      lowImmunityCount: normalized.filter(
-        (r) => Number.isFinite(r.immunityScore) && r.immunityScore < 40
-      ).length,
-      highPathogenLoadCount: normalized.filter(
-        (r) => Number.isFinite(r.serumPathogenLoad) && r.serumPathogenLoad > 7
-      ).length,
-      highClinicalScoreCount: normalized.filter(
-        (r) => Number.isFinite(r.clinicalScore) && r.clinicalScore >= 3
-      ).length,
-      coInfectedCount: normalized.filter((r) => r.coInfections).length,
-    },
-    rows: normalized,
-  };
+  return nodes.map((node, i) => ({ node, eigenvectorCentrality: scores[i] ?? 0 }));
 }
 
-function normalizeGeoTemporalRows(rows: RawRow[]) {
-  return rows.map((r, index) => ({
-    id: safeText(r.id ?? r.ID, `geo_${index + 1}`),
-    farmId: safeText(r.farm_id ?? r.Farm_ID ?? r.Farm),
-    location: safeText(r.location ?? r.Location),
-    latitude: safeNumber(r.latitude ?? r.Latitude ?? r.lat, NaN),
-    longitude: safeNumber(r.longitude ?? r.Longitude ?? r.lon ?? r.lng, NaN),
-    date: safeText(r.date ?? r.Date, today()),
-    cases: safeNumber(r.cases ?? r.Cases ?? r.ill_animals ?? r.Ill_Animals, 0),
-    deaths: safeNumber(r.deaths ?? r.Deaths, 0),
-    clusterId: safeText(r.cluster_id ?? r.Cluster_ID ?? r.cluster),
-    siteType: safeText(r.site_type ?? r.Site_Type ?? r.site),
-    movementExposure: safeNumber(
-      r.movement_exposure ?? r.Movement_Exposure,
-      0
-    ),
-  }));
-}
+function analyzeNetwork(edges: NetworkEdge[]) {
+  const cleanedEdges = edges.map((e, i) => ({
+    edgeId: e.edgeId || `E${i + 1}`,
+    source: safeText(e.source),
+    target: safeText(e.target),
+    edgeType: safeText(e.edgeType, "movement"),
+    distanceKm: safeNumber(e.distanceKm, 0),
+    movements: Math.max(0, safeNumber(e.movements, 1)),
+  })).filter((e) => e.source && e.target);
 
-function analyzeGeoTemporal(rows: RawRow[]) {
-  const normalized = normalizeGeoTemporalRows(rows);
+  const nodes = Array.from(new Set(cleanedEdges.flatMap((e) => [e.source, e.target])));
+  const adjacency = new Map<string, Set<string>>();
+  nodes.forEach((n) => adjacency.set(n, new Set()));
 
-  if (normalized.length === 0) {
+  cleanedEdges.forEach((e) => {
+    adjacency.get(e.source)?.add(e.target);
+    adjacency.get(e.target)?.add(e.source);
+  });
+
+  const components = connectedComponents(nodes, cleanedEdges);
+  const maxMovement = Math.max(...cleanedEdges.map((e) => e.movements), 1);
+  const maxDistance = Math.max(...cleanedEdges.map((e) => e.distanceKm), 1);
+  const totalMovements = sum(cleanedEdges.map((e) => e.movements));
+  const density = nodes.length > 1 ? (2 * cleanedEdges.length) / (nodes.length * (nodes.length - 1)) : 0;
+  const meanDistanceKm = mean(cleanedEdges.map((e) => e.distanceKm));
+  const betweenness = approximateBetweenness(nodes, cleanedEdges);
+  const eigen = eigenvectorCentrality(nodes, cleanedEdges);
+
+  const nodeMetrics = nodes.map((node, idx) => {
+    const incident = cleanedEdges.filter((e) => e.source === node || e.target === node);
+    const outgoing = cleanedEdges.filter((e) => e.source === node);
+    const incoming = cleanedEdges.filter((e) => e.target === node);
+    const degree = adjacency.get(node)?.size ?? 0;
+    const weightedMovements = sum(incident.map((e) => e.movements));
+    const inStrength = sum(incoming.map((e) => e.movements));
+    const outStrength = sum(outgoing.map((e) => e.movements));
+    const closenessDistances = shortestPathLengthsFrom(node, nodes, adjacency);
+    const finiteDistances = Array.from(closenessDistances.values()).filter((d) => Number.isFinite(d) && d > 0);
+    const closeness = finiteDistances.length > 0 ? finiteDistances.length / sum(finiteDistances) : 0;
+    const componentIndex = components.findIndex((component) => component.includes(node));
+    const angle = (2 * Math.PI * idx) / Math.max(nodes.length, 1);
+    const radius = 0.55 + Math.min(0.4, degree / Math.max(nodes.length - 1, 1));
+    const b = betweenness.find((x) => x.node === node)?.betweenness ?? 0;
+    const ev = eigen.find((x) => x.node === node)?.eigenvectorCentrality ?? 0;
+    const movementPressure = totalMovements > 0 ? weightedMovements / totalMovements : 0;
+    const localReach = nodes.length > 1 ? degree / (nodes.length - 1) : 0;
+    const riskScore = Math.min(100, movementPressure * 55 + localReach * 30 + b * 15);
+
     return {
-      count: 0,
-      message: "No geospatial/temporal data supplied.",
-      heatmapGeoJSON: {
-        type: "FeatureCollection",
-        features: [],
+      id: node,
+      node,
+      degree,
+      inDegree: new Set(incoming.map((e) => e.source)).size,
+      outDegree: new Set(outgoing.map((e) => e.target)).size,
+      weightedMovements,
+      inStrength,
+      outStrength,
+      meanDistanceKm: mean(incident.map((e) => e.distanceKm)),
+      maxDistanceKm: incident.length ? Math.max(...incident.map((e) => e.distanceKm)) : 0,
+      betweenness: b,
+      closeness,
+      eigenvectorCentrality: ev,
+      movementPressure,
+      localReach,
+      riskScore,
+      componentIndex,
+      componentSize: components[componentIndex]?.length ?? 1,
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+      visual: {
+        radius: 10 + Math.min(30, degree * 4 + weightedMovements * 0.3),
+        label: `${node} | degree ${degree} | movement ${weightedMovements}`,
+        category:
+          riskScore >= 60 ? "critical_hub" : riskScore >= 30 ? "high_connector" : degree > 0 ? "connected" : "isolated",
       },
-    };
-  }
-
-  const validDates = normalized.map((r) => r.date).filter(Boolean).sort();
-
-  const heatmapFeatures = normalized
-    .filter(
-      (r) =>
-        Number.isFinite(r.latitude) &&
-        Number.isFinite(r.longitude) &&
-        Math.abs(r.latitude) <= 90 &&
-        Math.abs(r.longitude) <= 180
-    )
-    .map((r) => ({
-      type: "Feature",
-      properties: {
-        id: r.id,
-        farmId: r.farmId,
-        location: r.location,
-        date: r.date,
-        cases: r.cases,
-        deaths: r.deaths,
-        clusterId: r.clusterId,
-        siteType: r.siteType,
-        movementExposure: r.movementExposure,
-        heatWeight: Math.max(1, r.cases + r.deaths * 2 + r.movementExposure),
-        popupHTML:
-          `<strong>${r.farmId || r.location || r.id}</strong><br/>` +
-          `Date: ${r.date}<br/>` +
-          `Cases: ${r.cases}<br/>` +
-          `Deaths: ${r.deaths}<br/>` +
-          `Cluster: ${r.clusterId || "NA"}`,
-      },
-      geometry: {
-        type: "Point",
-        coordinates: [r.longitude, r.latitude],
-      },
-    }));
-
-  const locations = Array.from(
-    new Set(normalized.map((r) => r.location).filter(Boolean))
-  );
-
-  const timeline = Array.from(new Set(validDates)).map((date) => ({
-    date,
-    count: normalized.filter((r) => r.date === date).length,
-    totalCases: sum(normalized.filter((r) => r.date === date).map((r) => r.cases)),
-    totalDeaths: sum(
-      normalized.filter((r) => r.date === date).map((r) => r.deaths)
-    ),
-  }));
-
-  return {
-    count: normalized.length,
-    firstDate: validDates[0] ?? null,
-    lastDate: validDates[validDates.length - 1] ?? null,
-    locations,
-    locationCount: locations.length,
-    timeline,
-    totalCases: sum(normalized.map((r) => r.cases)),
-    totalDeaths: sum(normalized.map((r) => r.deaths)),
-    heatmapGeoJSON: {
-      type: "FeatureCollection",
-      features: heatmapFeatures,
-    },
-    rows: normalized,
-  };
-}
-
-function normalizeCircumstantialRows(rows: RawRow[]) {
-  return rows.map((r, index) => ({
-    id: safeText(r.id ?? r.ID, `circumstantial_${index + 1}`),
-    farmId: safeText(r.farm_id ?? r.Farm_ID ?? r.Farm),
-    numberOfAnimalsReared: safeNumber(
-      r.number_of_animals_reared ??
-        r["Number of Animals Reared"] ??
-        r.animals_reared,
-      NaN
-    ),
-    howManyIll: safeNumber(
-      r.how_many_ill ?? r["How Many Ill"] ?? r.ill_animals,
-      NaN
-    ),
-    similarSymptomsSeenIn: safeText(
-      r.similar_symptoms_seen_in ??
-        r["Similar Symptoms Seen In"] ??
-        r.similar_symptoms
-    ),
-    durationDays: safeNumber(
-      r.duration_days ?? r["Duration Days"] ?? r.duration,
-      NaN
-    ),
-    drugAdministered: safeText(
-      r.drug_administered ?? r["Drug Administered"] ?? r.drug
-    ),
-    managementSystem: safeText(
-      r.management_system ?? r["Management System"] ?? r.management
-    ),
-    biosecurityScore: safeNumber(
-      r.biosecurity_score ?? r["Biosecurity Score"] ?? r.biosecurity,
-      NaN
-    ),
-    feedSource: safeText(r.feed_source ?? r["Feed Source"]),
-    waterSource: safeText(r.water_source ?? r["Water Source"]),
-    vectorExposure: safeText(r.vector_exposure ?? r["Vector Exposure"]),
-    recentAnimalIntroduction: safeText(
-      r.recent_animal_introduction ?? r["Recent Animal Introduction"]
-    ),
-  }));
-}
-
-function analyzeCircumstantial(rows: RawRow[]) {
-  const normalized = normalizeCircumstantialRows(rows);
-
-  if (normalized.length === 0) {
-    return {
-      count: 0,
-      message: "No circumstantial evidence supplied.",
-    };
-  }
-
-  const morbidityRates = normalized
-    .map((r) =>
-      Number.isFinite(r.numberOfAnimalsReared) && r.numberOfAnimalsReared > 0
-        ? r.howManyIll / r.numberOfAnimalsReared
-        : NaN
-    )
-    .filter((v) => Number.isFinite(v));
-
-  const drugUse = Array.from(
-    new Set(normalized.map((r) => r.drugAdministered).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.drugAdministered === level).length,
-  }));
-
-  const managementSystems = Array.from(
-    new Set(normalized.map((r) => r.managementSystem).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.managementSystem === level).length,
-  }));
-
-  const symptomDistribution = Array.from(
-    new Set(normalized.map((r) => r.similarSymptomsSeenIn).filter(Boolean))
-  ).map((level) => ({
-    level,
-    count: normalized.filter((r) => r.similarSymptomsSeenIn === level).length,
-  }));
-
-  return {
-    count: normalized.length,
-    animalsRearedSummary: describeNumeric(
-      normalized.map((r) => r.numberOfAnimalsReared)
-    ),
-    illAnimalsSummary: describeNumeric(normalized.map((r) => r.howManyIll)),
-    durationSummary: describeNumeric(normalized.map((r) => r.durationDays)),
-    biosecuritySummary: describeNumeric(
-      normalized.map((r) => r.biosecurityScore)
-    ),
-    morbidityRateMean: mean(morbidityRates),
-    morbidityRateMedian: median(morbidityRates),
-    drugUse,
-    managementSystems,
-    symptomDistribution,
-    feedSources: Array.from(
-      new Set(normalized.map((r) => r.feedSource).filter(Boolean))
-    ),
-    waterSources: Array.from(
-      new Set(normalized.map((r) => r.waterSource).filter(Boolean))
-    ),
-    vectorExposureCount: normalized.filter((r) => r.vectorExposure).length,
-    recentAnimalIntroductionCount: normalized.filter(
-      (r) => r.recentAnimalIntroduction
-    ).length,
-    rows: normalized,
-  };
-}
-
-function analyzeEvolutionary(
-  animalRows: RawRow[],
-  geoRows: RawRow[],
-  circumstantialRows: RawRow[],
-  fastaText: string
-) {
-  const animal = analyzeAnimalLevel(animalRows);
-  const geoTemporal = analyzeGeoTemporal(geoRows);
-  const circumstantial = analyzeCircumstantial(circumstantialRows);
-  const genomics = analyzeGenomics(parseFASTA(fastaText));
-
-  const lowImmunityCount = Number(animal?.riskSignals?.lowImmunityCount ?? 0);
-  const highPathogenLoadCount = Number(
-    animal?.riskSignals?.highPathogenLoadCount ?? 0
-  );
-  const highClinicalScoreCount = Number(
-    animal?.riskSignals?.highClinicalScoreCount ?? 0
-  );
-  const uniqueSequenceCount = Number(genomics?.uniqueSequenceCount ?? 0);
-  const hotspotCount = Number(genomics?.mutationHotspots?.length ?? 0);
-  const morbidityRate = Number(circumstantial?.morbidityRateMean ?? 0);
-  const geoCaseCount = Number(geoTemporal?.totalCases ?? 0);
-  const geoLocationCount = Number(geoTemporal?.locationCount ?? 0);
-
-  const evolutionaryRiskScore =
-    lowImmunityCount * 1.5 +
-    highPathogenLoadCount * 1.5 +
-    highClinicalScoreCount * 1.2 +
-    uniqueSequenceCount * 2 +
-    hotspotCount * 0.5 +
-    morbidityRate * 100 * 0.25 +
-    geoCaseCount * 0.1 +
-    geoLocationCount * 0.8;
-
-  const suggestedDrivers = [
-    lowImmunityCount > 0 ? "Low host immunity" : null,
-    highPathogenLoadCount > 0 ? "High serum pathogen load" : null,
-    highClinicalScoreCount > 0 ? "High clinical severity" : null,
-    uniqueSequenceCount > 1 ? "Multiple pathogen haplotypes/sequence types" : null,
-    hotspotCount > 0 ? "Detected genomic mutation hotspots" : null,
-    morbidityRate > 0.2 ? "Elevated morbidity at farm/population level" : null,
-    geoLocationCount > 1 ? "Spatial spread across multiple locations" : null,
-  ].filter(Boolean);
-
-  return {
-    animalLevel: animal,
-    geoTemporal,
-    genomics,
-    circumstantial,
-    integratedSummary: {
-      evolutionaryRiskScore,
-      riskCategory:
-        evolutionaryRiskScore >= 50
-          ? "high"
-          : evolutionaryRiskScore >= 25
-          ? "moderate"
-          : "low",
       interpretation:
-        evolutionaryRiskScore >= 50
-          ? "High evolutionary and transmission concern based on integrated host, pathogen, spatial, and circumstantial evidence."
-          : evolutionaryRiskScore >= 25
-          ? "Moderate concern; further genomic and epidemiological confirmation is recommended."
-          : "Lower concern based on currently supplied evidence, but interpretation depends on data completeness.",
-      suggestedDrivers,
+        riskScore >= 60
+          ? "High-priority hub: strong movement pressure and network connectivity."
+          : riskScore >= 30
+          ? "Important connector: monitor movement and contact pathways."
+          : "Lower network priority under the supplied edge data.",
+    };
+  });
+
+  const sortedDegree = [...nodeMetrics].sort((a, b) => b.degree - a.degree || b.weightedMovements - a.weightedMovements);
+  const sortedRisk = [...nodeMetrics].sort((a, b) => b.riskScore - a.riskScore);
+  const sortedBetweenness = [...nodeMetrics].sort((a, b) => b.betweenness - a.betweenness);
+
+  const edgeMetrics = cleanedEdges.map((edge) => {
+    const movementIntensity = maxMovement > 0 ? edge.movements / maxMovement : 0;
+    const distanceIntensity = maxDistance > 0 ? edge.distanceKm / maxDistance : 0;
+    const sourceRisk = nodeMetrics.find((n) => n.id === edge.source)?.riskScore ?? 0;
+    const targetRisk = nodeMetrics.find((n) => n.id === edge.target)?.riskScore ?? 0;
+    const pathwayRisk = Math.min(100, movementIntensity * 50 + distanceIntensity * 20 + ((sourceRisk + targetRisk) / 2) * 0.3);
+
+    return {
+      ...edge,
+      id: edge.edgeId,
+      movementIntensity,
+      distanceIntensity,
+      sourceRisk,
+      targetRisk,
+      pathwayRisk,
+      width: 1 + movementIntensity * 8,
+      opacity: 0.35 + movementIntensity * 0.65,
+      arrow: true,
+      tooltip:
+        `${edge.source} → ${edge.target}\n` +
+        `Type: ${edge.edgeType}\n` +
+        `Movements: ${edge.movements}\n` +
+        `Distance: ${edge.distanceKm} km\n` +
+        `Pathway risk: ${pathwayRisk.toFixed(2)}`,
+      interpretation:
+        pathwayRisk >= 60
+          ? "High-intensity movement pathway."
+          : pathwayRisk >= 30
+          ? "Moderate movement pathway."
+          : "Lower-intensity pathway.",
+    };
+  });
+
+  const edgeTypes = Array.from(new Set(cleanedEdges.map((e) => e.edgeType))).map((edgeType) => {
+    const subset = cleanedEdges.filter((e) => e.edgeType === edgeType);
+    return {
+      edgeType,
+      count: subset.length,
+      totalMovements: sum(subset.map((e) => e.movements)),
+      meanMovements: mean(subset.map((e) => e.movements)),
+      meanDistanceKm: mean(subset.map((e) => e.distanceKm)),
+    };
+  });
+
+  const adjacencyMatrix = nodes.map((source) => ({
+    source,
+    values: nodes.map((target) => ({
+      target,
+      movements: sum(cleanedEdges.filter((e) => e.source === source && e.target === target).map((e) => e.movements)),
+      undirectedMovements: sum(cleanedEdges.filter((e) => (e.source === source && e.target === target) || (e.source === target && e.target === source)).map((e) => e.movements)),
+    })),
+  }));
+
+  const movementThresholds = [0, 1, 5, 10, 25, 50, 100].map((threshold) => ({
+    threshold,
+    retainedEdges: edgeMetrics.filter((e) => e.movements >= threshold).length,
+    retainedMovements: sum(edgeMetrics.filter((e) => e.movements >= threshold).map((e) => e.movements)),
+  }));
+
+  const complexityIndex = Math.min(
+    100,
+    density * 30 +
+      Math.log1p(totalMovements) * 8 +
+      components.length * 3 +
+      (sortedRisk[0]?.riskScore ?? 0) * 0.35 +
+      edgeTypes.length * 2
+  );
+
+  const graph = {
+    nodes: nodeMetrics.map((n) => ({
+      id: n.id,
+      label: n.id,
+      x: n.x,
+      y: n.y,
+      size: n.visual.radius,
+      degree: n.degree,
+      weightedMovements: n.weightedMovements,
+      riskScore: n.riskScore,
+      componentIndex: n.componentIndex,
+      category: n.visual.category,
+      tooltip: `${n.id}\nDegree: ${n.degree}\nMovements: ${n.weightedMovements}\nRisk score: ${n.riskScore.toFixed(2)}`,
+    })),
+    edges: edgeMetrics.map((e) => ({
+      id: e.edgeId,
+      source: e.source,
+      target: e.target,
+      type: e.edgeType,
+      weight: e.movements,
+      distanceKm: e.distanceKm,
+      width: e.width,
+      opacity: e.opacity,
+      pathwayRisk: e.pathwayRisk,
+      tooltip: e.tooltip,
+    })),
+  };
+
+  return {
+    nodes: nodeMetrics,
+    edges: edgeMetrics,
+    graph,
+    statistics: {
+      nodeCount: nodes.length,
+      edgeCount: cleanedEdges.length,
+      density,
+      totalMovements,
+      meanMovementsPerEdge: cleanedEdges.length > 0 ? totalMovements / cleanedEdges.length : null,
+      meanDistanceKm,
+      medianDistanceKm: median(cleanedEdges.map((e) => e.distanceKm)),
+      maxDistanceKm: cleanedEdges.length ? Math.max(...cleanedEdges.map((e) => e.distanceKm)) : 0,
+      componentCount: components.length,
+      largestComponentSize: Math.max(...components.map((c) => c.length), 0),
+      isolatedNodeCount: nodeMetrics.filter((n) => n.degree === 0).length,
+      highestDegreeNode: sortedDegree[0] ?? null,
+      highestRiskNode: sortedRisk[0] ?? null,
+      highestBetweennessNode: sortedBetweenness[0] ?? null,
+      complexityIndex,
+      networkCategory:
+        complexityIndex >= 70
+          ? "highly_complex"
+          : complexityIndex >= 40
+          ? "moderately_complex"
+          : "low_to_moderate_complexity",
+    },
+    centrality: {
+      degree: sortedDegree,
+      risk: sortedRisk,
+      betweenness: sortedBetweenness,
+      eigenvector: [...nodeMetrics].sort((a, b) => b.eigenvectorCentrality - a.eigenvectorCentrality),
+      closeness: [...nodeMetrics].sort((a, b) => b.closeness - a.closeness),
+    },
+    components,
+    adjacencyMatrix,
+    edgeTypeSummary: edgeTypes,
+    filters: {
+      movementThresholds,
+      recommendedDefaultThreshold: median(cleanedEdges.map((e) => e.movements)) ?? 0,
+      edgeTypes: edgeTypes.map((e) => e.edgeType),
+    },
+    interpretation: {
+      overview:
+        nodes.length === 0
+          ? "No analyzable network was supplied."
+          : `The network contains ${nodes.length} nodes and ${cleanedEdges.length} edges with density ${density.toFixed(4)}.`,
+      keyHub:
+        sortedRisk[0]
+          ? `${sortedRisk[0].node} is the highest-priority movement hub by integrated risk score.`
+          : "No hub could be identified.",
+      controlSuggestion:
+        sortedRisk.length > 0
+          ? "Prioritize surveillance, movement auditing, quarantine review, and targeted biosecurity interventions around high-risk hubs and high-pathway-risk edges."
+          : "Add node and edge data to generate control recommendations.",
     },
     visualization: {
-      genomicHotspots: genomics.mutationHotspots ?? [],
-      pairwiseDistances: genomics.pairwiseDistances ?? [],
-      geoHeatmap: geoTemporal.heatmapGeoJSON,
-      diseaseStateDistribution: animal.diseaseStates ?? [],
-      speciesDistribution: animal.speciesDistribution ?? [],
-      vaccineStrainDistribution: animal.vaccineStrainDistribution ?? [],
-      circumstantialMorbidity: {
-        mean: circumstantial.morbidityRateMean ?? null,
-        median: circumstantial.morbidityRateMedian ?? null,
-      },
+      degreeBars: sortedDegree.map((n) => ({
+        node: n.node,
+        degree: n.degree,
+        weightedMovements: n.weightedMovements,
+        riskScore: n.riskScore,
+      })),
+      riskBars: sortedRisk.map((n) => ({
+        node: n.node,
+        riskScore: n.riskScore,
+        degree: n.degree,
+        weightedMovements: n.weightedMovements,
+      })),
+      movementHistogram: edgeMetrics.map((e) => ({
+        edgeId: e.edgeId,
+        source: e.source,
+        target: e.target,
+        movements: e.movements,
+        distanceKm: e.distanceKm,
+        pathwayRisk: e.pathwayRisk,
+      })),
+      edgeTypeDonut: edgeTypes,
+      adjacencyHeatmap: adjacencyMatrix.flatMap((row) =>
+        row.values.map((cell) => ({
+          source: row.source,
+          target: cell.target,
+          movements: cell.movements,
+          undirectedMovements: cell.undirectedMovements,
+        }))
+      ),
+      interactiveGraph: graph,
     },
   };
 }
+
+function analyzeStatistics(
+  rows: RawRow[],
+  groupColumn = "",
+  valueColumns: string[] = [],
+  tests: string[] = [],
+  alpha = 0.05
+) {
+  return buildAdvancedStatistics(rows, groupColumn, valueColumns, tests, alpha);
+}
+
 
 export async function POST(request: Request) {
   try {
@@ -2153,14 +2820,28 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         status: "success",
-        module: "Network Analysis",
+        module: "Interactive Network Analysis",
         rows: edges.length,
         network: analyzeNetwork(edges),
+        notes: [
+          "Network output is graph-ready and includes nodes, edges, interactiveGraph, centrality tables, risk scores, movement filters, adjacency matrix, edge-type summary, and interpretation blocks.",
+          "The frontend can render node degree ranking, complexity panels, clickable nodes, movement-weighted edges, tooltips, and JSON downloads directly from this response shape.",
+        ],
       });
     }
 
     if (moduleName === "statistics") {
       const file = formData.get("file") as File | null;
+      const groupColumn = String(formData.get("groupColumn") || "").trim();
+      const valueColumns = String(formData.get("valueColumns") || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const tests = String(formData.get("tests") || "descriptive,correlation")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const alpha = safeNumber(formData.get("alpha"), 0.05);
 
       if (!file) {
         return NextResponse.json(
@@ -2173,61 +2854,31 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         status: "success",
-        module: "Statistical Summary",
+        module: "Advanced Statistical Analysis",
         rows: rows.length,
-        statistics: analyzeStatistics(rows),
+        statistics: analyzeStatistics(rows, groupColumn, valueColumns, tests, alpha),
+        notes: [
+          "The updated page sends groupColumn, valueColumns, tests, and alpha to this route.",
+          "This route returns descriptive statistics, inferentialTests/tests arrays, correlations, assumption checks, model outputs, and visualization-ready summaries.",
+          "P-values are lightweight approximations for dashboard screening; verify final manuscript statistics in R, Python, SPSS, or another dedicated statistical package when required.",
+        ],
       });
     }
 
     if (moduleName === "evolutionary") {
-      const animalFile = formData.get("animalFile") as File | null;
-      const geoFile = formData.get("geoFile") as File | null;
-      const circumstantialFile = formData.get("circumstantialFile") as File | null;
-      const fastaFile = formData.get("fastaFile") as File | null;
-
-      const animalRowsText = String(formData.get("animalRows") || "");
-      const geoRowsText = String(formData.get("geoRows") || "");
-      const circumstantialRowsText = String(
-        formData.get("circumstantialRows") || ""
+      return NextResponse.json(
+        {
+          status: "removed",
+          module: "Evolutionary Analysis",
+          error:
+            "EGStat-N evolutionary analysis has been removed from this route. Use QI-GeneX-N for sequence/genomics workflows.",
+          notes: [
+            "The updated EGStat-N page contains Transmission, Risk Analysis, Statistics, and Network modules only.",
+            "This branch intentionally returns HTTP 410 so older frontend builds do not silently run deprecated evolutionary code.",
+          ],
+        },
+        { status: 410 }
       );
-      const fastaTextInput = String(formData.get("fastaText") || "");
-
-      const animalRows = animalFile
-        ? parseCSV(await animalFile.text())
-        : animalRowsText
-        ? JSON.parse(animalRowsText)
-        : [];
-
-      const geoRows = geoFile
-        ? parseCSV(await geoFile.text())
-        : geoRowsText
-        ? JSON.parse(geoRowsText)
-        : [];
-
-      const circumstantialRows = circumstantialFile
-        ? parseCSV(await circumstantialFile.text())
-        : circumstantialRowsText
-        ? JSON.parse(circumstantialRowsText)
-        : [];
-
-      const fastaText = fastaFile ? await fastaFile.text() : fastaTextInput;
-
-      return NextResponse.json({
-        status: "success",
-        module: "Evolutionary Analysis",
-        evolutionary: analyzeEvolutionary(
-          animalRows,
-          geoRows,
-          circumstantialRows,
-          fastaText
-        ),
-        notes: [
-          "Animal-level data may include species, age, sex, disease_state, immunity_score, serum_pathogen_load, vaccine_strain, vaccine_strain_sequence, vaccination_date, antibody_titer, co_infections, body_temperature, clinical_score, weight, farm_id, and location.",
-          "Geospatial/temporal data may include farm_id, location, latitude, longitude, date, cases, deaths, cluster_id, site_type, and movement_exposure.",
-          "Genomics data expects FASTA text or a FASTA file from the isolated pathogen.",
-          "Circumstantial evidence may include number_of_animals_reared, how_many_ill, similar_symptoms_seen_in, duration_days, drug_administered, management_system, biosecurity_score, feed_source, water_source, vector_exposure, and recent_animal_introduction.",
-        ],
-      });
     }
 
     const mode = String(formData.get("mode") || "logic");
