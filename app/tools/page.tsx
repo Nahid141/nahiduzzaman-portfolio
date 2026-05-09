@@ -371,6 +371,7 @@ export default function Tools() {
   const [riskClarification, setRiskClarification] = useState("");
   const [riskResult, setRiskResult] = useState<any>(null);
   const [riskRows, setRiskRows] = useState<Record<string, any>[]>([]);
+  const [riskReferenceCategories, setRiskReferenceCategories] = useState<Record<string, string>>({});
 
   const [statsFile, setStatsFile] = useState<File | null>(null);
   const [statsFileName, setStatsFileName] = useState("");
@@ -439,7 +440,7 @@ export default function Tools() {
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
   const [log, setLog] = useState<string[]>([
-    "> Hello! I'm Nahiduzzaman, the developer of this tool. I'd like to invite you to have a cup of coffee with me. Thank you for using my tool :).",
+    "> Tools page ready.",
     "> EGStat-N initialized.",
     "> QI-GeneX-N ready.",
   ]);
@@ -764,6 +765,9 @@ export default function Tools() {
     formData.append("threshold", riskThreshold);
     formData.append("outcomeColumn", riskOutcome);
     formData.append("predictorColumns", riskPredictors);
+    formData.append("referenceCategories", JSON.stringify(riskReferenceCategories));
+    formData.append("referenceCategoryMap", JSON.stringify(riskReferenceCategories));
+    formData.append("categoryReferences", JSON.stringify(riskReferenceCategories));
     formData.append("dataClarification", riskClarification);
     formData.append("outcomeClarification", riskClarification);
     formData.append("predictorClarification", riskClarification);
@@ -1308,6 +1312,8 @@ export default function Tools() {
                   setRiskClarification={setRiskClarification}
                   riskRows={riskRows}
                   setRiskRows={setRiskRows}
+                  riskReferenceCategories={riskReferenceCategories}
+                  setRiskReferenceCategories={setRiskReferenceCategories}
                   riskResult={riskResult}
                   runRiskAnalysis={runRiskAnalysis}
                   downloadJSON={downloadJSON}
@@ -2256,6 +2262,194 @@ function AnalysisClarificationBox({
   );
 }
 
+
+function ReferenceCategoryPanel({
+  rows,
+  predictors,
+  references,
+  setReferences,
+}: {
+  rows: Record<string, any>[];
+  predictors: string[];
+  references: Record<string, string>;
+  setReferences: (value: Record<string, string>) => void;
+}) {
+  if (!predictors.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/60 p-4 text-sm text-slate-400">
+        Select categorical independent variables to set reference categories. Numeric predictors do not need a reference.
+      </div>
+    );
+  }
+
+  function setReference(variable: string, category: string) {
+    setReferences({ ...(references ?? {}), [variable]: category });
+  }
+
+  return (
+    <div className="rounded-3xl border border-emerald-300/20 bg-emerald-300/5 p-4">
+      <div className="mb-4">
+        <h4 className="text-lg font-black text-emerald-200">Reference category setup</h4>
+        <p className="mt-1 text-xs leading-5 text-slate-400">
+          Choose the baseline category for each categorical predictor. The output tables will keep the reference row but OR/AOR and p-value will be shown as Reference; all other categories will be compared against it.
+        </p>
+      </div>
+
+      <div className="grid gap-4">
+        {predictors.map((variable) => {
+          const categories = uniqueColumnValues(rows, variable, 100);
+          const selected = references?.[variable] || categories[0] || "";
+
+          return (
+            <div key={variable} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-black text-white">{variable}</p>
+                  <p className="text-xs text-slate-400">Detected categories: {categories.length || 0}</p>
+                </div>
+                <select
+                  value={selected}
+                  onChange={(e) => setReference(variable, e.target.value)}
+                  className="rounded-xl border border-emerald-300/30 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none focus:border-emerald-300"
+                >
+                  <option value="">Select reference</option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {categories.map((category) => {
+                  const active = selected === category;
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setReference(variable, category)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-black transition ${
+                        active
+                          ? "border-emerald-300 bg-emerald-300 text-slate-950"
+                          : "border-white/10 bg-white/5 text-slate-300 hover:border-emerald-300 hover:text-emerald-200"
+                      }`}
+                    >
+                      {active ? "Reference: " : "Set ref: "}{category}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RiskCategoryTable({
+  title,
+  rows,
+  downloadCSV,
+  fileName,
+}: {
+  title: string;
+  rows: Record<string, any>[];
+  downloadCSV?: (text: string, name: string) => void;
+  fileName: string;
+}) {
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  const preferredColumns = [
+    "variable",
+    "category",
+    "referenceCategory",
+    "comparison",
+    "analysis",
+    "n",
+    "positiveCases",
+    "negativeCases",
+    "oddsRatio",
+    "adjustedOddsRatio",
+    "ciLower",
+    "ciUpper",
+    "pValue",
+    "fisherExactTwoSidedP",
+    "vif",
+    "tolerance",
+    "vifStatus",
+    "variableMaxVIF",
+    "variableMinTolerance",
+    "variableVIFStatus",
+    "vifSource",
+    "coefficient",
+    "standardError",
+    "zStatistic",
+    "pValueLabel",
+    "interpretation",
+  ];
+  const discovered = tableColumns(normalizedRows);
+  const columns = [
+    ...preferredColumns.filter((column) => discovered.includes(column)),
+    ...discovered.filter((column) => !preferredColumns.includes(column)),
+  ].slice(0, 24);
+
+  return (
+    <div className="rounded-3xl border border-emerald-300/20 bg-slate-900/80 p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-lg font-black text-emerald-200">{title}</h4>
+          <p className="text-xs leading-5 text-slate-400">
+            Standard category-wise table. Reference categories are retained but OR/AOR and p-value are marked as Reference.
+          </p>
+        </div>
+        {downloadCSV && normalizedRows.length > 0 && (
+          <button
+            onClick={() => downloadCSV(csvFromGenericRows(normalizedRows), fileName)}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm font-black hover:border-emerald-300 hover:text-emerald-300"
+          >
+            Export CSV
+          </button>
+        )}
+      </div>
+
+      {normalizedRows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-5 text-sm text-slate-400">
+          No category-level rows returned yet. Run risk analysis after selecting outcome, predictors, and reference categories.
+        </div>
+      ) : (
+        <div className="max-h-[520px] overflow-auto rounded-2xl border border-white/10">
+          <table className="min-w-full text-left text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-950 text-slate-300">
+              <tr>
+                {columns.map((column) => (
+                  <th key={column} className="border-b border-white/10 px-3 py-3 font-black">
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {normalizedRows.map((row, rowIndex) => {
+                const isReference = String(row.pValueLabel || row.interpretation || "").toLowerCase().includes("reference") || row.isReference === true;
+                return (
+                  <tr key={rowIndex} className={`border-t border-white/5 ${isReference ? "bg-emerald-300/10" : "odd:bg-white/[0.03] hover:bg-cyan-300/5"}`}>
+                    {columns.map((column) => (
+                      <td key={column} className={`max-w-[260px] truncate px-3 py-2 ${isReference ? "font-bold text-emerald-100" : "text-slate-300"}`} title={shortValue(row[column])}>
+                        {shortValue(row[column])}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RiskSection(props: any) {
   const {
     riskFileName,
@@ -2271,6 +2465,8 @@ function RiskSection(props: any) {
     setRiskClarification,
     riskRows,
     setRiskRows,
+    riskReferenceCategories,
+    setRiskReferenceCategories,
     riskResult,
     runRiskAnalysis,
     downloadJSON,
@@ -2278,7 +2474,12 @@ function RiskSection(props: any) {
   } = props;
 
   const columns = tableColumns(riskRows ?? []);
-  const selectedColumns = [riskOutcome, ...String(riskPredictors || "").split(",").map((x) => x.trim())].filter(Boolean);
+  const riskPredictorList = String(riskPredictors || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const selectedColumns = [riskOutcome, ...riskPredictorList].filter(Boolean);
+  const categoricalPredictors = riskPredictorList.filter((column) => !numericColumnNames(riskRows ?? []).includes(column));
 
   async function handleRiskFile(file: File | null) {
     setRiskFile(file);
@@ -2290,6 +2491,7 @@ function RiskSection(props: any) {
 
     const rows = await readSpreadsheetLikeFile(file);
     setRiskRows(rows);
+    setRiskReferenceCategories({});
   }
 
   return (
@@ -2324,11 +2526,24 @@ function RiskSection(props: any) {
           <VariablePicker
             label="Independent variable(s) / predictors"
             value={riskPredictors}
-            onChange={setRiskPredictors}
+            onChange={(value) => {
+              setRiskPredictors(value);
+              const keep = new Set(String(value || "").split(",").map((x) => x.trim()).filter(Boolean));
+              setRiskReferenceCategories(
+                Object.fromEntries(Object.entries(riskReferenceCategories ?? {}).filter(([key]) => keep.has(key)))
+              );
+            }}
             columns={columns.filter((c) => c !== riskOutcome)}
             placeholder="Select independent variable"
             multiple
             helper="Select one or more predictors. Click a selected chip to remove it."
+          />
+
+          <ReferenceCategoryPanel
+            rows={riskRows ?? []}
+            predictors={categoricalPredictors}
+            references={riskReferenceCategories ?? {}}
+            setReferences={setRiskReferenceCategories}
           />
 
           <Input label="Selection threshold" value={riskThreshold} onChange={setRiskThreshold} />
@@ -2395,11 +2610,43 @@ function RiskSection(props: any) {
               <ResultCard title="p < 0.05" value={String(riskResult.risk?.summary?.significantAt005 ?? 0)} />
               <ResultCard title="Selected" value={String(riskResult.risk?.summary?.selectedForMultivariable ?? 0)} />
               <ResultCard title="Strongest" value={riskResult.risk?.summary?.strongestPredictor?.variable ?? "NA"} />
+              <ResultCard title="Max VIF" value={shortValue(riskResult.risk?.multicollinearity?.maximumVIF ?? riskResult.risk?.finalMulticollinearity?.maximumVIF ?? riskResult.risk?.candidateMulticollinearity?.maximumVIF)} />
+              <ResultCard title="VIF status" value={riskResult.risk?.multicollinearity?.interpretation ?? riskResult.risk?.candidateMulticollinearity?.interpretation ?? "NA"} />
             </div>
 
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
               <RankingBars title="p-value Ranking" data={riskResult.risk?.visualization?.pValueBars ?? []} labelKey="variable" valueKey="pValue" inverse />
               <RiskForestPlot data={riskResult.risk?.visualization?.forestData ?? []} />
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <RiskCategoryTable
+                title="Univariable category-level output"
+                rows={riskResult.risk?.tables?.univariable ?? riskResult.risk?.univariableCategoryTable ?? []}
+                downloadCSV={downloadCSV}
+                fileName="egstat_n_univariable_category_table.csv"
+              />
+              <RiskCategoryTable
+                title="Multivariable category-level output"
+                rows={riskResult.risk?.tables?.multivariable ?? riskResult.risk?.multivariableCategoryTable ?? []}
+                downloadCSV={downloadCSV}
+                fileName="egstat_n_multivariable_category_table.csv"
+              />
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <RiskCategoryTable
+                title="Candidate predictor VIF / multicollinearity"
+                rows={riskResult.risk?.candidateVIFSummary ?? riskResult.risk?.candidateVIF ?? []}
+                downloadCSV={downloadCSV}
+                fileName="egstat_n_candidate_vif.csv"
+              />
+              <RiskCategoryTable
+                title="Final model VIF / multicollinearity"
+                rows={riskResult.risk?.vifSummary ?? riskResult.risk?.vif ?? []}
+                downloadCSV={downloadCSV}
+                fileName="egstat_n_final_model_vif.csv"
+              />
             </div>
 
             <div className="mt-6">

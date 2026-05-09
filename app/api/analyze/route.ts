@@ -464,6 +464,260 @@ function parseClarifications(formData: FormData): RawRow {
   return out;
 }
 
+
+function parseReferenceCategories(formData: FormData): RawRow {
+  const candidates = [
+    formData.get("referenceCategories"),
+    formData.get("referenceCategoryMap"),
+    formData.get("categoryReferences"),
+    formData.get("references"),
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as RawRow;
+    } catch {
+      const out: RawRow = {};
+      candidate
+        .split(";")
+        .map((chunk) => chunk.trim())
+        .filter(Boolean)
+        .forEach((chunk) => {
+          const [variable, reference] = chunk.split(":").map((x) => safeText(x));
+          if (variable && reference) out[variable] = reference;
+        });
+      if (Object.keys(out).length) return out;
+    }
+  }
+
+  return {};
+}
+
+function referenceForVariable(rows: RawRow[], variable: string, referenceCategories: RawRow = {}): string | null {
+  const levels = uniqueValues(rows, variable);
+  const requested = safeText(referenceCategories?.[variable]);
+  if (requested && levels.includes(requested)) return requested;
+  return levels[0] ?? null;
+}
+
+function orderedLevelsWithReference(rows: RawRow[], variable: string, referenceCategories: RawRow = {}): string[] {
+  const levels = uniqueValues(rows, variable);
+  const reference = referenceForVariable(rows, variable, referenceCategories);
+  if (!reference) return levels;
+  return [reference, ...levels.filter((level) => level !== reference)];
+}
+
+function formatComparison(level: string, reference: string | null): string {
+  return reference ? `${level} vs ${reference}` : level;
+}
+
+function interpretationFromOR(orValue: number | null, pValue: number | null, alpha = 0.05): string {
+  if (!Number.isFinite(Number(orValue)) || !Number.isFinite(Number(pValue))) return "Not estimable";
+  if (Number(pValue) >= alpha) return "Not statistically significant";
+  if (Number(orValue) > 1) return "Higher odds compared with reference";
+  if (Number(orValue) < 1) return "Lower odds compared with reference";
+  return "No odds difference from reference";
+}
+
+function buildUnivariableRiskTable(univariable: RawRow[], alpha = 0.05): RawRow[] {
+  return univariable.flatMap((item: any) => {
+    if (Array.isArray(item.categoryRows)) {
+      return item.categoryRows.map((row: any) => ({
+        ...row,
+        model: "Univariable",
+        interpretation: row.isReference ? "Reference category" : interpretationFromOR(row.oddsRatio ?? null, row.pValue ?? null, alpha),
+      }));
+    }
+
+    return [
+      {
+        model: "Univariable",
+        variable: item.variable,
+        category: item.variableType === "continuous" ? "Per 1-unit increase" : item.levelCompared ?? "Comparison",
+        reference: item.reference ?? null,
+        comparison: item.comparisonLabel ?? item.test,
+        isReference: false,
+        outcome: item.outcome,
+        positiveLevel: item.positiveLevel ?? null,
+        nCategoryPositive: item.table?.categoryPositive ?? item.table?.exposedPositive ?? null,
+        nCategoryNegative: item.table?.categoryNegative ?? item.table?.exposedNegative ?? null,
+        nReferencePositive: item.table?.referencePositive ?? item.table?.unexposedPositive ?? null,
+        nReferenceNegative: item.table?.referenceNegative ?? item.table?.unexposedNegative ?? null,
+        oddsRatio: item.oddsRatio ?? null,
+        ciLower: item.ciLower ?? null,
+        ciUpper: item.ciUpper ?? null,
+        pValue: item.pValue ?? null,
+        fisherExactTwoSidedP: item.fisherExactTwoSidedP ?? null,
+        interpretation: item.interpretation ?? "Screening result",
+      },
+    ];
+  });
+}
+
+function buildMultivariableRiskTable(model: any, rows: RawRow[], predictors: string[], referenceCategories: RawRow = {}, alpha = 0.05): RawRow[] {
+  if (!model || !Array.isArray(model.coefficients)) return [];
+
+  const coefficientBySourceLevel = new Map<string, any>();
+  const coefficientByTerm = new Map<string, any>();
+
+  model.coefficients.forEach((coef: any) => {
+    coefficientByTerm.set(coef.term, coef);
+    if (coef.metadata?.source && coef.metadata?.level) coefficientBySourceLevel.set(`${coef.metadata.source}|||${coef.metadata.level}`, coef);
+  });
+
+  const out: RawRow[] = [];
+
+  predictors.forEach((predictor) => {
+    if (isNumericColumn(rows, predictor)) {
+      const coef = coefficientByTerm.get(predictor);
+      out.push({
+        model: "Multivariable",
+        variable: predictor,
+        category: "Per 1-unit increase",
+        reference: null,
+        comparison: "Continuous predictor",
+        isReference: false,
+        adjustedOddsRatio: coef?.oddsRatio ?? null,
+        adjustedCiLower: coef?.ci95OddsRatio?.lower ?? null,
+        adjustedCiUpper: coef?.ci95OddsRatio?.upper ?? null,
+        coefficientLogOdds: coef?.estimateLogOdds ?? null,
+        standardError: coef?.standardError ?? null,
+        zStatistic: coef?.zStatistic ?? null,
+        pValue: coef?.pValue ?? null,
+        interpretation: interpretationFromOR(coef?.oddsRatio ?? null, coef?.pValue ?? null, alpha),
+      });
+      return;
+    }
+
+    const levels = orderedLevelsWithReference(rows, predictor, referenceCategories);
+    const reference = levels[0] ?? null;
+
+    if (reference) {
+      out.push({
+        model: "Multivariable",
+        variable: predictor,
+        category: reference,
+        reference,
+        comparison: "Reference",
+        isReference: true,
+        adjustedOddsRatio: 1,
+        adjustedCiLower: 1,
+        adjustedCiUpper: 1,
+        coefficientLogOdds: 0,
+        standardError: null,
+        zStatistic: null,
+        pValue: null,
+        pValueLabel: "Reference",
+        interpretation: "Reference category",
+      });
+    }
+
+    levels.slice(1).forEach((level) => {
+      const coef = coefficientBySourceLevel.get(`${predictor}|||${level}`) ?? coefficientByTerm.get(`${predictor}=${level}`);
+      out.push({
+        model: "Multivariable",
+        variable: predictor,
+        category: level,
+        reference,
+        comparison: formatComparison(level, reference),
+        isReference: false,
+        adjustedOddsRatio: coef?.oddsRatio ?? null,
+        adjustedCiLower: coef?.ci95OddsRatio?.lower ?? null,
+        adjustedCiUpper: coef?.ci95OddsRatio?.upper ?? null,
+        coefficientLogOdds: coef?.estimateLogOdds ?? null,
+        standardError: coef?.standardError ?? null,
+        zStatistic: coef?.zStatistic ?? null,
+        pValue: coef?.pValue ?? null,
+        interpretation: interpretationFromOR(coef?.oddsRatio ?? null, coef?.pValue ?? null, alpha),
+      });
+    });
+  });
+
+  return out;
+}
+
+function buildLinearMultivariableTable(model: any, rows: RawRow[], predictors: string[], referenceCategories: RawRow = {}, alpha = 0.05): RawRow[] {
+  if (!model || !Array.isArray(model.coefficients)) return [];
+
+  const coefficientBySourceLevel = new Map<string, any>();
+  const coefficientByTerm = new Map<string, any>();
+
+  model.coefficients.forEach((coef: any) => {
+    coefficientByTerm.set(coef.term, coef);
+    if (coef.metadata?.source && coef.metadata?.level) coefficientBySourceLevel.set(`${coef.metadata.source}|||${coef.metadata.level}`, coef);
+  });
+
+  const out: RawRow[] = [];
+
+  predictors.forEach((predictor) => {
+    if (isNumericColumn(rows, predictor)) {
+      const coef = coefficientByTerm.get(predictor);
+      out.push({
+        model: "Multivariable linear",
+        variable: predictor,
+        category: "Per 1-unit increase",
+        reference: null,
+        comparison: "Continuous predictor",
+        isReference: false,
+        beta: coef?.estimate ?? null,
+        ciLower: coef?.ci95?.lower ?? null,
+        ciUpper: coef?.ci95?.upper ?? null,
+        standardError: coef?.standardError ?? null,
+        tStatistic: coef?.tStatistic ?? null,
+        pValue: coef?.pValue ?? null,
+        interpretation: Number.isFinite(coef?.pValue) && coef.pValue < alpha ? "Statistically significant coefficient" : "Not statistically significant",
+      });
+      return;
+    }
+
+    const levels = orderedLevelsWithReference(rows, predictor, referenceCategories);
+    const reference = levels[0] ?? null;
+
+    if (reference) {
+      out.push({
+        model: "Multivariable linear",
+        variable: predictor,
+        category: reference,
+        reference,
+        comparison: "Reference",
+        isReference: true,
+        beta: 0,
+        ciLower: 0,
+        ciUpper: 0,
+        standardError: null,
+        tStatistic: null,
+        pValue: null,
+        pValueLabel: "Reference",
+        interpretation: "Reference category",
+      });
+    }
+
+    levels.slice(1).forEach((level) => {
+      const coef = coefficientBySourceLevel.get(`${predictor}|||${level}`) ?? coefficientByTerm.get(`${predictor}=${level}`);
+      out.push({
+        model: "Multivariable linear",
+        variable: predictor,
+        category: level,
+        reference,
+        comparison: formatComparison(level, reference),
+        isReference: false,
+        beta: coef?.estimate ?? null,
+        ciLower: coef?.ci95?.lower ?? null,
+        ciUpper: coef?.ci95?.upper ?? null,
+        standardError: coef?.standardError ?? null,
+        tStatistic: coef?.tStatistic ?? null,
+        pValue: coef?.pValue ?? null,
+        interpretation: Number.isFinite(coef?.pValue) && coef.pValue < alpha ? "Statistically significant coefficient" : "Not statistically significant",
+      });
+    });
+  });
+
+  return out;
+}
+
 function describeDataset(rows: RawRow[]) {
   const columns = getColumns(rows);
   return {
@@ -1114,20 +1368,21 @@ function inverse(A: number[][]): number[][] | null {
   return M.map((row) => row.slice(n));
 }
 
-function buildDesignMatrix(rows: RawRow[], predictors: string[]) {
+function buildDesignMatrix(rows: RawRow[], predictors: string[], referenceCategories: RawRow = {}) {
   const metadata: RawRow[] = [{ name: "Intercept", type: "intercept" }];
 
   predictors.forEach((p) => {
     if (isNumericColumn(rows, p)) {
       metadata.push({ name: p, source: p, type: "numeric" });
     } else {
-      const levels = uniqueValues(rows, p);
+      const levels = orderedLevelsWithReference(rows, p, referenceCategories);
+      const reference = levels[0] ?? null;
       levels.slice(1).forEach((level) => {
         metadata.push({
           name: `${p}=${level}`,
           source: p,
           level,
-          reference: levels[0],
+          reference,
           type: "dummy",
         });
       });
@@ -1145,7 +1400,273 @@ function buildDesignMatrix(rows: RawRow[], predictors: string[]) {
   return { X, metadata };
 }
 
-function linearRegression(rows: RawRow[], outcome: string, predictors: string[]) {
+
+function variableNameForVIF(metadata: RawRow): string {
+  if (metadata.type === "intercept") return "Intercept";
+  if (metadata.type === "numeric") return safeText(metadata.source ?? metadata.name);
+  if (metadata.source && metadata.level) return `${metadata.source}=${metadata.level}`;
+  return safeText(metadata.name, "Unknown");
+}
+
+function sourceNameForVIF(metadata: RawRow): string {
+  if (metadata.type === "intercept") return "Intercept";
+  return safeText(metadata.source ?? metadata.name, "Unknown");
+}
+
+function colMean(values: number[]): number {
+  const m = mean(values);
+  return m === null ? 0 : m;
+}
+
+function centeredR2(observed: number[], fitted: number[]): number | null {
+  const m = colMean(observed);
+  const sst = sum(observed.map((v) => (v - m) ** 2));
+  if (sst <= 1e-12) return null;
+  const sse = sum(observed.map((v, i) => (v - fitted[i]) ** 2));
+  return Math.max(0, Math.min(1, 1 - sse / sst));
+}
+
+function varianceInflationFactorsFromDesign(X: number[][], metadata: RawRow[]) {
+  const designColumns = metadata
+    .map((m, index) => ({ metadata: m, index }))
+    .filter((item) => item.metadata.type !== "intercept");
+
+  if (designColumns.length === 0) {
+    return {
+      method: "Variance inflation factor from model design matrix",
+      available: false,
+      message: "No predictors were available for VIF calculation.",
+      variables: [],
+      summaryByVariable: [],
+      maximumVIF: null,
+      severeMulticollinearity: false,
+    };
+  }
+
+  if (designColumns.length === 1) {
+    const only = designColumns[0];
+    const row = {
+      term: variableNameForVIF(only.metadata),
+      variable: sourceNameForVIF(only.metadata),
+      source: sourceNameForVIF(only.metadata),
+      type: only.metadata.type,
+      level: only.metadata.level ?? null,
+      reference: only.metadata.reference ?? null,
+      rSquaredWithOtherPredictors: 0,
+      tolerance: 1,
+      vif: 1,
+      status: "No multicollinearity: only one model predictor term",
+    };
+    return {
+      method: "Variance inflation factor from model design matrix",
+      available: true,
+      message: "Only one non-intercept model term was present; VIF is 1.",
+      variables: [row],
+      summaryByVariable: [row],
+      maximumVIF: 1,
+      severeMulticollinearity: false,
+      moderateMulticollinearity: false,
+      thresholds: { moderate: 5, severe: 10 },
+    };
+  }
+
+  const variables = designColumns.map((target) => {
+    const y = X.map((row) => Number(row[target.index]));
+    const otherIndexes = metadata
+      .map((m, index) => ({ m, index }))
+      .filter((item) => item.index !== target.index)
+      .map((item) => item.index);
+    const XOther = X.map((row) => otherIndexes.map((index) => Number(row[index])));
+    const Xt = transpose(XOther);
+    const XtX = matMul(Xt, XOther);
+    const inv = inverse(XtX);
+
+    if (!inv) {
+      return {
+        term: variableNameForVIF(target.metadata),
+        variable: sourceNameForVIF(target.metadata),
+        source: sourceNameForVIF(target.metadata),
+        type: target.metadata.type,
+        level: target.metadata.level ?? null,
+        reference: target.metadata.reference ?? null,
+        rSquaredWithOtherPredictors: 1,
+        tolerance: 0,
+        vif: Infinity,
+        status: "Severe/singular multicollinearity: auxiliary design matrix could not be inverted",
+      };
+    }
+
+    const Xty = matVecMul(Xt, y);
+    const beta = matVecMul(inv, Xty);
+    const fitted = matVecMul(XOther, beta);
+    const rSquared = centeredR2(y, fitted);
+
+    if (rSquared === null) {
+      return {
+        term: variableNameForVIF(target.metadata),
+        variable: sourceNameForVIF(target.metadata),
+        source: sourceNameForVIF(target.metadata),
+        type: target.metadata.type,
+        level: target.metadata.level ?? null,
+        reference: target.metadata.reference ?? null,
+        rSquaredWithOtherPredictors: null,
+        tolerance: null,
+        vif: null,
+        status: "Not estimable: term has no variance after coding",
+      };
+    }
+
+    const tolerance = Math.max(0, 1 - rSquared);
+    const vif = tolerance <= 1e-12 ? Infinity : 1 / tolerance;
+    const status =
+      !Number.isFinite(vif) || vif >= 10
+        ? "Severe multicollinearity"
+        : vif >= 5
+        ? "Moderate multicollinearity"
+        : "Acceptable";
+
+    return {
+      term: variableNameForVIF(target.metadata),
+      variable: sourceNameForVIF(target.metadata),
+      source: sourceNameForVIF(target.metadata),
+      type: target.metadata.type,
+      level: target.metadata.level ?? null,
+      reference: target.metadata.reference ?? null,
+      rSquaredWithOtherPredictors: rSquared,
+      tolerance,
+      vif,
+      status,
+    };
+  });
+
+  const grouped = new Map<string, RawRow[]>();
+  variables.forEach((row: any) => {
+    const key = safeText(row.source ?? row.variable ?? row.term, "Unknown");
+    grouped.set(key, [...(grouped.get(key) ?? []), row]);
+  });
+
+  const summaryByVariable = Array.from(grouped.entries()).map(([variable, rows]) => {
+    const finiteVifs = rows.map((row: any) => Number(row.vif)).filter((v) => Number.isFinite(v));
+    const hasInfinite = rows.some((row: any) => row.vif === Infinity || row.status?.includes("singular"));
+    const maxVIF = hasInfinite ? Infinity : finiteVifs.length ? Math.max(...finiteVifs) : null;
+    return {
+      variable,
+      terms: rows.map((row: any) => row.term),
+      maxVIF,
+      minTolerance: rows.map((row: any) => row.tolerance).filter((v: any) => Number.isFinite(v)).sort((a: number, b: number) => a - b)[0] ?? null,
+      status:
+        maxVIF === Infinity || Number(maxVIF) >= 10
+          ? "Severe multicollinearity"
+          : Number(maxVIF) >= 5
+          ? "Moderate multicollinearity"
+          : maxVIF === null
+          ? "Not estimable"
+          : "Acceptable",
+    };
+  });
+
+  const finiteVifs = variables.map((row: any) => Number(row.vif)).filter((v) => Number.isFinite(v));
+  const maximumVIF = variables.some((row: any) => row.vif === Infinity) ? Infinity : finiteVifs.length ? Math.max(...finiteVifs) : null;
+
+  return {
+    method: "Variance inflation factor from model design matrix",
+    available: true,
+    variables,
+    summaryByVariable,
+    maximumVIF,
+    severeMulticollinearity: maximumVIF === Infinity || Number(maximumVIF) >= 10,
+    moderateMulticollinearity: Number(maximumVIF) >= 5 && Number(maximumVIF) < 10,
+    thresholds: { moderate: 5, severe: 10 },
+    interpretation:
+      maximumVIF === Infinity || Number(maximumVIF) >= 10
+        ? "At least one model term has severe multicollinearity; coefficients, standard errors, and p-values may be unstable."
+        : Number(maximumVIF) >= 5
+        ? "At least one model term has moderate multicollinearity; interpret model coefficients carefully."
+        : "No major multicollinearity signal was detected by VIF thresholds.",
+  };
+}
+
+
+function predictorSetMulticollinearity(rows: RawRow[], predictors: string[], referenceCategories: RawRow = {}) {
+  const cleanPredictors = predictors.filter((p) => getColumns(rows).includes(p));
+  const completeRows = rows.filter((r) =>
+    cleanPredictors.every((p) => !isMissing(r[p]) && (isNumericColumn(rows, p) ? Number.isFinite(Number(r[p])) : true))
+  );
+
+  if (!cleanPredictors.length || !completeRows.length) {
+    return {
+      method: "Variance inflation factor from predictor-only design matrix",
+      available: false,
+      message: "No complete predictor rows were available for VIF calculation.",
+      variables: [],
+      summaryByVariable: [],
+      maximumVIF: null,
+      severeMulticollinearity: false,
+      moderateMulticollinearity: false,
+      thresholds: { moderate: 5, severe: 10 },
+    };
+  }
+
+  const { X, metadata } = buildDesignMatrix(completeRows, cleanPredictors, referenceCategories);
+  const diagnostics = varianceInflationFactorsFromDesign(X, metadata);
+  return {
+    ...diagnostics,
+    method: "Variance inflation factor from predictor-only design matrix used for risk screening",
+    predictors: cleanPredictors,
+    completeRows: completeRows.length,
+  };
+}
+
+function termVIFForRiskRow(row: RawRow, multicollinearity: any): RawRow | null {
+  const variables = Array.isArray(multicollinearity?.variables) ? multicollinearity.variables : [];
+  const summary = Array.isArray(multicollinearity?.summaryByVariable) ? multicollinearity.summaryByVariable : [];
+  const variable = safeText(row.variable);
+  const category = safeText(row.category);
+
+  if (!variable) return null;
+
+  if (!row.isReference && category && category !== "Per 1-unit increase") {
+    const byLevel = variables.find((v: any) => safeText(v.source ?? v.variable) === variable && safeText(v.level) === category);
+    if (byLevel) return byLevel;
+  }
+
+  const byTerm = variables.find((v: any) => safeText(v.term) === variable || safeText(v.source ?? v.variable) === variable);
+  if (byTerm) return byTerm;
+
+  const byVariable = summary.find((v: any) => safeText(v.variable) === variable || safeText(v.source) === variable);
+  return byVariable ?? null;
+}
+
+function variableVIFSummaryForRiskRow(row: RawRow, multicollinearity: any): RawRow | null {
+  const summary = Array.isArray(multicollinearity?.summaryByVariable) ? multicollinearity.summaryByVariable : [];
+  const variable = safeText(row.variable);
+  if (!variable) return null;
+  return summary.find((v: any) => safeText(v.variable) === variable || safeText(v.source) === variable) ?? null;
+}
+
+function decorateRiskRowsWithVIF(rows: RawRow[], multicollinearity: any, sourceLabel: string): RawRow[] {
+  return rows.map((row) => {
+    const term = termVIFForRiskRow(row, multicollinearity);
+    const variableSummary = variableVIFSummaryForRiskRow(row, multicollinearity);
+    const termVIF = term?.vif ?? term?.maxVIF ?? null;
+    const variableMaxVIF = variableSummary?.maxVIF ?? termVIF ?? null;
+    const tolerance = term?.tolerance ?? variableSummary?.minTolerance ?? null;
+    const status = term?.status ?? variableSummary?.status ?? "Not available";
+
+    return {
+      ...row,
+      vifSource: sourceLabel,
+      vif: row.isReference ? null : termVIF,
+      tolerance: row.isReference ? null : tolerance,
+      vifStatus: row.isReference ? "Reference category; VIF is assessed through non-reference dummy terms and variable-level maximum VIF" : status,
+      variableMaxVIF,
+      variableMinTolerance: variableSummary?.minTolerance ?? tolerance,
+      variableVIFStatus: variableSummary?.status ?? status,
+    };
+  });
+}
+
+function linearRegression(rows: RawRow[], outcome: string, predictors: string[], referenceCategories: RawRow = {}) {
   const completeRows = rows.filter(
     (r) =>
       Number.isFinite(Number(r[outcome])) &&
@@ -1164,7 +1685,8 @@ function linearRegression(rows: RawRow[], outcome: string, predictors: string[])
   }
 
   const y = completeRows.map((r) => Number(r[outcome]));
-  const { X, metadata } = buildDesignMatrix(completeRows, predictors);
+  const { X, metadata } = buildDesignMatrix(completeRows, predictors, referenceCategories);
+  const multicollinearity = varianceInflationFactorsFromDesign(X, metadata);
   const Xt = transpose(X);
   const XtX = matMul(Xt, X);
   const XtXInverse = inverse(XtX);
@@ -1235,6 +1757,9 @@ function linearRegression(rows: RawRow[], outcome: string, predictors: string[])
     adjustedRSquared,
     fStatistic,
     pValue: fStatistic === null ? null : fPValue(fStatistic, p, dfResidual),
+    multicollinearity,
+    vif: multicollinearity.variables,
+    vifSummary: multicollinearity.summaryByVariable,
   };
 }
 
@@ -1246,7 +1771,43 @@ function binaryOutcomeEncode(rows: RawRow[], outcome: string) {
   return { positive, negative, levels };
 }
 
-function logisticRegression(rows: RawRow[], outcome: string, predictors: string[]) {
+
+function stableSigmoid(value: number): number {
+  if (value >= 35) return 1 - 1e-15;
+  if (value <= -35) return 1e-15;
+  return 1 / (1 + Math.exp(-value));
+}
+
+function clampProbability(value: number): number {
+  return Math.min(1 - 1e-12, Math.max(1e-12, value));
+}
+
+function logit(value: number): number {
+  const p = clampProbability(value);
+  return Math.log(p / (1 - p));
+}
+
+function logisticLogLikelihood(y: number[], mu: number[]): number {
+  return sum(y.map((actual, i) => actual * Math.log(clampProbability(mu[i])) + (1 - actual) * Math.log(clampProbability(1 - mu[i]))));
+}
+
+function logisticDeviance(logLikelihood: number): number {
+  return -2 * logLikelihood;
+}
+
+function logisticModelWarning(beta: number[], standardErrors: (number | null)[], fittedProbabilities: number[]): string[] {
+  const warnings: string[] = [];
+  if (beta.some((b) => Math.abs(b) > 15)) warnings.push("Large absolute coefficient detected; possible quasi-complete separation or sparse category cells.");
+  if (standardErrors.some((se) => se !== null && Number.isFinite(se) && se > 10)) warnings.push("Very large standard error detected; odds ratio and p-value may be unstable.");
+  if (fittedProbabilities.some((p) => p < 1e-6 || p > 1 - 1e-6)) warnings.push("Fitted probabilities are extremely close to 0 or 1; check separation and sparse cells.");
+  return warnings;
+}
+
+function coefficientByTerm(model: any, term: string) {
+  return Array.isArray(model?.coefficients) ? model.coefficients.find((coef: any) => coef.term === term) ?? null : null;
+}
+
+function logisticRegression(rows: RawRow[], outcome: string, predictors: string[], referenceCategories: RawRow = {}) {
   const enc = binaryOutcomeEncode(rows, outcome);
 
   if (!enc) {
@@ -1267,29 +1828,70 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
 
   const y = completeRows.map((r) => (String(r[outcome]) === enc.positive ? 1 : 0));
 
-  if (completeRows.length < predictors.length + 5 || new Set(y).size !== 2) {
+  if (new Set(y).size !== 2) {
     return {
       test: "Multivariable logistic regression",
       outcome,
       predictors,
       positiveLevel: enc.positive,
+      negativeLevel: enc.negative,
       n: completeRows.length,
       pValue: null,
-      message: "Insufficient complete observations or no outcome variation.",
+      message: "Logistic regression requires both positive and negative outcome observations after complete-case filtering.",
     };
   }
 
-  const { X, metadata } = buildDesignMatrix(completeRows, predictors);
-  const p = X[0].length;
+  const { X, metadata } = buildDesignMatrix(completeRows, predictors, referenceCategories);
+  const multicollinearity = varianceInflationFactorsFromDesign(X, metadata);
+  const n = completeRows.length;
+  const p = X[0]?.length ?? 0;
+
+  if (p < 2) {
+    return {
+      test: "Multivariable logistic regression",
+      outcome,
+      predictors,
+      positiveLevel: enc.positive,
+      negativeLevel: enc.negative,
+      n,
+      pValue: null,
+      message: "No usable non-intercept predictor term was available after coding.",
+      multicollinearity,
+      vif: multicollinearity.variables,
+      vifSummary: multicollinearity.summaryByVariable,
+    };
+  }
+
+  if (n <= p + 1) {
+    return {
+      test: "Multivariable logistic regression",
+      outcome,
+      predictors,
+      positiveLevel: enc.positive,
+      negativeLevel: enc.negative,
+      n,
+      modelTerms: p,
+      pValue: null,
+      message: "Insufficient complete observations after dummy coding. Logistic regression needs more complete rows than model terms.",
+      multicollinearity,
+      vif: multicollinearity.variables,
+      vifSummary: multicollinearity.summaryByVariable,
+    };
+  }
+
   let beta = Array(p).fill(0);
+  beta[0] = logit(Number(mean(y)));
   let converged = false;
   let iterations = 0;
+  let lastLogLikelihood = -Infinity;
+  let stepHalvingCount = 0;
 
-  for (let iter = 0; iter < 80; iter++) {
+  for (let iter = 0; iter < 120; iter++) {
     iterations = iter + 1;
     const eta = matVecMul(X, beta);
-    const mu = eta.map((e) => Math.min(1 - 1e-8, Math.max(1e-8, 1 / (1 + Math.exp(-e)))));
-    const W = mu.map((m) => m * (1 - m));
+    const mu = eta.map(stableSigmoid);
+    const W = mu.map((m) => Math.max(1e-12, m * (1 - m)));
+    const currentLogLikelihood = logisticLogLikelihood(y, mu);
     const XtWX = Array.from({ length: p }, (_, i) =>
       Array.from({ length: p }, (_, j) => sum(X.map((row, k) => row[i] * W[k] * row[j])))
     );
@@ -1301,32 +1903,58 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
         test: "Multivariable logistic regression",
         outcome,
         predictors,
-        n: completeRows.length,
+        positiveLevel: enc.positive,
+        negativeLevel: enc.negative,
+        n,
+        modelTerms: p,
         pValue: null,
-        message: "Hessian matrix is singular; reduce predictors or remove collinear variables.",
+        message: "Weighted Hessian matrix is singular; reduce collinear predictors, combine sparse categories, or change the reference category.",
+        multicollinearity,
+        vif: multicollinearity.variables,
+        vifSummary: multicollinearity.summaryByVariable,
       };
     }
 
-    const step = matVecMul(inv, XtResidual);
-    beta = beta.map((b, i) => b + step[i]);
+    const fullStep = matVecMul(inv, XtResidual);
+    let stepScale = 1;
+    let acceptedBeta = beta.map((b, i) => b + fullStep[i]);
+    let acceptedMu = matVecMul(X, acceptedBeta).map(stableSigmoid);
+    let acceptedLogLikelihood = logisticLogLikelihood(y, acceptedMu);
 
-    if (Math.max(...step.map(Math.abs)) < 1e-7) {
+    while (acceptedLogLikelihood < currentLogLikelihood - 1e-9 && stepScale > 1 / 1024) {
+      stepHalvingCount += 1;
+      stepScale /= 2;
+      acceptedBeta = beta.map((b, i) => b + fullStep[i] * stepScale);
+      acceptedMu = matVecMul(X, acceptedBeta).map(stableSigmoid);
+      acceptedLogLikelihood = logisticLogLikelihood(y, acceptedMu);
+    }
+
+    const scaledStep = fullStep.map((v) => v * stepScale);
+    beta = acceptedBeta;
+
+    if (Math.max(...scaledStep.map(Math.abs)) < 1e-7 || Math.abs(acceptedLogLikelihood - lastLogLikelihood) < 1e-9) {
       converged = true;
+      lastLogLikelihood = acceptedLogLikelihood;
       break;
     }
+
+    lastLogLikelihood = acceptedLogLikelihood;
   }
 
   const eta = matVecMul(X, beta);
-  const mu = eta.map((e) => Math.min(1 - 1e-8, Math.max(1e-8, 1 / (1 + Math.exp(-e)))));
-  const W = mu.map((m) => m * (1 - m));
+  const mu = eta.map(stableSigmoid);
+  const W = mu.map((m) => Math.max(1e-12, m * (1 - m)));
   const XtWX = Array.from({ length: p }, (_, i) =>
     Array.from({ length: p }, (_, j) => sum(X.map((row, k) => row[i] * W[k] * row[j])))
   );
   const cov = inverse(XtWX);
 
+  const standardErrors = beta.map((_, i) => (cov ? Math.sqrt(Math.max(0, cov[i][i])) : null));
   const coefficients = beta.map((estimateLogOdds, i) => {
-    const standardError = cov ? Math.sqrt(Math.max(0, cov[i][i])) : null;
+    const standardError = standardErrors[i];
     const zStatistic = standardError && standardError > 0 ? estimateLogOdds / standardError : null;
+    const ciLowerLogOdds = standardError === null ? null : estimateLogOdds - 1.96 * standardError;
+    const ciUpperLogOdds = standardError === null ? null : estimateLogOdds + 1.96 * standardError;
 
     return {
       term: metadata[i].name,
@@ -1335,44 +1963,62 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
       zStatistic,
       pValue: zStatistic === null ? null : normalTwoSidedP(zStatistic),
       oddsRatio: Math.exp(estimateLogOdds),
+      ci95LogOdds: {
+        lower: ciLowerLogOdds,
+        upper: ciUpperLogOdds,
+      },
       ci95OddsRatio:
         standardError === null
           ? { lower: null, upper: null }
           : {
-              lower: Math.exp(estimateLogOdds - 1.96 * standardError),
-              upper: Math.exp(estimateLogOdds + 1.96 * standardError),
+              lower: Math.exp(Number(ciLowerLogOdds)),
+              upper: Math.exp(Number(ciUpperLogOdds)),
             },
       metadata: metadata[i],
     };
   });
 
-  const logLikelihood = sum(y.map((v, i) => v * Math.log(mu[i]) + (1 - v) * Math.log(1 - mu[i])));
-  const nullMean = Math.min(1 - 1e-8, Math.max(1e-8, Number(mean(y))));
+  const logLikelihood = logisticLogLikelihood(y, mu);
+  const nullMean = clampProbability(Number(mean(y)));
   const nullLogLikelihood = sum(y.map((v) => v * Math.log(nullMean) + (1 - v) * Math.log(1 - nullMean)));
-  const likelihoodRatioStatistic = 2 * (logLikelihood - nullLogLikelihood);
-  const dfModel = p - 1;
+  const likelihoodRatioStatistic = Math.max(0, 2 * (logLikelihood - nullLogLikelihood));
+  const dfModel = Math.max(0, p - 1);
+  const warnings = logisticModelWarning(beta, standardErrors, mu);
 
   return {
     test: "Multivariable logistic regression",
+    method: "Maximum-likelihood logistic regression using Newton-Raphson/IRLS with step-halving",
     outcome,
     predictors,
     positiveLevel: enc.positive,
     negativeLevel: enc.negative,
-    n: completeRows.length,
+    n,
+    events: sum(y),
+    nonEvents: y.length - sum(y),
+    modelTerms: p,
+    dfModel,
     converged,
     iterations,
+    stepHalvingCount,
     coefficients,
     fittedProbabilities: mu,
     logLikelihood,
     nullLogLikelihood,
+    deviance: logisticDeviance(logLikelihood),
+    nullDeviance: logisticDeviance(nullLogLikelihood),
     likelihoodRatioStatistic,
-    dfModel,
-    pValue: chiSquarePValue(likelihoodRatioStatistic, dfModel),
-    pseudoR2McFadden: 1 - logLikelihood / nullLogLikelihood,
+    pValue: dfModel > 0 ? chiSquarePValue(likelihoodRatioStatistic, dfModel) : null,
+    aic: 2 * p - 2 * logLikelihood,
+    bic: Math.log(n) * p - 2 * logLikelihood,
+    pseudoR2McFadden: nullLogLikelihood !== 0 ? 1 - logLikelihood / nullLogLikelihood : null,
+    warnings,
+    multicollinearity,
+    vif: multicollinearity.variables,
+    vifSummary: multicollinearity.summaryByVariable,
   };
 }
 
-function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string) {
+function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, referenceCategories: RawRow = {}) {
   const enc = binaryOutcomeEncode(rows, outcome);
 
   if (!enc) {
@@ -1380,14 +2026,14 @@ function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string) 
       variable: predictor,
       test: "categorical risk screening",
       pValue: null,
-      message: "Outcome must contain exactly two levels for 2x2 odds ratio screening.",
+      message: "Outcome must contain exactly two levels for category-level odds-ratio screening.",
     };
   }
 
-  const levels = uniqueValues(rows, predictor);
-  const level = levels.includes("1") ? "1" : levels[0];
+  const levels = orderedLevelsWithReference(rows, predictor, referenceCategories);
+  const reference = levels[0] ?? null;
 
-  if (!level) {
+  if (!reference) {
     return {
       variable: predictor,
       test: "categorical risk screening",
@@ -1397,41 +2043,144 @@ function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string) 
   }
 
   const valid = rows.filter((r) => !isMissing(r[outcome]) && !isMissing(r[predictor]));
-  const a0 = valid.filter((r) => String(r[predictor]) === level && String(r[outcome]) === enc.positive).length;
-  const b0 = valid.filter((r) => String(r[predictor]) === level && String(r[outcome]) !== enc.positive).length;
-  const c0 = valid.filter((r) => String(r[predictor]) !== level && String(r[outcome]) === enc.positive).length;
-  const d0 = valid.filter((r) => String(r[predictor]) !== level && String(r[outcome]) !== enc.positive).length;
+  const referencePositive = valid.filter((r) => String(r[predictor]) === reference && String(r[outcome]) === enc.positive).length;
+  const referenceNegative = valid.filter((r) => String(r[predictor]) === reference && String(r[outcome]) !== enc.positive).length;
 
-  const a = a0 + 0.5;
-  const b = b0 + 0.5;
-  const c = c0 + 0.5;
-  const d = d0 + 0.5;
-  const oddsRatio = (a * d) / (b * c);
-  const seLogOR = Math.sqrt(1 / a + 1 / b + 1 / c + 1 / d);
+  const categoryRows: RawRow[] = [
+    {
+      model: "Univariable",
+      variable: predictor,
+      variableType: "categorical",
+      category: reference,
+      reference,
+      comparison: "Reference",
+      isReference: true,
+      outcome,
+      positiveLevel: enc.positive,
+      negativeLevel: enc.negative,
+      nCategoryPositive: referencePositive,
+      nCategoryNegative: referenceNegative,
+      nCategoryTotal: referencePositive + referenceNegative,
+      categoryEventProportion: referencePositive + referenceNegative > 0 ? referencePositive / (referencePositive + referenceNegative) : null,
+      nReferencePositive: referencePositive,
+      nReferenceNegative: referenceNegative,
+      nReferenceTotal: referencePositive + referenceNegative,
+      referenceEventProportion: referencePositive + referenceNegative > 0 ? referencePositive / (referencePositive + referenceNegative) : null,
+      oddsRatio: null,
+      oddsRatioLabel: "Reference",
+      ciLower: null,
+      ciUpper: null,
+      ci95Label: "Reference",
+      chiSquare: null,
+      chiSquarePValue: null,
+      pValue: null,
+      pValueLabel: "Reference",
+      fisherExactTwoSidedP: null,
+      primaryPMethod: "Reference",
+      correctionUsed: false,
+      interpretation: "Reference category",
+    },
+  ];
 
-  const total = a0 + b0 + c0 + d0;
-  const denominator = (a0 + b0) * (c0 + d0) * (a0 + c0) * (b0 + d0);
-  const chiSquare = denominator > 0 ? (total * (a0 * d0 - b0 * c0) ** 2) / denominator : null;
+  levels.slice(1).forEach((level) => {
+    const categoryPositive = valid.filter((r) => String(r[predictor]) === level && String(r[outcome]) === enc.positive).length;
+    const categoryNegative = valid.filter((r) => String(r[predictor]) === level && String(r[outcome]) !== enc.positive).length;
+    const zeroCell = [categoryPositive, categoryNegative, referencePositive, referenceNegative].some((v) => v === 0);
+    const correction = zeroCell ? 0.5 : 0;
+    const a = categoryPositive + correction;
+    const b = categoryNegative + correction;
+    const c = referencePositive + correction;
+    const d = referenceNegative + correction;
+    const oddsRatio = b > 0 && c > 0 ? (a * d) / (b * c) : null;
+    const seLogOR = oddsRatio !== null && a > 0 && b > 0 && c > 0 && d > 0 ? Math.sqrt(1 / a + 1 / b + 1 / c + 1 / d) : null;
+
+    const total = categoryPositive + categoryNegative + referencePositive + referenceNegative;
+    const denominator = (categoryPositive + categoryNegative) * (referencePositive + referenceNegative) * (categoryPositive + referencePositive) * (categoryNegative + referenceNegative);
+    const chiSquare = denominator > 0 ? (total * (categoryPositive * referenceNegative - categoryNegative * referencePositive) ** 2) / denominator : null;
+    const chiSquareP = chiSquare === null ? null : chiSquarePValue(chiSquare, 1);
+    const fisherP = fisherExact2x2(categoryPositive, categoryNegative, referencePositive, referenceNegative);
+    const expectedCategoryPositive = total > 0 ? ((categoryPositive + categoryNegative) * (categoryPositive + referencePositive)) / total : null;
+    const expectedCategoryNegative = total > 0 ? ((categoryPositive + categoryNegative) * (categoryNegative + referenceNegative)) / total : null;
+    const expectedReferencePositive = total > 0 ? ((referencePositive + referenceNegative) * (categoryPositive + referencePositive)) / total : null;
+    const expectedReferenceNegative = total > 0 ? ((referencePositive + referenceNegative) * (categoryNegative + referenceNegative)) / total : null;
+    const minimumExpectedCell = Math.min(
+      ...[expectedCategoryPositive, expectedCategoryNegative, expectedReferencePositive, expectedReferenceNegative].filter((v): v is number => Number.isFinite(Number(v)))
+    );
+    const useFisherAsPrimary = !Number.isFinite(minimumExpectedCell) || minimumExpectedCell < 5;
+    const pValue = useFisherAsPrimary ? fisherP : chiSquareP;
+    const ciLower = oddsRatio !== null && seLogOR !== null ? Math.exp(Math.log(oddsRatio) - 1.96 * seLogOR) : null;
+    const ciUpper = oddsRatio !== null && seLogOR !== null ? Math.exp(Math.log(oddsRatio) + 1.96 * seLogOR) : null;
+    const categoryEventProportion = categoryPositive + categoryNegative > 0 ? categoryPositive / (categoryPositive + categoryNegative) : null;
+    const referenceEventProportion = referencePositive + referenceNegative > 0 ? referencePositive / (referencePositive + referenceNegative) : null;
+
+    categoryRows.push({
+      model: "Univariable",
+      variable: predictor,
+      variableType: "categorical",
+      category: level,
+      reference,
+      comparison: formatComparison(level, reference),
+      isReference: false,
+      outcome,
+      positiveLevel: enc.positive,
+      negativeLevel: enc.negative,
+      nCategoryPositive: categoryPositive,
+      nCategoryNegative: categoryNegative,
+      nCategoryTotal: categoryPositive + categoryNegative,
+      categoryEventProportion,
+      nReferencePositive: referencePositive,
+      nReferenceNegative: referenceNegative,
+      nReferenceTotal: referencePositive + referenceNegative,
+      referenceEventProportion,
+      riskDifference: categoryEventProportion !== null && referenceEventProportion !== null ? categoryEventProportion - referenceEventProportion : null,
+      oddsRatio,
+      oddsRatioMethod: zeroCell ? "Haldane-Anscombe corrected crude odds ratio" : "Crude odds ratio",
+      correctionUsed: zeroCell,
+      ciLower,
+      ciUpper,
+      chiSquare,
+      chiSquarePValue: chiSquareP,
+      pValue,
+      fisherExactTwoSidedP: fisherP,
+      primaryPMethod: useFisherAsPrimary ? "Fisher exact test because at least one expected cell count was <5" : "Pearson chi-square test",
+      minimumExpectedCell,
+      interpretation: interpretationFromOR(oddsRatio, pValue),
+    });
+  });
+
+  const comparableRows = categoryRows.filter((row) => !row.isReference);
+  const strongest = [...comparableRows].filter((row) => Number.isFinite(row.pValue)).sort((a, b) => Number(a.pValue) - Number(b.pValue))[0] ?? comparableRows[0] ?? null;
+  const univariableLogistic = logisticRegression(rows, outcome, [predictor], referenceCategories);
 
   return {
     variable: predictor,
     variableType: "categorical",
-    levelCompared: level,
+    reference,
+    levels,
+    levelCompared: strongest?.category ?? null,
+    comparisonLabel: strongest?.comparison ?? null,
     outcome,
     positiveLevel: enc.positive,
-    test: "univariable 2x2 odds ratio + chi-square/Fisher",
-    pValue: chiSquare === null ? null : chiSquarePValue(chiSquare, 1),
-    fisherExactTwoSidedP: fisherExact2x2(a0, b0, c0, d0),
-    chiSquare,
-    oddsRatio,
-    ciLower: Math.exp(Math.log(oddsRatio) - 1.96 * seLogOR),
-    ciUpper: Math.exp(Math.log(oddsRatio) + 1.96 * seLogOR),
-    table: {
-      exposedPositive: a0,
-      exposedNegative: b0,
-      unexposedPositive: c0,
-      unexposedNegative: d0,
-    },
+    negativeLevel: enc.negative,
+    test: "category-level univariable odds ratio vs selected reference",
+    pValue: strongest?.pValue ?? null,
+    primaryPMethod: strongest?.primaryPMethod ?? null,
+    fisherExactTwoSidedP: strongest?.fisherExactTwoSidedP ?? null,
+    chiSquarePValue: strongest?.chiSquarePValue ?? null,
+    chiSquare: strongest?.chiSquare ?? null,
+    oddsRatio: strongest?.oddsRatio ?? null,
+    ciLower: strongest?.ciLower ?? null,
+    ciUpper: strongest?.ciUpper ?? null,
+    categoryRows,
+    univariableLogistic,
+    table: strongest
+      ? {
+          categoryPositive: strongest.nCategoryPositive,
+          categoryNegative: strongest.nCategoryNegative,
+          referencePositive: strongest.nReferencePositive,
+          referenceNegative: strongest.nReferenceNegative,
+        }
+      : null,
   };
 }
 
@@ -1450,19 +2199,30 @@ function continuousPredictorBinaryOutcome(rows: RawRow[], outcome: string, predi
   const positive = rows.filter((r) => String(r[outcome]) === enc.positive && Number.isFinite(Number(r[predictor]))).map((r) => Number(r[predictor]));
   const negative = rows.filter((r) => String(r[outcome]) !== enc.positive && Number.isFinite(Number(r[predictor]))).map((r) => Number(r[predictor]));
 
+  const univariableLogistic = logisticRegression(rows, outcome, [predictor], {});
+  const coefficient = coefficientByTerm(univariableLogistic, predictor);
+
   return {
     variable: predictor,
     variableType: "continuous",
     outcome,
     positiveLevel: enc.positive,
-    test: "univariable Welch t-test screening",
+    negativeLevel: enc.negative,
+    test: "continuous predictor vs binary outcome: Welch t-test + univariable logistic regression",
     ...independentTTestFromArrays(positive, negative, false),
+    univariableLogistic,
+    oddsRatioPerUnit: coefficient?.oddsRatio ?? null,
+    ciLower: coefficient?.ci95OddsRatio?.lower ?? null,
+    ciUpper: coefficient?.ci95OddsRatio?.upper ?? null,
+    logisticCoefficient: coefficient?.estimateLogOdds ?? null,
+    logisticStandardError: coefficient?.standardError ?? null,
+    logisticPValue: coefficient?.pValue ?? null,
   };
 }
 
-function numericOutcomeUnivariable(rows: RawRow[], outcome: string, predictor: string) {
+function numericOutcomeUnivariable(rows: RawRow[], outcome: string, predictor: string, referenceCategories: RawRow = {}) {
   if (isNumericColumn(rows, predictor)) {
-    const model = linearRegression(rows, outcome, [predictor]);
+    const model = linearRegression(rows, outcome, [predictor], referenceCategories);
     return {
       variable: predictor,
       variableType: "continuous",
@@ -1473,7 +2233,7 @@ function numericOutcomeUnivariable(rows: RawRow[], outcome: string, predictor: s
     };
   }
 
-  const levels = uniqueValues(rows, predictor);
+  const levels = orderedLevelsWithReference(rows, predictor, referenceCategories);
   if (levels.length === 2) {
     const result = independentTTestBySelectedGroups(rows, outcome, predictor, levels[0], levels[1]);
     return {
@@ -1497,7 +2257,7 @@ function numericOutcomeUnivariable(rows: RawRow[], outcome: string, predictor: s
   };
 }
 
-function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], threshold: number, clarifications: RawRow) {
+function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], threshold: number, clarifications: RawRow, referenceCategories: RawRow = {}) {
   const profile = describeDataset(rows);
   const outcomeIsNumeric = isNumericColumn(rows, outcome);
   const validPredictors = predictors.filter((p) => getColumns(rows).includes(p) && p !== outcome);
@@ -1506,28 +2266,63 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     return {
       outcome,
       predictors,
+      referenceCategories,
       error: `Outcome/dependent variable "${outcome}" was not found in the uploaded or edited dataset.`,
       datasetProfile: profile,
     };
   }
 
   if (outcomeIsNumeric) {
-    const univariable = validPredictors.map((p) => numericOutcomeUnivariable(rows, outcome, p));
+    const univariable = validPredictors.map((p) => numericOutcomeUnivariable(rows, outcome, p, referenceCategories));
     const selectedVariables = univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < threshold).map((u: any) => u.variable);
     const multivariablePredictors = selectedVariables.length ? selectedVariables : validPredictors.slice(0, 8);
-    const multivariable = multivariablePredictors.length ? linearRegression(rows, outcome, multivariablePredictors) : null;
+    const multivariable = multivariablePredictors.length ? linearRegression(rows, outcome, multivariablePredictors, referenceCategories) : null;
+    const candidateMulticollinearity = predictorSetMulticollinearity(rows, validPredictors, referenceCategories);
+    const finalMulticollinearity = (multivariable as any)?.multicollinearity ?? null;
+    const univariableScreeningTable = decorateRiskRowsWithVIF(
+      univariable.map((u: any) => ({
+        model: "Univariable",
+        variable: u.variable,
+        variableType: u.variableType,
+        test: u.test,
+        pValue: u.pValue,
+        reference: referenceForVariable(rows, u.variable, referenceCategories),
+        details: u.comparison ?? u.regression ?? null,
+      })),
+      candidateMulticollinearity,
+      "Candidate-predictor VIF from all selected predictors"
+    );
+    const multivariableCategoryTable = decorateRiskRowsWithVIF(
+      buildLinearMultivariableTable(multivariable, rows, multivariablePredictors, referenceCategories, 0.05),
+      finalMulticollinearity,
+      "Final multivariable model VIF"
+    );
 
     return {
       outcome,
       outcomeType: "numeric",
       predictors: validPredictors,
       threshold,
+      referenceCategories,
       clarifications,
       datasetProfile: profile,
       univariable,
       selectedVariables,
       multivariable,
       regression: { linear: multivariable },
+      multicollinearity: finalMulticollinearity,
+      candidateMulticollinearity,
+      finalMulticollinearity,
+      vif: (multivariable as any)?.vif ?? [],
+      vifSummary: (multivariable as any)?.vifSummary ?? [],
+      candidateVIF: candidateMulticollinearity?.variables ?? [],
+      candidateVIFSummary: candidateMulticollinearity?.summaryByVariable ?? [],
+      tables: {
+        univariable: univariableScreeningTable,
+        multivariable: multivariableCategoryTable,
+      },
+      univariableCategoryTable: univariableScreeningTable,
+      multivariableCategoryTable,
       summary: {
         totalPredictors: validPredictors.length,
         significantAt005: univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < 0.05).length,
@@ -1563,7 +2358,7 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
       if (isNumericColumn(rows, p) && uniqueValues(rows, p).length > 5) {
         return continuousPredictorBinaryOutcome(rows, outcome, p);
       }
-      return categoricalRisk2x2(rows, outcome, p);
+      return categoricalRisk2x2(rows, outcome, p, referenceCategories);
     }
 
     if (isNumericColumn(rows, p)) {
@@ -1588,9 +2383,27 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     };
   });
 
+  const univariableLogisticModels = binary
+    ? validPredictors.map((p) => ({
+        variable: p,
+        model: logisticRegression(rows, outcome, [p], referenceCategories),
+      }))
+    : [];
   const selectedVariables = univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < threshold).map((u: any) => u.variable);
   const multivariablePredictors = selectedVariables.length ? selectedVariables : validPredictors.slice(0, 8);
-  const multivariable = binary && multivariablePredictors.length ? logisticRegression(rows, outcome, multivariablePredictors) : null;
+  const multivariable = binary && multivariablePredictors.length ? logisticRegression(rows, outcome, multivariablePredictors, referenceCategories) : null;
+  const candidateMulticollinearity = predictorSetMulticollinearity(rows, validPredictors, referenceCategories);
+  const finalMulticollinearity = (multivariable as any)?.multicollinearity ?? null;
+  const univariableCategoryTable = decorateRiskRowsWithVIF(
+    buildUnivariableRiskTable(univariable, 0.05),
+    candidateMulticollinearity,
+    "Candidate-predictor VIF from all selected predictors"
+  );
+  const multivariableCategoryTable = decorateRiskRowsWithVIF(
+    buildMultivariableRiskTable(multivariable, rows, multivariablePredictors, referenceCategories, 0.05),
+    finalMulticollinearity,
+    "Final multivariable model VIF"
+  );
 
   return {
     outcome,
@@ -1598,12 +2411,27 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     outcomeLevels,
     predictors: validPredictors,
     threshold,
+    referenceCategories,
     clarifications,
     datasetProfile: profile,
     univariable,
+    univariableLogisticModels,
     selectedVariables,
     multivariable,
-    regression: { logistic: multivariable },
+    regression: { logistic: multivariable, univariable: univariableLogisticModels },
+    multicollinearity: finalMulticollinearity,
+    candidateMulticollinearity,
+    finalMulticollinearity,
+    vif: (multivariable as any)?.vif ?? [],
+    vifSummary: (multivariable as any)?.vifSummary ?? [],
+    candidateVIF: candidateMulticollinearity?.variables ?? [],
+    candidateVIFSummary: candidateMulticollinearity?.summaryByVariable ?? [],
+    tables: {
+      univariable: univariableCategoryTable,
+      multivariable: multivariableCategoryTable,
+    },
+    univariableCategoryTable,
+    multivariableCategoryTable,
     summary: {
       totalPredictors: validPredictors.length,
       significantAt005: univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < 0.05).length,
@@ -1617,25 +2445,30 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
         selected: Number.isFinite(u.pValue) && u.pValue < threshold,
         analysisType: u.test,
       })),
-      forestData: univariable
-        .filter((u: any) => Number.isFinite(u.oddsRatio))
-        .map((u: any) => ({
-          variable: u.variable,
-          oddsRatio: u.oddsRatio,
-          ciLower: u.ciLower,
-          ciUpper: u.ciUpper,
-          pValue: u.pValue,
+      forestData: univariableCategoryTable
+        .filter((row: any) => !row.isReference && Number.isFinite(row.oddsRatio))
+        .map((row: any) => ({
+          variable: row.variable,
+          category: row.category,
+          reference: row.reference,
+          comparison: row.comparison,
+          oddsRatio: row.oddsRatio,
+          ciLower: row.ciLower,
+          ciUpper: row.ciUpper,
+          pValue: row.pValue,
         })),
-      multivariableForestData:
-        (multivariable as any)?.coefficients
-          ?.filter((c: any) => c.term !== "Intercept")
-          .map((c: any) => ({
-            term: c.term,
-            oddsRatio: c.oddsRatio,
-            ciLower: c.ci95OddsRatio?.lower,
-            ciUpper: c.ci95OddsRatio?.upper,
-            pValue: c.pValue,
-          })) ?? [],
+      multivariableForestData: multivariableCategoryTable
+        .filter((row: any) => !row.isReference && Number.isFinite(row.adjustedOddsRatio))
+        .map((row: any) => ({
+          variable: row.variable,
+          category: row.category,
+          reference: row.reference,
+          comparison: row.comparison,
+          oddsRatio: row.adjustedOddsRatio,
+          ciLower: row.adjustedCiLower,
+          ciUpper: row.adjustedCiUpper,
+          pValue: row.pValue,
+        })),
     },
   };
 }
@@ -1885,6 +2718,7 @@ function analyzeStatistics(rows: RawRow[], request: StatisticalRequest) {
       "The route accepts test-specific clarification fields such as tTestGroupColumn, tTestGroupA, tTestGroupB, anovaValueColumn, anovaFactorColumns, outcomeColumn, predictorColumns, and clarifications JSON.",
       "T-test uses the selected two group levels when provided. ANOVA uses selected factor/category fields. Numerical outcomes in risk/regression are analyzed with linear regression and group-comparison methods.",
       "These calculations are implemented directly in TypeScript using statistical formulas. Validate final publication results in R/Python/SPSS/GraphPad before submission.",
+      "VIF/multicollinearity diagnostics are calculated from the same model design matrix after numeric coding and categorical dummy coding; VIF >=5 is flagged as moderate and VIF >=10 as severe.",
     ],
   };
 
@@ -2000,6 +2834,24 @@ function analyzeStatistics(rows: RawRow[], request: StatisticalRequest) {
       const selected = results.univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < request.alpha).map((u: any) => u.variable);
       results.multivariable = logisticRegression(rows, outcome, selected.length ? selected : predictors.slice(0, 8));
       results.regression.logistic = results.multivariable;
+    }
+  }
+
+  if (tests.has("vif") || tests.has("multicollinearity") || tests.has("collinearity") || tests.has("linear_regression") || tests.has("logistic_regression") || tests.has("regression")) {
+    const outcomeForVIF = request.outcomeColumn || fallbackValueColumns[0] || categoricalColumns[0] || "";
+    const predictorsForVIF = request.predictorColumns.filter((p) => p !== outcomeForVIF && getColumns(rows).includes(p));
+    const completeRowsForVIF = rows.filter((r) =>
+      predictorsForVIF.every((p) => !isMissing(r[p]) && (isNumericColumn(rows, p) ? Number.isFinite(Number(r[p])) : true))
+    );
+
+    if (predictorsForVIF.length && completeRowsForVIF.length) {
+      const { X, metadata } = buildDesignMatrix(completeRowsForVIF, predictorsForVIF);
+      results.tests.multicollinearity = varianceInflationFactorsFromDesign(X, metadata);
+      results.tests.vif = results.tests.multicollinearity.variables;
+      results.tests.vifSummary = results.tests.multicollinearity.summaryByVariable;
+      results.regression.multicollinearity = results.tests.multicollinearity;
+      results.regression.vif = results.tests.vif;
+      results.regression.vifSummary = results.tests.vifSummary;
     }
   }
 
@@ -2570,7 +3422,7 @@ export async function POST(request: Request) {
       const threshold = safeNumber(formData.get("threshold"), 0.2);
       return NextResponse.json({
         module: "risk",
-        risk: analyzeRisk(rows, outcome, predictors, threshold, parseClarifications(formData)),
+        risk: analyzeRisk(rows, outcome, predictors, threshold, parseClarifications(formData), parseReferenceCategories(formData)),
       });
     }
 
