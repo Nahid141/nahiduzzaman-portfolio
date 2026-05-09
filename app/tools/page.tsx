@@ -366,6 +366,7 @@ export default function Tools() {
   const [riskFile, setRiskFile] = useState<File | null>(null);
   const [riskFileName, setRiskFileName] = useState("");
   const [riskOutcome, setRiskOutcome] = useState("");
+  const [riskOutcomeEventLevel, setRiskOutcomeEventLevel] = useState("");
   const [riskPredictors, setRiskPredictors] = useState("");
   const [riskThreshold, setRiskThreshold] = useState("0.2");
   const [riskClarification, setRiskClarification] = useState("");
@@ -440,7 +441,7 @@ export default function Tools() {
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
   const [log, setLog] = useState<string[]>([
-    "> Tools page ready.",
+    "> Hello! I'm Nahiduzzaman, the developer of this tool. I'd like to invite you to have a cup of coffee with me. Thank you for using my tool :)",
     "> EGStat-N initialized.",
     "> QI-GeneX-N ready.",
   ]);
@@ -764,6 +765,10 @@ export default function Tools() {
     formData.append("predictors", riskPredictors);
     formData.append("threshold", riskThreshold);
     formData.append("outcomeColumn", riskOutcome);
+    formData.append("outcomeEventLevel", riskOutcomeEventLevel);
+    formData.append("outcomePositiveLevel", riskOutcomeEventLevel);
+    formData.append("positiveOutcomeLevel", riskOutcomeEventLevel);
+    formData.append("eventLevel", riskOutcomeEventLevel);
     formData.append("predictorColumns", riskPredictors);
     formData.append("referenceCategories", JSON.stringify(riskReferenceCategories));
     formData.append("referenceCategoryMap", JSON.stringify(riskReferenceCategories));
@@ -1159,7 +1164,7 @@ export default function Tools() {
               {[
                 "SEIR transmission",
                 "Interactive heatmap",
-                "Risk analysis",
+                "Risk factor analysis",
                 "Network analytics",
               ].map((item) => (
                 <div key={item} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-slate-200">
@@ -1243,7 +1248,7 @@ export default function Tools() {
                 />
 
                 <TabButton
-                  label="Risk Analysis"
+                  label="Risk Factor Analysis"
                   active={mainTab === "risk"}
                   onClick={() => setMainTab("risk")}
                 />
@@ -1304,6 +1309,8 @@ export default function Tools() {
                   setRiskFileName={setRiskFileName}
                   riskOutcome={riskOutcome}
                   setRiskOutcome={setRiskOutcome}
+                  riskOutcomeEventLevel={riskOutcomeEventLevel}
+                  setRiskOutcomeEventLevel={setRiskOutcomeEventLevel}
                   riskPredictors={riskPredictors}
                   setRiskPredictors={setRiskPredictors}
                   riskThreshold={riskThreshold}
@@ -2367,14 +2374,31 @@ function RiskCategoryTable({
     "comparison",
     "analysis",
     "n",
+    "positiveLevel",
+    "negativeLevel",
+    "positiveLevelSource",
     "positiveCases",
     "negativeCases",
     "oddsRatio",
+    "oddsRatioPerUnit",
+    "logisticOddsRatio",
     "adjustedOddsRatio",
     "ciLower",
     "ciUpper",
+    "logisticCiLower",
+    "logisticCiUpper",
+    "adjustedCiLower",
+    "adjustedCiUpper",
     "pValue",
+    "logisticPValue",
+    "welchPValue",
+    "chiSquarePValue",
     "fisherExactTwoSidedP",
+    "primaryPMethod",
+    "logisticPrimaryPMethod",
+    "crudePValue",
+    "minimumExpectedCell",
+    "correctionUsed",
     "vif",
     "tolerance",
     "vifStatus",
@@ -2383,8 +2407,12 @@ function RiskCategoryTable({
     "variableVIFStatus",
     "vifSource",
     "coefficient",
+    "coefficientLogOdds",
+    "logisticCoefficient",
     "standardError",
+    "logisticStandardError",
     "zStatistic",
+    "logisticZStatistic",
     "pValueLabel",
     "interpretation",
   ];
@@ -2415,7 +2443,7 @@ function RiskCategoryTable({
 
       {normalizedRows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-5 text-sm text-slate-400">
-          No category-level rows returned yet. Run risk analysis after selecting outcome, predictors, and reference categories.
+          No category-level rows returned yet. Run risk factor analysis after selecting outcome, predictors, and reference categories.
         </div>
       ) : (
         <div className="max-h-[520px] overflow-auto rounded-2xl border border-white/10">
@@ -2450,6 +2478,83 @@ function RiskCategoryTable({
   );
 }
 
+
+function LogisticDiagnosticsPanel({ riskResult }: { riskResult: any }) {
+  const diagnostics = riskResult?.risk?.logisticDiagnostics ?? riskResult?.risk?.multivariable ?? riskResult?.risk?.regression?.logistic;
+  const univariableModels = riskResult?.risk?.univariableLogisticModels ?? riskResult?.risk?.regression?.univariable ?? [];
+
+  if (!diagnostics && (!Array.isArray(univariableModels) || univariableModels.length === 0)) return null;
+
+  const cards = diagnostics
+    ? [
+        ["Model", diagnostics.test ?? "Logistic regression"],
+        ["Converged", diagnostics.converged === true ? "Yes" : diagnostics.converged === false ? "No" : "NA"],
+        ["Events / non-events", `${shortValue(diagnostics.events)} / ${shortValue(diagnostics.nonEvents)}`],
+        ["Iterations", shortValue(diagnostics.iterations)],
+        ["LR χ²", shortValue(diagnostics.likelihoodRatioStatistic)],
+        ["LR p-value", shortValue(diagnostics.likelihoodRatioPValue ?? diagnostics.pValue)],
+        ["AIC", shortValue(diagnostics.aic)],
+        ["McFadden R²", shortValue(diagnostics.pseudoR2McFadden)],
+      ]
+    : [];
+
+  const modelRows = Array.isArray(univariableModels)
+    ? univariableModels.map((entry: any) => ({
+        variable: entry.variable,
+        n: entry.model?.n,
+        events: entry.model?.events,
+        nonEvents: entry.model?.nonEvents,
+        converged: entry.model?.converged,
+        iterations: entry.model?.iterations,
+        likelihoodRatioStatistic: entry.model?.likelihoodRatioStatistic,
+        pValue: entry.model?.pValue,
+        aic: entry.model?.aic,
+        pseudoR2McFadden: entry.model?.pseudoR2McFadden,
+        warnings: Array.isArray(entry.model?.warnings) ? entry.model.warnings.join(" | ") : "",
+      }))
+    : [];
+
+  return (
+    <div className="mt-6 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.04] p-5">
+      <div className="mb-4">
+        <h4 className="text-lg font-black text-cyan-200">Logistic regression diagnostics</h4>
+        <p className="text-xs leading-5 text-slate-400">
+          Checks convergence, likelihood-ratio statistics, information criteria, and sparse/separation warnings from the corrected backend.
+        </p>
+      </div>
+
+      {cards.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-4">
+          {cards.map(([label, value]) => (
+            <ResultCard key={String(label)} title={String(label)} value={String(value ?? "NA")} />
+          ))}
+        </div>
+      )}
+
+      {Array.isArray(diagnostics?.warnings) && diagnostics.warnings.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
+          <p className="font-black">Model warnings</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {diagnostics.warnings.map((warning: string, index: number) => (
+              <li key={index}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {modelRows.length > 0 && (
+        <div className="mt-5">
+          <RiskCategoryTable
+            title="Univariable logistic model diagnostics"
+            rows={modelRows}
+            fileName="egstat_n_univariable_logistic_diagnostics.csv"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RiskSection(props: any) {
   const {
     riskFileName,
@@ -2457,6 +2562,8 @@ function RiskSection(props: any) {
     setRiskFileName,
     riskOutcome,
     setRiskOutcome,
+    riskOutcomeEventLevel,
+    setRiskOutcomeEventLevel,
     riskPredictors,
     setRiskPredictors,
     riskThreshold,
@@ -2480,6 +2587,8 @@ function RiskSection(props: any) {
     .filter(Boolean);
   const selectedColumns = [riskOutcome, ...riskPredictorList].filter(Boolean);
   const categoricalPredictors = riskPredictorList.filter((column) => !numericColumnNames(riskRows ?? []).includes(column));
+  const outcomeLevels = uniqueColumnValues(riskRows ?? [], riskOutcome, 20);
+  const outcomeIsBinary = outcomeLevels.length === 2;
 
   async function handleRiskFile(file: File | null) {
     setRiskFile(file);
@@ -2492,6 +2601,7 @@ function RiskSection(props: any) {
     const rows = await readSpreadsheetLikeFile(file);
     setRiskRows(rows);
     setRiskReferenceCategories({});
+    setRiskOutcomeEventLevel("");
   }
 
   return (
@@ -2517,11 +2627,38 @@ function RiskSection(props: any) {
           <VariablePicker
             label="Dependent variable / outcome"
             value={riskOutcome}
-            onChange={setRiskOutcome}
+            onChange={(value) => {
+              setRiskOutcome(value);
+              setRiskOutcomeEventLevel("");
+            }}
             columns={columns}
             placeholder="Select dependent variable"
             helper="This should usually be binary for odds ratio/logistic regression, such as Positive/Negative or 1/0."
           />
+
+          {riskOutcome && outcomeLevels.length > 0 && (
+            <div className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] p-4">
+              <label className="mb-2 block text-sm font-black text-amber-200">
+                Positive/event outcome level for OR/logistic regression
+              </label>
+              <select
+                value={riskOutcomeEventLevel}
+                onChange={(e) => setRiskOutcomeEventLevel(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white"
+              >
+                <option value="">Auto-detect event level</option>
+                {outcomeLevels.map((level) => (
+                  <option key={level} value={level}>
+                    Treat “{level}” as event/positive outcome
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs leading-5 text-amber-100/80">
+                For matching manual SPSS/R/Excel analysis, select the exact event level used there. If this is wrong, odds ratios can appear inverted.
+                {outcomeIsBinary ? " Binary outcome detected." : " This outcome is not binary; logistic OR will not run unless it has exactly two levels."}
+              </p>
+            </div>
+          )}
 
           <VariablePicker
             label="Independent variable(s) / predictors"
@@ -2561,7 +2698,7 @@ function RiskSection(props: any) {
             onClick={runRiskAnalysis}
             className="w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
           >
-            Run Risk Analysis on Edited Data
+            Run Risk factor Analysis on Edited Data
           </button>
 
           {riskRows?.length > 0 && (
@@ -2590,6 +2727,7 @@ function RiskSection(props: any) {
           <ResultCard title="Columns" value={String(columns.length)} />
           <ResultCard title="Dependent" value={riskOutcome || "Not selected"} />
           <ResultCard title="Predictors" value={riskPredictors || "Not selected"} />
+          <ResultCard title="Event level" value={riskOutcomeEventLevel || riskResult?.risk?.outcomeEventLevel || "Auto"} />
         </div>
 
         <EditableDataGrid
@@ -2610,9 +2748,14 @@ function RiskSection(props: any) {
               <ResultCard title="p < 0.05" value={String(riskResult.risk?.summary?.significantAt005 ?? 0)} />
               <ResultCard title="Selected" value={String(riskResult.risk?.summary?.selectedForMultivariable ?? 0)} />
               <ResultCard title="Strongest" value={riskResult.risk?.summary?.strongestPredictor?.variable ?? "NA"} />
+              <ResultCard title="Event used" value={riskResult.risk?.outcomeEventLevel ?? "NA"} />
+              <ResultCard title="Non-event" value={riskResult.risk?.outcomeNonEventLevel ?? "NA"} />
+              <ResultCard title="Event source" value={riskResult.risk?.positiveLevelSource ?? "NA"} />
               <ResultCard title="Max VIF" value={shortValue(riskResult.risk?.multicollinearity?.maximumVIF ?? riskResult.risk?.finalMulticollinearity?.maximumVIF ?? riskResult.risk?.candidateMulticollinearity?.maximumVIF)} />
               <ResultCard title="VIF status" value={riskResult.risk?.multicollinearity?.interpretation ?? riskResult.risk?.candidateMulticollinearity?.interpretation ?? "NA"} />
             </div>
+
+            <LogisticDiagnosticsPanel riskResult={riskResult} />
 
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
               <RankingBars title="p-value Ranking" data={riskResult.risk?.visualization?.pValueBars ?? []} labelKey="variable" valueKey="pValue" inverse />

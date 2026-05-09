@@ -496,6 +496,76 @@ function parseReferenceCategories(formData: FormData): RawRow {
   return {};
 }
 
+
+function parseOutcomeEventLevel(formData: FormData): string {
+  const candidates = [
+    formData.get("outcomeEventLevel"),
+    formData.get("outcomePositiveLevel"),
+    formData.get("positiveOutcomeLevel"),
+    formData.get("eventLevel"),
+    formData.get("caseLevel"),
+    formData.get("positiveLevel"),
+  ];
+
+  for (const candidate of candidates) {
+    const text = safeText(candidate);
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function matchExistingLevel(levels: string[], requested: string): string | null {
+  const clean = safeText(requested);
+  if (!clean) return null;
+  const exact = levels.find((level) => level === clean);
+  if (exact) return exact;
+  const lower = clean.toLowerCase();
+  return levels.find((level) => level.toLowerCase() === lower) ?? null;
+}
+
+function inferBinaryPositiveLevel(levels: string[]): { positive: string; source: string } | null {
+  if (levels.length !== 2) return null;
+
+  const preferredPositiveLabels = [
+    "1",
+    "yes",
+    "y",
+    "true",
+    "positive",
+    "pos",
+    "+",
+    "case",
+    "cases",
+    "affected",
+    "infected",
+    "diseased",
+    "present",
+    "detected",
+    "contaminated",
+    "resistant",
+    "dead",
+    "died",
+    "ill",
+    "sick",
+    "disease",
+  ];
+
+  for (const label of preferredPositiveLabels) {
+    const matched = levels.find((level) => level.toLowerCase() === label);
+    if (matched) return { positive: matched, source: `auto-detected event label: ${matched}` };
+  }
+
+  const numericLevels = levels.map((level) => Number(level));
+  if (numericLevels.every((value) => Number.isFinite(value))) {
+    const maxValue = Math.max(...numericLevels);
+    const maxIndex = numericLevels.findIndex((value) => value === maxValue);
+    return { positive: levels[maxIndex], source: "auto-detected higher numeric value as event" };
+  }
+
+  return { positive: levels[1], source: "fallback: second observed level; set outcome event level for patent-grade reproducibility" };
+}
+
 function referenceForVariable(rows: RawRow[], variable: string, referenceCategories: RawRow = {}): string | null {
   const levels = uniqueValues(rows, variable);
   const requested = safeText(referenceCategories?.[variable]);
@@ -546,10 +616,17 @@ function buildUnivariableRiskTable(univariable: RawRow[], alpha = 0.05): RawRow[
         nCategoryNegative: item.table?.categoryNegative ?? item.table?.exposedNegative ?? null,
         nReferencePositive: item.table?.referencePositive ?? item.table?.unexposedPositive ?? null,
         nReferenceNegative: item.table?.referenceNegative ?? item.table?.unexposedNegative ?? null,
-        oddsRatio: item.oddsRatio ?? null,
+        oddsRatio: item.oddsRatio ?? item.oddsRatioPerUnit ?? null,
+        oddsRatioPerUnit: item.oddsRatioPerUnit ?? null,
         ciLower: item.ciLower ?? null,
         ciUpper: item.ciUpper ?? null,
-        pValue: item.pValue ?? null,
+        pValue: item.pValue ?? item.logisticPValue ?? null,
+        logisticCoefficient: item.logisticCoefficient ?? null,
+        logisticStandardError: item.logisticStandardError ?? null,
+        logisticZStatistic: item.logisticZStatistic ?? null,
+        logisticPValue: item.logisticPValue ?? null,
+        welchPValue: item.welchPValue ?? null,
+        primaryPMethod: item.primaryPMethod ?? null,
         fisherExactTwoSidedP: item.fisherExactTwoSidedP ?? null,
         interpretation: item.interpretation ?? "Screening result",
       },
@@ -1763,12 +1840,25 @@ function linearRegression(rows: RawRow[], outcome: string, predictors: string[],
   };
 }
 
-function binaryOutcomeEncode(rows: RawRow[], outcome: string) {
+function binaryOutcomeEncode(rows: RawRow[], outcome: string, requestedPositiveLevel = "") {
   const levels = uniqueValues(rows, outcome);
   if (levels.length !== 2) return null;
-  const positive = levels.includes("1") ? "1" : levels.includes("positive") ? "positive" : levels[1];
+
+  const requested = matchExistingLevel(levels, requestedPositiveLevel);
+  const inferred = inferBinaryPositiveLevel(levels);
+  const positive = requested ?? inferred?.positive ?? levels[1];
   const negative = levels.find((x) => x !== positive) ?? levels[0];
-  return { positive, negative, levels };
+
+  return {
+    positive,
+    negative,
+    levels,
+    eventLevel: positive,
+    nonEventLevel: negative,
+    positiveLevelSource: requested
+      ? `user-selected event level: ${requested}`
+      : inferred?.source ?? "fallback positive level selection",
+  };
 }
 
 
@@ -1807,8 +1897,8 @@ function coefficientByTerm(model: any, term: string) {
   return Array.isArray(model?.coefficients) ? model.coefficients.find((coef: any) => coef.term === term) ?? null : null;
 }
 
-function logisticRegression(rows: RawRow[], outcome: string, predictors: string[], referenceCategories: RawRow = {}) {
-  const enc = binaryOutcomeEncode(rows, outcome);
+function logisticRegression(rows: RawRow[], outcome: string, predictors: string[], referenceCategories: RawRow = {}, outcomeEventLevel = "") {
+  const enc = binaryOutcomeEncode(rows, outcome, outcomeEventLevel);
 
   if (!enc) {
     return {
@@ -1835,6 +1925,7 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
       predictors,
       positiveLevel: enc.positive,
       negativeLevel: enc.negative,
+      positiveLevelSource: enc.positiveLevelSource,
       n: completeRows.length,
       pValue: null,
       message: "Logistic regression requires both positive and negative outcome observations after complete-case filtering.",
@@ -1853,6 +1944,7 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
       predictors,
       positiveLevel: enc.positive,
       negativeLevel: enc.negative,
+      positiveLevelSource: enc.positiveLevelSource,
       n,
       pValue: null,
       message: "No usable non-intercept predictor term was available after coding.",
@@ -1869,6 +1961,7 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
       predictors,
       positiveLevel: enc.positive,
       negativeLevel: enc.negative,
+      positiveLevelSource: enc.positiveLevelSource,
       n,
       modelTerms: p,
       pValue: null,
@@ -1992,6 +2085,7 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
     predictors,
     positiveLevel: enc.positive,
     negativeLevel: enc.negative,
+    positiveLevelSource: enc.positiveLevelSource,
     n,
     events: sum(y),
     nonEvents: y.length - sum(y),
@@ -2018,8 +2112,8 @@ function logisticRegression(rows: RawRow[], outcome: string, predictors: string[
   };
 }
 
-function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, referenceCategories: RawRow = {}) {
-  const enc = binaryOutcomeEncode(rows, outcome);
+function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, referenceCategories: RawRow = {}, outcomeEventLevel = "") {
+  const enc = binaryOutcomeEncode(rows, outcome, outcomeEventLevel);
 
   if (!enc) {
     return {
@@ -2058,6 +2152,7 @@ function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, 
       outcome,
       positiveLevel: enc.positive,
       negativeLevel: enc.negative,
+      positiveLevelSource: enc.positiveLevelSource,
       nCategoryPositive: referencePositive,
       nCategoryNegative: referenceNegative,
       nCategoryTotal: referencePositive + referenceNegative,
@@ -2124,6 +2219,7 @@ function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, 
       outcome,
       positiveLevel: enc.positive,
       negativeLevel: enc.negative,
+      positiveLevelSource: enc.positiveLevelSource,
       nCategoryPositive: categoryPositive,
       nCategoryNegative: categoryNegative,
       nCategoryTotal: categoryPositive + categoryNegative,
@@ -2149,8 +2245,39 @@ function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, 
   });
 
   const comparableRows = categoryRows.filter((row) => !row.isReference);
-  const strongest = [...comparableRows].filter((row) => Number.isFinite(row.pValue)).sort((a, b) => Number(a.pValue) - Number(b.pValue))[0] ?? comparableRows[0] ?? null;
-  const univariableLogistic = logisticRegression(rows, outcome, [predictor], referenceCategories);
+  const univariableLogistic = logisticRegression(rows, outcome, [predictor], referenceCategories, outcomeEventLevel);
+  const logisticCoefficientByLevel = new Map<string, any>();
+  if (Array.isArray((univariableLogistic as any)?.coefficients)) {
+    (univariableLogistic as any).coefficients.forEach((coef: any) => {
+      if (coef?.metadata?.source === predictor && coef?.metadata?.level) {
+        logisticCoefficientByLevel.set(String(coef.metadata.level), coef);
+      }
+    });
+  }
+
+  categoryRows.forEach((row: any) => {
+    if (row.isReference) {
+      row.logisticOddsRatio = null;
+      row.logisticCiLower = null;
+      row.logisticCiUpper = null;
+      row.logisticPValue = null;
+      row.logisticPValueLabel = "Reference";
+      return;
+    }
+    const coef = logisticCoefficientByLevel.get(String(row.category));
+    row.logisticCoefficient = coef?.estimateLogOdds ?? null;
+    row.logisticStandardError = coef?.standardError ?? null;
+    row.logisticZStatistic = coef?.zStatistic ?? null;
+    row.logisticOddsRatio = coef?.oddsRatio ?? row.oddsRatio ?? null;
+    row.logisticCiLower = coef?.ci95OddsRatio?.lower ?? row.ciLower ?? null;
+    row.logisticCiUpper = coef?.ci95OddsRatio?.upper ?? row.ciUpper ?? null;
+    row.logisticPValue = coef?.pValue ?? null;
+    row.logisticPrimaryPMethod = coef?.pValue === null || coef?.pValue === undefined ? "Not estimable" : "Univariable logistic Wald p-value";
+  });
+
+  const strongest = [...comparableRows]
+    .filter((row) => Number.isFinite(row.logisticPValue ?? row.pValue))
+    .sort((a, b) => Number(a.logisticPValue ?? a.pValue) - Number(b.logisticPValue ?? b.pValue))[0] ?? comparableRows[0] ?? null;
 
   return {
     variable: predictor,
@@ -2163,8 +2290,10 @@ function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, 
     positiveLevel: enc.positive,
     negativeLevel: enc.negative,
     test: "category-level univariable odds ratio vs selected reference",
-    pValue: strongest?.pValue ?? null,
-    primaryPMethod: strongest?.primaryPMethod ?? null,
+    pValue: strongest?.logisticPValue ?? strongest?.pValue ?? null,
+    crudePValue: strongest?.pValue ?? null,
+    logisticPValue: strongest?.logisticPValue ?? null,
+    primaryPMethod: strongest?.logisticPValue === null || strongest?.logisticPValue === undefined ? strongest?.primaryPMethod ?? null : "Univariable logistic Wald p-value",
     fisherExactTwoSidedP: strongest?.fisherExactTwoSidedP ?? null,
     chiSquarePValue: strongest?.chiSquarePValue ?? null,
     chiSquare: strongest?.chiSquare ?? null,
@@ -2184,8 +2313,8 @@ function categoricalRisk2x2(rows: RawRow[], outcome: string, predictor: string, 
   };
 }
 
-function continuousPredictorBinaryOutcome(rows: RawRow[], outcome: string, predictor: string) {
-  const enc = binaryOutcomeEncode(rows, outcome);
+function continuousPredictorBinaryOutcome(rows: RawRow[], outcome: string, predictor: string, outcomeEventLevel = "") {
+  const enc = binaryOutcomeEncode(rows, outcome, outcomeEventLevel);
 
   if (!enc) {
     return {
@@ -2199,8 +2328,10 @@ function continuousPredictorBinaryOutcome(rows: RawRow[], outcome: string, predi
   const positive = rows.filter((r) => String(r[outcome]) === enc.positive && Number.isFinite(Number(r[predictor]))).map((r) => Number(r[predictor]));
   const negative = rows.filter((r) => String(r[outcome]) !== enc.positive && Number.isFinite(Number(r[predictor]))).map((r) => Number(r[predictor]));
 
-  const univariableLogistic = logisticRegression(rows, outcome, [predictor], {});
+  const welchScreening = independentTTestFromArrays(positive, negative, false);
+  const univariableLogistic = logisticRegression(rows, outcome, [predictor], {}, outcomeEventLevel);
   const coefficient = coefficientByTerm(univariableLogistic, predictor);
+  const logisticPValue = coefficient?.pValue ?? null;
 
   return {
     variable: predictor,
@@ -2208,15 +2339,21 @@ function continuousPredictorBinaryOutcome(rows: RawRow[], outcome: string, predi
     outcome,
     positiveLevel: enc.positive,
     negativeLevel: enc.negative,
-    test: "continuous predictor vs binary outcome: Welch t-test + univariable logistic regression",
-    ...independentTTestFromArrays(positive, negative, false),
+    positiveLevelSource: enc.positiveLevelSource,
+    test: "continuous predictor vs binary outcome: univariable logistic regression with Welch descriptive screening",
+    ...welchScreening,
+    welchPValue: welchScreening.pValue ?? null,
+    pValue: logisticPValue ?? welchScreening.pValue ?? null,
+    primaryPMethod: logisticPValue === null ? "Welch t-test fallback" : "Univariable logistic Wald p-value",
     univariableLogistic,
+    oddsRatio: coefficient?.oddsRatio ?? null,
     oddsRatioPerUnit: coefficient?.oddsRatio ?? null,
     ciLower: coefficient?.ci95OddsRatio?.lower ?? null,
     ciUpper: coefficient?.ci95OddsRatio?.upper ?? null,
     logisticCoefficient: coefficient?.estimateLogOdds ?? null,
     logisticStandardError: coefficient?.standardError ?? null,
-    logisticPValue: coefficient?.pValue ?? null,
+    logisticZStatistic: coefficient?.zStatistic ?? null,
+    logisticPValue,
   };
 }
 
@@ -2257,7 +2394,77 @@ function numericOutcomeUnivariable(rows: RawRow[], outcome: string, predictor: s
   };
 }
 
-function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], threshold: number, clarifications: RawRow, referenceCategories: RawRow = {}) {
+function logisticCoefficientLookup(model: any) {
+  const bySourceLevel = new Map<string, any>();
+  const byTerm = new Map<string, any>();
+
+  if (Array.isArray(model?.coefficients)) {
+    model.coefficients.forEach((coef: any) => {
+      byTerm.set(coef.term, coef);
+      if (coef.metadata?.source && coef.metadata?.level) {
+        bySourceLevel.set(`${coef.metadata.source}|||${coef.metadata.level}`, coef);
+      }
+    });
+  }
+
+  return { bySourceLevel, byTerm };
+}
+
+function decorateUnivariableRowsWithLogisticModels(tableRows: RawRow[], models: RawRow[]): RawRow[] {
+  const modelByVariable = new Map<string, any>();
+  models.forEach((entry: any) => modelByVariable.set(safeText(entry.variable), entry.model));
+
+  return tableRows.map((row: RawRow) => {
+    const variable = safeText(row.variable);
+    const category = safeText(row.category);
+    const model = modelByVariable.get(variable);
+    if (!model) return row;
+
+    if (row.isReference) {
+      return {
+        ...row,
+        univariableLogisticMethod: model.method ?? model.test ?? "Univariable logistic regression",
+        logisticOddsRatio: null,
+        logisticCiLower: null,
+        logisticCiUpper: null,
+        logisticPValue: null,
+        logisticPValueLabel: "Reference",
+      };
+    }
+
+    const { bySourceLevel, byTerm } = logisticCoefficientLookup(model);
+    const coef = category && category !== "Per 1-unit increase"
+      ? bySourceLevel.get(`${variable}|||${category}`) ?? byTerm.get(`${variable}=${category}`)
+      : byTerm.get(variable);
+
+    if (!coef) {
+      return {
+        ...row,
+        univariableLogisticMethod: model.method ?? model.test ?? "Univariable logistic regression",
+        logisticOddsRatio: row.oddsRatio ?? null,
+        logisticCiLower: row.ciLower ?? null,
+        logisticCiUpper: row.ciUpper ?? null,
+        logisticPValue: row.logisticPValue ?? row.pValue ?? null,
+        logisticModelWarning: Array.isArray(model.warnings) ? model.warnings.join(" | ") : null,
+      };
+    }
+
+    return {
+      ...row,
+      univariableLogisticMethod: model.method ?? model.test ?? "Univariable logistic regression",
+      logisticCoefficient: coef.estimateLogOdds ?? row.logisticCoefficient ?? null,
+      logisticStandardError: coef.standardError ?? row.logisticStandardError ?? null,
+      logisticZStatistic: coef.zStatistic ?? row.logisticZStatistic ?? null,
+      logisticOddsRatio: coef.oddsRatio ?? row.oddsRatio ?? null,
+      logisticCiLower: coef.ci95OddsRatio?.lower ?? row.ciLower ?? null,
+      logisticCiUpper: coef.ci95OddsRatio?.upper ?? row.ciUpper ?? null,
+      logisticPValue: coef.pValue ?? row.logisticPValue ?? row.pValue ?? null,
+      logisticModelWarning: Array.isArray(model.warnings) ? model.warnings.join(" | ") : null,
+    };
+  });
+}
+
+function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], threshold: number, clarifications: RawRow, referenceCategories: RawRow = {}, outcomeEventLevel = "") {
   const profile = describeDataset(rows);
   const outcomeIsNumeric = isNumericColumn(rows, outcome);
   const validPredictors = predictors.filter((p) => getColumns(rows).includes(p) && p !== outcome);
@@ -2356,9 +2563,9 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
   const univariable = validPredictors.map((p) => {
     if (binary) {
       if (isNumericColumn(rows, p) && uniqueValues(rows, p).length > 5) {
-        return continuousPredictorBinaryOutcome(rows, outcome, p);
+        return continuousPredictorBinaryOutcome(rows, outcome, p, outcomeEventLevel);
       }
-      return categoricalRisk2x2(rows, outcome, p, referenceCategories);
+      return categoricalRisk2x2(rows, outcome, p, referenceCategories, outcomeEventLevel);
     }
 
     if (isNumericColumn(rows, p)) {
@@ -2386,16 +2593,16 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
   const univariableLogisticModels = binary
     ? validPredictors.map((p) => ({
         variable: p,
-        model: logisticRegression(rows, outcome, [p], referenceCategories),
+        model: logisticRegression(rows, outcome, [p], referenceCategories, outcomeEventLevel),
       }))
     : [];
   const selectedVariables = univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < threshold).map((u: any) => u.variable);
   const multivariablePredictors = selectedVariables.length ? selectedVariables : validPredictors.slice(0, 8);
-  const multivariable = binary && multivariablePredictors.length ? logisticRegression(rows, outcome, multivariablePredictors, referenceCategories) : null;
+  const multivariable = binary && multivariablePredictors.length ? logisticRegression(rows, outcome, multivariablePredictors, referenceCategories, outcomeEventLevel) : null;
   const candidateMulticollinearity = predictorSetMulticollinearity(rows, validPredictors, referenceCategories);
   const finalMulticollinearity = (multivariable as any)?.multicollinearity ?? null;
   const univariableCategoryTable = decorateRiskRowsWithVIF(
-    buildUnivariableRiskTable(univariable, 0.05),
+    decorateUnivariableRowsWithLogisticModels(buildUnivariableRiskTable(univariable, 0.05), univariableLogisticModels),
     candidateMulticollinearity,
     "Candidate-predictor VIF from all selected predictors"
   );
@@ -2409,6 +2616,9 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     outcome,
     outcomeType: binary ? "binary/categorical" : "multi-category categorical",
     outcomeLevels,
+    outcomeEventLevel: binary ? (binaryOutcomeEncode(rows, outcome, outcomeEventLevel)?.positive ?? null) : null,
+    outcomeNonEventLevel: binary ? (binaryOutcomeEncode(rows, outcome, outcomeEventLevel)?.negative ?? null) : null,
+    positiveLevelSource: binary ? (binaryOutcomeEncode(rows, outcome, outcomeEventLevel)?.positiveLevelSource ?? null) : null,
     predictors: validPredictors,
     threshold,
     referenceCategories,
@@ -2419,6 +2629,27 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     selectedVariables,
     multivariable,
     regression: { logistic: multivariable, univariable: univariableLogisticModels },
+    logisticDiagnostics: multivariable
+      ? {
+          method: (multivariable as any).method,
+          n: (multivariable as any).n,
+          events: (multivariable as any).events,
+          nonEvents: (multivariable as any).nonEvents,
+          converged: (multivariable as any).converged,
+          iterations: (multivariable as any).iterations,
+          stepHalvingCount: (multivariable as any).stepHalvingCount,
+          logLikelihood: (multivariable as any).logLikelihood,
+          nullLogLikelihood: (multivariable as any).nullLogLikelihood,
+          deviance: (multivariable as any).deviance,
+          nullDeviance: (multivariable as any).nullDeviance,
+          likelihoodRatioStatistic: (multivariable as any).likelihoodRatioStatistic,
+          likelihoodRatioPValue: (multivariable as any).pValue,
+          aic: (multivariable as any).aic,
+          bic: (multivariable as any).bic,
+          pseudoR2McFadden: (multivariable as any).pseudoR2McFadden,
+          warnings: (multivariable as any).warnings ?? [],
+        }
+      : null,
     multicollinearity: finalMulticollinearity,
     candidateMulticollinearity,
     finalMulticollinearity,
@@ -3416,13 +3647,13 @@ export async function POST(request: Request) {
           : parseList(formData.get("predictorColumns"));
 
       if (!outcome || predictors.length === 0) {
-        return NextResponse.json({ error: "Risk analysis requires a dependent/outcome variable and at least one independent/predictor variable." }, { status: 400 });
+        return NextResponse.json({ error: "Risk factor analysis requires a dependent/outcome variable and at least one independent/predictor variable." }, { status: 400 });
       }
 
       const threshold = safeNumber(formData.get("threshold"), 0.2);
       return NextResponse.json({
         module: "risk",
-        risk: analyzeRisk(rows, outcome, predictors, threshold, parseClarifications(formData), parseReferenceCategories(formData)),
+        risk: analyzeRisk(rows, outcome, predictors, threshold, parseClarifications(formData), parseReferenceCategories(formData), parseOutcomeEventLevel(formData)),
       });
     }
 
