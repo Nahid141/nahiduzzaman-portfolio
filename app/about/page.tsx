@@ -1,823 +1,1108 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-// ---------- Data ----------
-const researchStats = {
-  citations: 14,
-  hIndex: 2,
-  i10Index: 0,
-  q1: 60,
-  q3: 20,
-  na: 20,
-};
+/* -------------------------------------------------------------------------- */
+/*  Data                                                                      */
+/* -------------------------------------------------------------------------- */
+
+const emails = ["nahiduzzaman.2001055@bau.edu.bd", "nahid007@umn.edu"];
+
+const profileLinks = [
+  { name: "Google Scholar", short: "GS", url: "https://scholar.google.com/citations?user=37f5LKUAAAAJ&hl=en" },
+  { name: "Scopus", short: "SC", url: "https://www.scopus.com/authid/detail.uri?authorId=59914950700" },
+  { name: "ResearchGate", short: "RG", url: "https://www.researchgate.net/profile/Fnu-Nahiduzzaman" },
+  { name: "LinkedIn", short: "in", url: "https://www.linkedin.com/in/fnu-nahiduzzaman-20195419b" },
+  { name: "ORCID", short: "iD", url: "https://orcid.org/0009-0000-1970-9480" },
+];
 
 const yearlyCitations = [
   { year: "2025", citations: 4 },
-  { year: "2026", citations: 8 },
+  { year: "2026", citations: 10 },
 ];
 
-const socialLinks = [
+const researchStats = [
+  { label: "Citations", value: "14" },
+  { label: "h-index", value: "2" },
+  { label: "i10-index", value: "0" },
+  { label: "Q1 papers", value: "60%" },
+];
+
+const skillDomains = [
   {
-    name: "Google Scholar",
-    url: "https://scholar.google.com/citations?user=37f5LKUAAAAJ&hl=en",
-    icon: (
-      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M5.242 13.769L0 9.5 12 0l12 9.5-5.242 4.269C17.548 11.249 14.978 9.5 12 9.5c-2.977 0-5.548 1.749-6.758 4.269zM12 10a7 7 0 1 0 0 14 7 7 0 0 0 0-14z" />
-      </svg>
-    ),
+    title: "Microbiology Laboratory",
+    summary: "Pathogen isolation, identification, molecular confirmation, and antimicrobial resistance analysis.",
+    points: [
+      "Microbial culture, media preparation, bacterial isolation, and colony characterization",
+      "Cell culture, virus isolation, and basic virological investigation",
+      "Disc diffusion, MIC interpretation, and antimicrobial resistance profiling",
+      "PCR, real-time PCR, gel electrophoresis, ELISA, and molecular result validation",
+    ],
   },
   {
-    name: "Scopus",
-    url: "https://www.scopus.com/authid/detail.uri?authorId=59914950700",
-    icon: (
-      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-5-5 1.41-1.41L11 14.17l7.59-7.59L20 8l-9 9z" />
-      </svg>
-    ),
+    title: "Research Development",
+    summary: "Scientific writing, evidence synthesis, study design, and interpretation of biological data.",
+    points: [
+      "Manuscript, review article, report, and research proposal writing",
+      "Literature review, meta-analysis, knowledge-gap identification, and study planning",
+      "Experimental, statistical, and computational data interpretation",
+      "Hypothesis building, project development, collaboration, and research problem-solving",
+    ],
   },
   {
-    name: "ResearchGate",
-    url: "https://www.researchgate.net/profile/Fnu-Nahiduzzaman",
-    icon: (
-      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M21 15v-2h2v4h-2v-2h-2v-2h2zM17 13h-4v-2h4V9h2v2h2v2h-2v2h-2v-2zm-8 0H5v-2h4V9h2v2h2v2h-2v2h-2v-2zM3 15v-2h2v4H3v-2H1v-2h2z" />
-      </svg>
-    ),
+    title: "Bioinformatics and Genomics",
+    summary: "Microbial and viral genome analysis using reproducible computational workflows.",
+    points: [
+      "Whole-genome sequence analysis, microbial genomics, and viral genomics",
+      "Phylogenetic interpretation, molecular epidemiology, and evolutionary analysis",
+      "Genome annotation, comparative genomics, resistance-gene interpretation, and visualization",
+      "Linux-based bioinformatics workflows for pathogen genomic investigation",
+    ],
   },
   {
-    name: "LinkedIn",
-    url: "https://www.linkedin.com/in/fnu-nahiduzzaman-20195419b",
-    icon: (
-      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zM7.119 20.452H3.556V9h3.563v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-      </svg>
-    ),
+    title: "ML, QML and Software Development",
+    summary: "Predictive and computational tools for genomics, molecular epidemiology, and disease dynamics.",
+    points: [
+      "Machine learning for surveillance, outbreak prediction, and risk assessment",
+      "Quantum machine learning concepts for genomics and molecular epidemiology",
+      "Python, R, Julia, MATLAB, SPSS, and ArcGIS Pro for research analysis",
+      "Scientific web tools, Python GUI utilities, automation scripts, and visualization workflows",
+    ],
   },
   {
-    name: "X",
-    url: "https://x.com/Nahid_bau?t=b2wwlT2lHv_lYZffeY2iVg&s=08",
-    icon: (
-      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Facebook",
-    url: "https://www.facebook.com/profile.php?id=100083735952268",
-    icon: (
-      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-      </svg>
-    ),
-  },
-  {
-    name: "ORCID",
-    url: "https://orcid.org/0009-0000-1970-9480",
-    icon: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 0C5.372 0 0 5.372 0 12s5.372 12 12 12 12-5.372 12-12S18.628 0 12 0zM7.369 4.933c.525 0 .947.431.947.947s-.422.947-.947.947a.95.95 0 0 1-.947-.947c0-.516.422-.947.947-.947zm-.722 3.028h1.444v10.111H6.647V7.961zm3.561 0h1.359v1.566h.028c.188-.316.503-.622.947-.881.444-.259.919-.384 1.425-.384.872 0 1.575.3 2.109.9.534.6.8 1.425.8 2.475v5.706h-1.444v-5.153c0-1.05-.253-1.869-.753-2.453-.5-.584-1.181-.878-2.044-.878-.544 0-1.025.159-1.444.478-.419.319-.622.753-.622 1.303v5.703H10.21V7.961z" />
-      </svg>
-    ),
+    title: "Veterinary Academic Base",
+    summary: "DVM training across veterinary, biomedical, clinical, and public-health disciplines.",
+    points: [
+      "Anatomy, histology, physiology, biochemistry, genetics, and toxicology",
+      "Microbiology, immunology, parasitology, pathology, public health, and epidemiology",
+      "Veterinary medicine, surgery, clinical reasoning, animal health, and disease investigation",
+      "Interdisciplinary foundation for One Health and translational veterinary public health",
+    ],
   },
 ];
 
-const emails = [
-  "nahiduzzaman.2001055@bau.edu.bd",
-  "nahid007@umn.edu",
+const workflowSteps = [
+  "Sampling and microbiological investigation",
+  "Molecular diagnostics and confirmation",
+  "Genome analysis and phylogenetic interpretation",
+  "Epidemiology and molecular epidemiology",
+];
+
+const researchAreas = [
+  "Microbiology",
+  "Infectious diseases",
+  "Molecular epidemiology",
+  "Microbial genomics",
+  "Bioinformatics",
+  "Disease dynamics",
+  "ML and QML",
+  "Public health",
+  "Vaccine research",
+  "Environmental toxicology",
 ];
 
 const educationData = [
   {
     degree: "Doctor of Veterinary Medicine (DVM)",
-    session: "2020-2026",
-    gpa: "CGPA: 3.155",
+    session: "2020–2026",
+    result: "CGPA: 3.155",
     institution: "Bangladesh Agricultural University",
     location: "Mymensingh, Bangladesh",
-    icon: "🎓",
   },
   {
-    degree: "Higher Secondary School Certificate (Science)",
-    session: "2017-2019",
-    gpa: "GPA: 5.00 out of 5",
+    degree: "Higher Secondary School Certificate",
+    session: "2017–2019",
+    result: "GPA: 5.00/5",
     institution: "Shahid Syed Nazrul Islam College",
     location: "Mymensingh, Bangladesh",
-    icon: "📘",
   },
   {
-    degree: "Secondary School Certificate (Science)",
-    session: "2015-2017",
-    gpa: "GPA: 5.00 out of 5",
+    degree: "Secondary School Certificate",
+    session: "2015–2017",
+    result: "GPA: 5.00/5",
     institution: "Hazrabari High School",
-    location: "Melandah, Jamalpur, Mymensingh, Bangladesh",
-    icon: "📗",
-  },
-  {
-    degree: "Junior School Certificate",
-    session: "2012-2014",
-    gpa: "GPA: 5.00 out of 5",
-    institution: "Hazrabari High School",
-    location: "Hazrabari, Melandah, Jamalpur, Mymensingh, Bangladesh",
-    icon: "📙",
-  },
-  {
-    degree: "Primary School Certificate",
-    session: "2007-2011",
-    gpa: "GPA: 5.00 out of 5",
-    institution: "Hazrabari Kinder Garden and Precadet School",
-    location: "Hazrabari, Melandah, Jamalpur, Mymensingh, Bangladesh",
-    icon: "📕",
+    location: "Melandah, Jamalpur, Bangladesh",
   },
 ];
 
-// ---------- Components ----------
-function NetworkBackground() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>(0);
-  const mouseRef = useRef({ x: -500, y: -500 });
-  const dims = useRef({ width: 0, height: 0 });
+/* -------------------------------------------------------------------------- */
+/*  Enhanced Dynamic Background                                                */
+/* -------------------------------------------------------------------------- */
 
-  const nodesRef = useRef<any[]>([]);
-  const edgesRef = useRef<[number, number][]>([]);
+type Particle = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  r: number;
+  glow: number;
+};
 
-  const buildNetwork = useCallback((w: number, h: number) => {
-    const nodeCount = 25;
-    const nodes = [];
-    const edges: [number, number][] = [];
+type Microbe = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  rotation: number;
+  speed: number;
+  type: "virus" | "dna" | "cell";
+};
 
-    for (let i = 0; i < nodeCount; i++) {
-      nodes.push({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-        radius: 2.5 + Math.random() * 3.5,
-      });
-    }
+function EnhancedResearchBackground() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frameRef = useRef<number>(0);
+  const particlesRef = useRef<Particle[]>([]);
+  const microbesRef = useRef<Microbe[]>([]);
+  const sizeRef = useRef({ width: 0, height: 0 });
+  const mouseRef = useRef({ x: -9999, y: -9999, active: false });
 
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[i].x - nodes[j].x;
-        const dy = nodes[i].y - nodes[j].y;
-        if (Math.sqrt(dx * dx + dy * dy) < w * 0.28) {
-          edges.push([i, j]);
-        }
-      }
-    }
-
-    return { nodes, edges };
-  }, []);
-
-  const resize = useCallback(() => {
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const build = () => {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const width = window.innerWidth;
+      const height = window.innerHeight;
 
-    canvas.width = w;
-    canvas.height = h;
-    dims.current = { width: w, height: h };
+      canvas.width = Math.floor(width * ratio);
+      canvas.height = Math.floor(height * ratio);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
 
-    const { nodes, edges } = buildNetwork(w, h);
-    nodesRef.current = nodes;
-    edgesRef.current = edges;
-  }, [buildNetwork]);
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-  useEffect(() => {
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, [resize]);
+      sizeRef.current = { width, height };
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current = { x: e.clientX, y: e.clientY };
+      const particleCount = width < 768 ? 42 : 88;
+      particlesRef.current = Array.from({ length: particleCount }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.34,
+        vy: (Math.random() - 0.5) * 0.34,
+        r: 1.2 + Math.random() * 2.8,
+        glow: 0.45 + Math.random() * 0.55,
+      }));
+
+      const microbeCount = width < 768 ? 9 : 18;
+      microbesRef.current = Array.from({ length: microbeCount }, (_, i) => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.22,
+        vy: (Math.random() - 0.5) * 0.22,
+        size: 9 + Math.random() * 18,
+        rotation: Math.random() * Math.PI * 2,
+        speed: (Math.random() - 0.5) * 0.018,
+        type: i % 3 === 0 ? "dna" : i % 3 === 1 ? "virus" : "cell",
+      }));
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+    build();
+
+    const handleMove = (event: MouseEvent) => {
+      mouseRef.current = { x: event.clientX, y: event.clientY, active: true };
+    };
+
+    const handleLeave = () => {
+      mouseRef.current.active = false;
+    };
+
+    window.addEventListener("resize", build);
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseleave", handleLeave);
+
+    return () => {
+      window.removeEventListener("resize", build);
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseleave", handleLeave);
+      cancelAnimationFrame(frameRef.current);
+    };
   }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    let last = performance.now();
 
-    let lastTime = performance.now();
+    const drawGrid = (width: number, height: number) => {
+      ctx.save();
+      ctx.strokeStyle = "rgba(56,189,248,0.048)";
+      ctx.lineWidth = 1;
 
-    const animate = (time: number) => {
-      const dt = Math.min((time - lastTime) / 1000, 0.1);
-      lastTime = time;
-
-      const { width, height } = dims.current;
-      if (!width || !height) {
-        animRef.current = requestAnimationFrame(animate);
-        return;
+      const spacing = 80;
+      for (let x = 0; x <= width; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
       }
 
-      const nodes = nodesRef.current;
-      const edges = edgesRef.current;
+      for (let y = 0; y <= height; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    };
+
+    const drawPhylogeneticField = (time: number, width: number, height: number) => {
+      const rootX = width * 0.045;
+      const rootY = height * 0.54;
+      const endX = width * 0.98;
+      const tips = width < 768 ? 18 : 42;
+      const top = height * 0.09;
+      const span = height * 0.78;
+
+      ctx.save();
+
+      for (let i = 0; i < tips; i += 1) {
+        const y = top + (i * span) / Math.max(tips - 1, 1);
+        const bend = i < tips / 2 ? -1 : 1;
+        const alpha = i % 4 === 0 ? 0.12 : 0.06;
+
+        ctx.beginPath();
+        ctx.lineWidth = i % 5 === 0 ? 1.35 : 0.9;
+        ctx.strokeStyle = `rgba(56,189,248,${alpha})`;
+        ctx.moveTo(rootX, rootY);
+        ctx.bezierCurveTo(width * 0.17, rootY + bend * height * 0.15, width * 0.32, y, width * 0.5, y);
+        ctx.bezierCurveTo(width * 0.66, y, width * 0.78, y + Math.sin(i * 1.8) * 18, endX, y);
+        ctx.stroke();
+
+        if (i % 3 === Math.floor(time / 900) % 3) {
+          const p = (time * 0.00018 + i * 0.026) % 1;
+          const x = rootX + (endX - rootX) * p;
+          const py = rootY + (y - rootY) * p + Math.sin(p * Math.PI) * bend * height * 0.08;
+
+          const pulse = ctx.createRadialGradient(x, py, 0, x, py, 18);
+          pulse.addColorStop(0, "rgba(125,211,252,0.42)");
+          pulse.addColorStop(1, "rgba(125,211,252,0)");
+          ctx.fillStyle = pulse;
+          ctx.beginPath();
+          ctx.arc(x, py, 18, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = "rgba(125,211,252,0.86)";
+          ctx.beginPath();
+          ctx.arc(x, py, 2.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    };
+
+    const drawGenomeArc = (time: number, width: number, height: number) => {
+      ctx.save();
+      ctx.strokeStyle = "rgba(34,211,238,0.095)";
+      ctx.lineWidth = 1.2;
+
+      for (let i = 0; i < 6; i += 1) {
+        const baseY = height * (0.18 + i * 0.11);
+        ctx.beginPath();
+        for (let x = -50; x <= width + 50; x += 18) {
+          const y = baseY + Math.sin((x + time * 0.035) * 0.012 + i) * 18;
+          if (x === -50) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    };
+
+    const drawMicrobes = (time: number, width: number, height: number) => {
+      const microbes = microbesRef.current;
+
+      for (const m of microbes) {
+        m.x += m.vx;
+        m.y += m.vy;
+        m.rotation += m.speed;
+
+        if (m.x < -80) m.x = width + 80;
+        if (m.x > width + 80) m.x = -80;
+        if (m.y < -80) m.y = height + 80;
+        if (m.y > height + 80) m.y = -80;
+
+        ctx.save();
+        ctx.translate(m.x, m.y);
+        ctx.rotate(m.rotation);
+        ctx.strokeStyle = "rgba(34,211,238,0.20)";
+        ctx.fillStyle = "rgba(34,211,238,0.045)";
+        ctx.lineWidth = 1.1;
+
+        if (m.type === "virus") {
+          ctx.beginPath();
+          ctx.arc(0, 0, m.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          for (let s = 0; s < 12; s += 1) {
+            const a = (s / 12) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * m.size * 0.72, Math.sin(a) * m.size * 0.72);
+            ctx.lineTo(Math.cos(a) * m.size * 1.35, Math.sin(a) * m.size * 1.35);
+            ctx.stroke();
+          }
+        }
+
+        if (m.type === "dna") {
+          ctx.beginPath();
+          for (let i = 0; i <= 34; i += 1) {
+            const t = i / 34;
+            const x = (t - 0.5) * m.size * 4.2;
+            const y = Math.sin(t * Math.PI * 5 + time * 0.002) * m.size * 0.45;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+
+          ctx.beginPath();
+          for (let i = 0; i <= 34; i += 1) {
+            const t = i / 34;
+            const x = (t - 0.5) * m.size * 4.2;
+            const y = Math.sin(t * Math.PI * 5 + Math.PI + time * 0.002) * m.size * 0.45;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+
+        if (m.type === "cell") {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, m.size * 1.4, m.size * 0.9, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(m.size * 0.2, 0, m.size * 0.28, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+    };
+
+    const animate = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.1);
+      last = now;
+
+      const { width, height } = sizeRef.current;
+      const particles = particlesRef.current;
       const mouse = mouseRef.current;
-
-      for (const n of nodes) {
-        const dx = n.x - mouse.x;
-        const dy = n.y - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
-
-        if (dist < 140) {
-          const force = 20 / dist;
-          n.vx += (dx / dist) * force * dt;
-          n.vy += (dy / dist) * force * dt;
-        }
-
-        n.vx *= 0.97;
-        n.vy *= 0.97;
-        n.x += n.vx * dt;
-        n.y += n.vy * dt;
-
-        if (n.x < 0) {
-          n.x = 0;
-          n.vx *= -0.5;
-        }
-
-        if (n.x > width) {
-          n.x = width;
-          n.vx *= -0.5;
-        }
-
-        if (n.y < 0) {
-          n.y = 0;
-          n.vy *= -0.5;
-        }
-
-        if (n.y > height) {
-          n.y = height;
-          n.vy *= -0.5;
-        }
-      }
 
       ctx.clearRect(0, 0, width, height);
 
+      const bg = ctx.createRadialGradient(width * 0.3, height * 0.08, 0, width * 0.56, height * 0.55, Math.max(width, height));
+      bg.addColorStop(0, "rgba(14,165,233,0.18)");
+      bg.addColorStop(0.38, "rgba(15,23,42,0.32)");
+      bg.addColorStop(1, "rgba(2,6,23,0.97)");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+
+      drawGrid(width, height);
+      drawGenomeArc(now, width, height);
+      drawPhylogeneticField(now, width, height);
+      drawMicrobes(now, width, height);
+
+      for (const p of particles) {
+        if (mouse.active) {
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
+
+          if (dist < 170) {
+            const force = 24 / dist;
+            p.vx += (dx / dist) * force * dt;
+            p.vy += (dy / dist) * force * dt;
+          }
+        }
+
+        p.vx *= 0.977;
+        p.vy *= 0.977;
+        p.x += p.vx * dt * 30;
+        p.y += p.vy * dt * 30;
+
+        if (p.x < 0 || p.x > width) p.vx *= -0.6;
+        if (p.y < 0 || p.y > height) p.vy *= -0.6;
+
+        p.x = Math.max(0, Math.min(width, p.x));
+        p.y = Math.max(0, Math.min(height, p.y));
+      }
+
       ctx.beginPath();
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.12)";
+      ctx.strokeStyle = "rgba(56,189,248,0.085)";
       ctx.lineWidth = 0.8;
 
-      for (const [a, b] of edges) {
-        const na = nodes[a];
-        const nb = nodes[b];
+      for (let i = 0; i < particles.length; i += 1) {
+        for (let j = i + 1; j < particles.length; j += 1) {
+          const a = particles[i];
+          const b = particles[j];
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (na && nb) {
-          ctx.moveTo(na.x, na.y);
-          ctx.lineTo(nb.x, nb.y);
+          if (dist < 145) {
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+          }
         }
       }
 
       ctx.stroke();
 
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
-      ctx.lineWidth = 1.8;
-
-      for (const [a, b] of edges) {
-        const na = nodes[a];
-        const nb = nodes[b];
-
-        if (!na || !nb) continue;
-
-        const mx = (na.x + nb.x) / 2;
-        const my = (na.y + nb.y) / 2;
-        const dx = mx - mouse.x;
-        const dy = my - mouse.y;
-
-        if (dx * dx + dy * dy < 160 * 160) {
-          ctx.moveTo(na.x, na.y);
-          ctx.lineTo(nb.x, nb.y);
-        }
-      }
-
-      ctx.stroke();
-
-      for (const n of nodes) {
-        const gradient = ctx.createRadialGradient(
-          n.x,
-          n.y,
-          0,
-          n.x,
-          n.y,
-          n.radius * 3
-        );
-
-        gradient.addColorStop(0, "rgba(96, 165, 250, 0.9)");
-        gradient.addColorStop(1, "rgba(59, 130, 246, 0.0)");
-
+      for (const p of particles) {
+        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 4.2);
+        glow.addColorStop(0, `rgba(125,211,252,${0.55 * p.glow})`);
+        glow.addColorStop(1, "rgba(14,165,233,0)");
+        ctx.fillStyle = glow;
         ctx.beginPath();
-        ctx.fillStyle = gradient;
-        ctx.arc(n.x, n.y, n.radius * 2.8, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, p.r * 3.5, 0, Math.PI * 2);
         ctx.fill();
 
+        ctx.fillStyle = "rgba(186,230,253,0.94)";
         ctx.beginPath();
-        ctx.fillStyle = "#93c5fd";
-        ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      animRef.current = requestAnimationFrame(animate);
+      frameRef.current = requestAnimationFrame(animate);
     };
 
-    animRef.current = requestAnimationFrame(animate);
+    frameRef.current = requestAnimationFrame(animate);
 
-    return () => cancelAnimationFrame(animRef.current);
+    return () => cancelAnimationFrame(frameRef.current);
   }, []);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 z-0" />;
+  return <canvas ref={canvasRef} className="fixed inset-0 z-0 bg-slate-950" />;
 }
 
-function StatBox({
-  label,
-  value,
-  suffix = "",
+/* -------------------------------------------------------------------------- */
+/*  Shared Components                                                         */
+/* -------------------------------------------------------------------------- */
+
+function SectionHeading({
+  eyebrow,
+  title,
+  subtitle,
 }: {
-  label: string;
-  value: string | number;
-  suffix?: string;
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
 }) {
-  const [displayValue, setDisplayValue] = useState(0);
-  const target = typeof value === "number" ? value : parseFloat(value as string) || 0;
-
-  useEffect(() => {
-    let start = 0;
-    const duration = 1000;
-    const step = target / (duration / 16);
-    let animationFrame: number;
-
-    const animate = () => {
-      start += step;
-      if (start >= target) {
-        setDisplayValue(target);
-        return;
-      }
-      setDisplayValue(Math.floor(start));
-      animationFrame = requestAnimationFrame(animate);
-    };
-
-    animationFrame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrame);
-  }, [target]);
-
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-center shadow-xl backdrop-blur-md transition duration-300 hover:scale-105 hover:border-cyan-400/40 group">
-      <div className="text-3xl font-black text-cyan-300 group-hover:drop-shadow-[0_0_8px_rgba(56,189,248,0.6)]">
-        {displayValue}{suffix}
-      </div>
-      <div className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function SmallCitationGraph() {
-  const [active, setActive] = useState<string | null>(null);
-  const maxCitation = Math.max(...yearlyCitations.map((d) => d.citations));
-
-  return (
-    <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 backdrop-blur-xl shadow-2xl transition-all duration-300 hover:border-cyan-400/30 hover:shadow-cyan-500/10">
-      <h3 className="mb-1 text-2xl font-black text-white">Citation Growth</h3>
-      <p className="mb-5 text-sm text-slate-400">
-        Based on current Google Scholar profile statistics
-      </p>
-
-      <div className="flex h-44 items-end justify-center gap-10 border-b border-l border-slate-600 px-4 pb-3">
-        {yearlyCitations.map((item) => (
-          <div
-            key={item.year}
-            className="group flex h-full cursor-pointer flex-col items-center justify-end"
-            onMouseEnter={() => setActive(item.year)}
-            onMouseLeave={() => setActive(null)}
-          >
-            <div className="mb-2 text-xs font-bold text-cyan-300 opacity-0 transition group-hover:opacity-100">
-              {item.citations}
-            </div>
-
-            <div
-              className="w-14 rounded-t-xl bg-gradient-to-t from-blue-600 to-cyan-300 shadow-lg shadow-cyan-500/20 transition-all duration-500 group-hover:scale-110 group-hover:from-emerald-500 group-hover:to-cyan-200"
-              style={{
-                height: `${(item.citations / maxCitation) * 120}px`,
-              }}
-            />
-
-            <div className="mt-3 text-sm font-bold text-slate-300">
-              {item.year}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {active && (
-        <div className="mt-4 rounded-xl border border-cyan-400/20 bg-cyan-500/10 p-3 text-sm text-cyan-200 animate-in fade-in slide-in-from-bottom-2">
-          {active}:{" "}
-          <span className="font-black">
-            {yearlyCitations.find((d) => d.year === active)?.citations}
-          </span>{" "}
-          citations
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SmallJournalRankGraph() {
-  const data = [
-    { label: "Q1", value: researchStats.q1 },
-    { label: "Q3", value: researchStats.q3 },
-    { label: "NA", value: researchStats.na },
-  ];
-
-  return (
-    <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 backdrop-blur-xl shadow-2xl transition-all duration-300 hover:border-cyan-400/30 hover:shadow-cyan-500/10">
-      <h3 className="mb-5 text-2xl font-black text-white">Journal Ranking</h3>
-
-      <div className="space-y-4">
-        {data.map((item) => (
-          <div key={item.label}>
-            <div className="mb-1 flex justify-between text-xs font-bold text-slate-300">
-              <span>{item.label}</span>
-              <span>{item.value}%</span>
-            </div>
-
-            <div className="h-4 overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-700 hover:from-emerald-400 hover:to-cyan-300"
-                style={{ width: `${item.value}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <p className="mt-5 text-xs text-slate-400">
-        Based on 5 most cited papers in the last 10 years.
-      </p>
+    <div className="mx-auto mb-10 max-w-4xl text-center">
+      <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">{eyebrow}</p>
+      <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl">{title}</h2>
+      {subtitle && <p className="mx-auto mt-4 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">{subtitle}</p>}
     </div>
   );
 }
 
 function EducationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div
-        className="relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-slate-900/90 p-8 shadow-2xl backdrop-blur-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Close button */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-md">
+      <button className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close education modal" />
+
+      <div className="relative max-h-[86vh] w-full max-w-3xl overflow-y-auto rounded-[2rem] border border-cyan-300/20 bg-slate-950/95 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl md:p-8">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/20 hover:text-white"
+          className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/20 hover:text-white"
           aria-label="Close"
         >
           ✕
         </button>
 
-        <h2 className="mb-8 text-3xl font-black text-white">
-          <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-            Educational Timeline
-          </span>
-        </h2>
+        <SectionHeading
+          eyebrow="Education"
+          title="Educational timeline"
+          subtitle="A concise academic pathway from school education to DVM training."
+        />
 
-        <div className="relative ml-4 border-l-2 border-cyan-500/30 pl-8">
-          {educationData.map((entry, idx) => (
-            <div key={idx} className="relative mb-10 last:mb-0">
-              {/* Timeline dot */}
-              <div className="absolute -left-[2.35rem] top-1 h-4 w-4 rounded-full border-2 border-cyan-400 bg-slate-900 shadow-lg shadow-cyan-500/20" />
+        <div className="relative ml-4 border-l-2 border-cyan-400/25 pl-8">
+          {educationData.map((entry) => (
+            <div key={`${entry.degree}-${entry.session}`} className="relative mb-8 last:mb-0">
+              <div className="absolute -left-[2.35rem] top-2 h-4 w-4 rounded-full border-2 border-cyan-300 bg-slate-950 shadow-lg shadow-cyan-500/30" />
 
-              <div className="group rounded-xl border border-white/10 bg-white/[0.02] p-5 transition-all hover:border-cyan-400/40 hover:bg-cyan-500/5 hover:shadow-lg">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-5 transition hover:border-cyan-300/45 hover:bg-cyan-300/5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-lg font-bold text-white">{entry.degree}</h3>
-                  <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-300">
+                  <span className="rounded-full bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-200">
                     {entry.session}
                   </span>
                 </div>
-                <p className="mt-1 text-sm font-medium text-emerald-400">{entry.gpa}</p>
-                <p className="text-sm text-slate-300">{entry.institution}</p>
+                <p className="mt-2 text-sm font-semibold text-emerald-300">{entry.result}</p>
+                <p className="mt-1 text-sm text-slate-300">{entry.institution}</p>
                 <p className="text-xs text-slate-500">{entry.location}</p>
               </div>
             </div>
           ))}
         </div>
-
-        <p className="mt-4 text-xs text-slate-500">
-          Click outside or press ✕ to close.
-        </p>
       </div>
-      {/* Backdrop click to close */}
-      <div className="absolute inset-0 z-[-1]" onClick={onClose} />
     </div>
   );
 }
 
-// ---------- Main Page ----------
+/* -------------------------------------------------------------------------- */
+/*  Page Sections                                                             */
+/* -------------------------------------------------------------------------- */
+
+function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
+  const heroActions = [
+    { label: "Education", onClick: onEducationClick },
+    { label: "ORCID", href: "https://orcid.org/0009-0000-1970-9480" },
+    { label: "Email", href: `mailto:${emails[0]}` },
+  ];
+
+  return (
+    <section className="grid items-center gap-10 lg:grid-cols-[0.78fr_1.22fr]">
+      <div className="flex justify-center lg:justify-start">
+        <div className="group relative">
+          <div className="absolute -inset-6 rounded-full bg-cyan-400/20 blur-3xl transition duration-700 group-hover:bg-cyan-300/30" />
+          <div className="relative rounded-full border border-cyan-300/20 bg-slate-900/80 p-2 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl">
+            <Image
+              src="/Me1.jpg"
+              alt="Nahiduzzaman portrait"
+              width={520}
+              height={520}
+              priority
+              className="h-[270px] w-[270px] rounded-full object-cover transition duration-700 group-hover:scale-[1.035] sm:h-[340px] sm:w-[340px] lg:h-[400px] lg:w-[400px]"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 p-6 text-center shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-8 lg:p-10">
+        <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-300">About Nahiduzzaman</p>
+
+        <h1 className="mx-auto mt-4 max-w-3xl text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl">
+          Microbiology researcher connecting laboratory evidence with computational biology.
+        </h1>
+
+        <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
+          His work brings together veterinary microbiology, infectious disease investigation, molecular epidemiology, microbial genomics, public health, and data-driven research.
+        </p>
+
+        <div className="mt-7 grid gap-3 sm:grid-cols-3">
+          {heroActions.map((action) =>
+            "onClick" in action ? (
+              <button
+                key={action.label}
+                onClick={action.onClick}
+                className="rounded-xl border border-cyan-300/25 bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:-translate-y-1 hover:bg-white"
+              >
+                View {action.label}
+              </button>
+            ) : (
+              <a
+                key={action.label}
+                href={action.href}
+                target={action.label === "ORCID" ? "_blank" : undefined}
+                rel={action.label === "ORCID" ? "noopener noreferrer" : undefined}
+                className="rounded-xl border border-cyan-300/20 bg-cyan-300/8 px-5 py-3 text-center text-sm font-black text-cyan-100 transition hover:-translate-y-1 hover:border-cyan-300/60 hover:bg-cyan-300/15"
+              >
+                {action.label}
+              </a>
+            )
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MotivationSection() {
+  const bullets = [
+    "Nature’s calm beauty inspires curiosity and careful observation.",
+    "That curiosity led me toward the invisible microbial world.",
+    "Microbiology allows me to understand hidden mechanisms of life at the microscopic level.",
+    "Sharing useful discoveries is the reason I chose this research path.",
+  ];
+
+  return (
+    <section className="mt-16 overflow-hidden rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
+      <div className="grid lg:grid-cols-[0.66fr_1.34fr]">
+        <div className="relative min-h-[320px] overflow-hidden bg-gradient-to-br from-cyan-300/12 via-slate-950 to-emerald-400/10 p-8 text-center md:p-10">
+          <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-cyan-300/20 blur-3xl" />
+          <div className="absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-emerald-300/12 blur-3xl" />
+
+          <div className="relative flex h-full flex-col justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">About Me</p>
+              <h2 className="mt-4 text-3xl font-black leading-tight text-white md:text-5xl">
+                A researcher shaped by nature and microbiology.
+              </h2>
+            </div>
+
+            <p className="mt-8 text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">
+              Curiosity • Microscopy • Discovery
+            </p>
+          </div>
+        </div>
+
+        <div className="p-7 md:p-10">
+          <blockquote className="border-l-2 border-cyan-300/50 pl-5 text-lg font-semibold leading-9 text-slate-200 md:text-xl md:leading-10">
+            “Nature has always captivated me with her gentle voice, soothing presence, and limitless beauty. Her whispers inspire my curiosity to explore the unseen microbial world, understand life’s hidden mechanisms at the microscopic level, and share meaningful discoveries.”
+          </blockquote>
+
+          <div className="mt-7 grid gap-3 md:grid-cols-2">
+            {bullets.map((bullet) => (
+              <div key={bullet} className="rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-4 text-sm leading-7 text-slate-300">
+                <div className="flex gap-3">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
+                  <span>{bullet}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-6 rounded-2xl border border-cyan-300/12 bg-cyan-300/5 p-5 text-base font-bold leading-8 text-cyan-100">
+            This is the key reason I chose to become a researcher in microbiology.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+function DynamicVisualDivider() {
+  return (
+    <section className="mt-16 overflow-hidden rounded-[2rem] border border-cyan-300/15 bg-slate-900/62 p-6 shadow-2xl shadow-cyan-950/10 backdrop-blur-xl md:p-8">
+      <div className="grid gap-6 md:grid-cols-3">
+        {[
+          {
+            title: "Microbial Network",
+            text: "Connected nodes represent laboratory evidence moving into structured biological interpretation.",
+          },
+          {
+            title: "Genomic Signal",
+            text: "Wave-like genomic layers indicate sequence analysis, comparison, and phylogenetic reasoning.",
+          },
+          {
+            title: "Predictive Layer",
+            text: "Computational modeling links molecular patterns with surveillance and disease dynamics.",
+          },
+        ].map((item, index) => (
+          <div
+            key={item.title}
+            className="group relative overflow-hidden rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-5 text-center transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/5"
+          >
+            <div className="absolute left-1/2 top-0 h-24 w-24 -translate-x-1/2 rounded-full bg-cyan-300/10 blur-2xl transition group-hover:bg-cyan-300/20" />
+            <div className="relative mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/25 bg-cyan-300/10 text-sm font-black text-cyan-200">
+              0{index + 1}
+            </div>
+            <h3 className="relative mt-4 text-lg font-black text-white">{item.title}</h3>
+            <p className="relative mt-3 text-sm leading-7 text-slate-300">{item.text}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ResearchAreaBand() {
+  return (
+    <section className="mt-16 rounded-[2rem] border border-cyan-300/15 bg-slate-900/62 p-5 shadow-2xl shadow-cyan-950/10 backdrop-blur-xl md:p-7">
+      <div className="flex flex-wrap justify-center gap-3">
+        {researchAreas.map((area) => (
+          <span
+            key={area}
+            className="rounded-full border border-cyan-300/18 bg-cyan-300/6 px-4 py-2 text-sm font-bold text-slate-200 transition hover:-translate-y-1 hover:border-cyan-300/50 hover:bg-cyan-300/12"
+          >
+            {area}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function StandardResearchModel() {
+  const modelSteps = [
+    {
+      title: "Field and sample source",
+      detail: "Animal, food, environmental, and public-health contexts generate the first layer of evidence.",
+    },
+    {
+      title: "Laboratory confirmation",
+      detail: "Culture, molecular diagnostics, and phenotypic analysis confirm the biological signal.",
+    },
+    {
+      title: "Genomic interpretation",
+      detail: "Genome analysis, phylogenetics, resistance profiling, and molecular epidemiology explain relationships.",
+    },
+    {
+      title: "Predictive insight",
+      detail: "Biostatistics, machine learning, and QML concepts support surveillance, forecasting, and risk assessment.",
+    },
+  ];
+
+  return (
+    <section className="mt-16 rounded-[2rem] border border-cyan-300/15 bg-slate-900/68 p-5 shadow-2xl shadow-cyan-950/10 backdrop-blur-xl md:p-8">
+      <SectionHeading
+        eyebrow="Research Model"
+        title="Evidence-to-insight workflow"
+        subtitle="A professional model of the research process, from sample evidence to genomic and epidemiological interpretation."
+      />
+
+      <div className="relative mx-auto max-w-6xl">
+        <div className="absolute left-0 right-0 top-1/2 hidden h-px bg-cyan-300/20 md:block" />
+
+        <div className="grid gap-5 md:grid-cols-4">
+          {modelSteps.map((step, index) => (
+            <article
+              key={step.title}
+              className="relative rounded-[1.5rem] border border-cyan-300/14 bg-slate-950/72 p-5 text-center shadow-xl shadow-cyan-950/10 transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/5"
+            >
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-sm font-black text-cyan-200">
+                0{index + 1}
+              </div>
+              <h3 className="mt-4 text-lg font-black text-white">{step.title}</h3>
+              <p className="mt-3 text-sm leading-7 text-slate-300">{step.detail}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SkillsSection() {
+  const [active, setActive] = useState(0);
+  const activeDomain = skillDomains[active];
+
+  return (
+    <section className="mt-24">
+      <SectionHeading
+        eyebrow="Skills"
+        title="Research Skills"
+        subtitle="Core laboratory, genomic, computational, and academic skills used across microbiology and infectious disease research."
+      />
+
+      <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 p-5 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-7">
+        <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {skillDomains.map((domain, index) => (
+              <button
+                key={domain.title}
+                type="button"
+                onClick={() => setActive(index)}
+                onMouseEnter={() => setActive(index)}
+                className={`group relative overflow-hidden rounded-2xl border p-5 text-left transition duration-300 ${
+                  active === index
+                    ? "border-cyan-300/70 bg-cyan-300/12 shadow-2xl shadow-cyan-950/20"
+                    : "border-cyan-300/12 bg-white/[0.035] hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/5"
+                }`}
+              >
+                <div className="absolute -right-12 -top-12 h-28 w-28 rounded-full bg-cyan-300/10 blur-2xl transition group-hover:bg-cyan-300/20" />
+                <p className="relative text-xs font-black uppercase tracking-[0.22em] text-cyan-300">
+                  Layer 0{index + 1}
+                </p>
+                <h3 className="relative mt-3 text-lg font-black text-white">{domain.title}</h3>
+                <p className="relative mt-3 text-sm leading-7 text-slate-400">{domain.summary}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-[1.75rem] border border-cyan-300/14 bg-slate-950/72 p-6 md:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">
+                  Selected Skill Layer
+                </p>
+                <h3 className="mt-3 text-2xl font-black text-white md:text-3xl">
+                  {activeDomain.title}
+                </h3>
+              </div>
+
+              <a
+                href="https://bau.edu.bd/public/file_manager/dvm.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-xl border border-cyan-300/25 bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white"
+              >
+                View DVM Curriculum
+              </a>
+            </div>
+
+            <p className="mt-5 text-base leading-8 text-slate-300">{activeDomain.summary}</p>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              {activeDomain.points.map((point) => (
+                <div
+                  key={point}
+                  className="rounded-2xl border border-cyan-300/12 bg-white/[0.04] p-4 text-sm font-semibold leading-7 text-slate-200 transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/5"
+                >
+                  <div className="flex gap-3">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
+                    <span>{point}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-cyan-300/12 bg-cyan-300/5 p-4">
+              <p className="text-sm font-bold leading-7 text-cyan-100">
+                Skill integration: laboratory methods, genomic interpretation, statistical thinking, and software-driven visualization are combined to support infectious disease research.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WorkflowSection() {
+  return (
+    <section className="mt-24 grid items-center gap-8 lg:grid-cols-[0.95fr_1.05fr]">
+      <div className="group relative">
+        <div className="absolute -inset-5 rounded-[2rem] bg-emerald-400/10 blur-3xl transition group-hover:bg-cyan-300/18" />
+        <div className="relative rounded-[2rem] border border-cyan-300/18 bg-slate-900/70 p-2 shadow-2xl shadow-cyan-950/25 backdrop-blur-xl">
+          <Image
+            src="/Me2.jpg"
+            alt="Research activity"
+            width={720}
+            height={720}
+            className="h-[330px] w-full rounded-[1.5rem] object-cover transition duration-700 group-hover:scale-[1.015] sm:h-[420px]"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-8">
+        <SectionHeading
+          eyebrow="Research Workflow"
+          title="From sample to interpretation"
+          subtitle="A compact workflow connecting laboratory evidence with molecular confirmation, genomic interpretation, and epidemiological analysis."
+        />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {workflowSteps.map((step, index) => (
+            <div key={step} className="rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-4 transition hover:border-cyan-300/45 hover:bg-cyan-300/5">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-300">Step 0{index + 1}</p>
+              <p className="mt-2 text-sm leading-7 text-slate-300">{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetricsSection() {
+  const [hovered, setHovered] = useState<string | null>(null);
+  const max = Math.max(...yearlyCitations.map((item) => item.citations));
+
+  return (
+    <section className="mt-24">
+      <SectionHeading
+        eyebrow="Research Metrics"
+        title="Research profile at a glance"
+        subtitle="A compact summary of the current citation trend and publication profile."
+      />
+
+      <div className="grid gap-4 md:grid-cols-4">
+        {researchStats.map((stat) => (
+          <div key={stat.label} className="rounded-2xl border border-cyan-300/15 bg-slate-900/75 p-5 text-center shadow-xl backdrop-blur-xl transition hover:-translate-y-1 hover:border-cyan-300/50 hover:bg-cyan-300/10">
+            <p className="text-3xl font-black text-cyan-300">{stat.value}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
+          <h3 className="text-2xl font-black text-white">Citation Growth</h3>
+          <p className="mt-1 text-sm text-slate-400">Yearly citation trend</p>
+
+          <div className="mt-6 flex h-44 items-end justify-center gap-10 border-b border-l border-slate-700/70 px-4 pb-3">
+            {yearlyCitations.map((item) => (
+              <button
+                key={item.year}
+                type="button"
+                onMouseEnter={() => setHovered(item.year)}
+                onMouseLeave={() => setHovered(null)}
+                onFocus={() => setHovered(item.year)}
+                onBlur={() => setHovered(null)}
+                className="group flex h-full flex-col items-center justify-end"
+              >
+                <div className="mb-2 text-xs font-bold text-cyan-300 opacity-0 transition group-hover:opacity-100 group-focus:opacity-100">
+                  {item.citations}
+                </div>
+                <div
+                  className="w-16 rounded-t-xl bg-gradient-to-t from-blue-700 to-cyan-300 shadow-lg shadow-cyan-500/20 transition-all duration-500 group-hover:scale-105 group-focus:scale-105"
+                  style={{ height: `${(item.citations / max) * 122}px` }}
+                />
+                <div className="mt-3 text-sm font-bold text-slate-300">{item.year}</div>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 min-h-11 rounded-xl border border-cyan-300/10 bg-cyan-300/5 p-3 text-sm text-cyan-100">
+            {hovered ? `${hovered}: ${yearlyCitations.find((item) => item.year === hovered)?.citations} citations` : "Hover over a bar to inspect yearly citations."}
+          </div>
+        </div>
+
+        <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
+          <h3 className="text-2xl font-black text-white">Journal Ranking</h3>
+          <p className="mt-1 text-sm text-slate-400">Current ranking distribution</p>
+
+          <div className="mt-7 space-y-5">
+            {[
+              { label: "Q1", value: 60 },
+              { label: "Q3", value: 20 },
+              { label: "NA", value: 20 },
+            ].map((item) => (
+              <div key={item.label}>
+                <div className="mb-2 flex justify-between text-xs font-bold text-slate-300">
+                  <span>{item.label}</span>
+                  <span>{item.value}%</span>
+                </div>
+                <div className="h-4 overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-700" style={{ width: `${item.value}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-6 text-xs leading-6 text-slate-400">Based on the current publication profile summary.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ContactSection() {
+  return (
+    <section className="mt-24">
+      <SectionHeading
+        eyebrow="Connect"
+        title="Academic profiles and contact"
+        subtitle="Links for academic profiles, collaboration, and professional communication."
+      />
+
+      <div className="grid gap-8 md:grid-cols-2">
+        <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-8">
+          <h3 className="text-2xl font-black text-white">Profiles</h3>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {profileLinks.map((link) => (
+              <a
+                key={link.name}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-3 rounded-xl border border-cyan-300/12 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/8"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-sm font-black text-cyan-300">
+                  {link.short}
+                </span>
+                <span className="text-sm font-bold text-slate-200 group-hover:text-white">{link.name}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-8">
+          <h3 className="text-2xl font-black text-white">Email</h3>
+
+          <div className="mt-6 space-y-3">
+            {emails.map((email) => (
+              <a
+                key={email}
+                href={`mailto:${email}`}
+                className="group flex items-center gap-3 rounded-xl border border-cyan-300/12 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/8"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </span>
+                <span className="break-all text-sm font-bold text-slate-200 group-hover:text-white">{email}</span>
+              </a>
+            ))}
+          </div>
+
+          <p className="mt-6 text-sm leading-7 text-slate-400">
+            Open to academic collaboration, research discussion, and computational biology projects.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Page                                                                      */
+/* -------------------------------------------------------------------------- */
+
 export default function About() {
   const [showEducation, setShowEducation] = useState(false);
 
   return (
     <main className="relative min-h-screen overflow-x-hidden bg-slate-950 text-white">
-      <NetworkBackground />
+      <EnhancedResearchBackground />
       <EducationModal isOpen={showEducation} onClose={() => setShowEducation(false)} />
 
-      <div className="relative z-10 mx-auto max-w-7xl px-6 py-24">
-        {/* Section 1: Image + Introduction */}
-        <section className="mb-24 grid items-center gap-16 md:grid-cols-2">
-          <div className="flex justify-center">
-            <div className="group relative">
-              <div className="absolute inset-0 rounded-full bg-blue-500 opacity-30 blur-3xl transition duration-500 group-hover:opacity-50" />
+      <div className="pointer-events-none fixed inset-0 z-[1] bg-[radial-gradient(circle_at_70%_5%,rgba(34,211,238,0.16),transparent_34%),linear-gradient(to_bottom,rgba(2,6,23,0.06),rgba(2,6,23,0.94))]" />
 
-              <div className="relative z-10 rounded-full bg-gradient-to-br from-blue-400 to-cyan-600 p-1 shadow-2xl shadow-blue-900/40">
-                <div className="overflow-hidden rounded-full">
-                  <Image
-                    src="/Me1.jpg"
-                    alt="Portrait"
-                    width={420}
-                    height={420}
-                    className="h-[380px] w-[380px] rounded-full object-cover transition-transform duration-500 group-hover:scale-105 md:h-[420px] md:w-[420px]"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="relative z-10 mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-20">
+        <HeroSection onEducationClick={() => setShowEducation(true)} />
+        <MotivationSection />
+        <ResearchAreaBand />
+        <DynamicVisualDivider />
+        <StandardResearchModel />
+        <SkillsSection />
+        <WorkflowSection />
+        <MetricsSection />
 
-          <div className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-xl leading-relaxed text-slate-300 backdrop-blur-sm transition-all duration-300 hover:border-cyan-400/20 hover:shadow-cyan-500/5">
-            <p>
-              Nahiduzzaman is a Doctor of Veterinary Medicine (DVM) graduate specializing in microbiology, epidemiology, and bioinformatics, with experience in pathogen genomics, antimicrobial resistance, and infectious disease research. He is skilled in data analysis, bioinformatics, and scientific writing, with a focus on advancing animal and public health.
-            </p>
+        <section className="mt-24">
+          <SectionHeading
+            eyebrow="Workspace"
+            title="Research desk and computational environment"
+            subtitle="A practical working environment for coding, analysis, writing, visualization, and interpretation of biological data."
+          />
 
-            <p>
-              I serve as a research assistant in{" "}
-              <span className="font-semibold text-blue-400">
-                Dr. Md. Ariful Islam’s Lab
-              </span>{" "}
-              at the Department of Microbiology and Hygiene, Bangladesh
-              Agricultural University (BAU). My work bridges laboratory
-              experiments and computational analysis.
-            </p>
-
-            <p>
-              My research interests span infectious diseases, zoonosis, vaccine
-              development, microbial genomics, antimicrobial resistance,
-              epidemiology, environmental microbiology, and AI-driven
-              bioinformatics.
-            </p>
-
-            <div className="flex flex-wrap gap-4 pt-4">
-              <button
-                onClick={() => setShowEducation(true)}
-                className="rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-500/25 transition-all hover:scale-105 hover:shadow-cyan-500/40 active:scale-95"
-              >
-                🎓 View Education
-              </button>
-              <a
-                href="https://orcid.org/0009-0000-1970-9480"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-6 py-3 text-sm font-bold text-cyan-200 transition-all hover:scale-105 hover:bg-cyan-500/20 hover:shadow-lg hover:shadow-cyan-500/20"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 0C5.372 0 0 5.372 0 12s5.372 12 12 12 12-5.372 12-12S18.628 0 12 0zM7.369 4.933c.525 0 .947.431.947.947s-.422.947-.947.947a.95.95 0 0 1-.947-.947c0-.516.422-.947.947-.947zm-.722 3.028h1.444v10.111H6.647V7.961zm3.561 0h1.359v1.566h.028c.188-.316.503-.622.947-.881.444-.259.919-.384 1.425-.384.872 0 1.575.3 2.109.9.534.6.8 1.425.8 2.475v5.706h-1.444v-5.153c0-1.05-.253-1.869-.753-2.453-.5-.584-1.181-.878-2.044-.878-.544 0-1.025.159-1.444.478-.419.319-.622.753-.622 1.303v5.703H10.21V7.961z" />
-                </svg>
-                ORCID Profile
-              </a>
-            </div>
-          </div>
-        </section>
-
-        {/* Section 2: Image + Skills/Projects (reversed order on mobile) */}
-        <section className="mb-24 grid items-center gap-16 md:grid-cols-2">
-          <div className="order-2 space-y-6 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-xl leading-relaxed text-slate-300 backdrop-blur-sm transition-all duration-300 hover:border-cyan-400/20 hover:shadow-cyan-500/5 md:order-1">
-            <p>
-              Beyond the bench, I'm proficient in biological data analysis and
-              computational tools:{" "}
-              <span className="font-semibold text-white">
-                R, Python, Julia, Linux, MATLAB
-              </span>
-              , and numerous bioinformatics platforms.
-            </p>
-
-            <p>
-              I am deeply fascinated by the microbial world and its impact on
-              human, animal, and environmental health. My ultimate goal is to
-              become a full-time researcher, contributing to global science
-              through innovative, sustainable solutions.
-            </p>
-
-            <p>
-              I also hold a strong interest in programming, cybersecurity, and
-              ethical hacking – certified in that domain.
-            </p>
-
-            <p>
-              Currently, I'm developing several Python-based tools for
-              epidemiology, genomics, and machine learning. One flagship project
-              is{" "}
-              <span className="text-2xl font-bold text-blue-400">
-                EGStat-N
-              </span>
-              , a multifunctional GUI bioinformatics platform.
-            </p>
-          </div>
-
-          <div className="order-1 flex justify-center md:order-2">
-            <div className="group relative">
-              <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-emerald-400 to-cyan-500 opacity-20 blur-2xl transition duration-500 group-hover:opacity-40" />
-
-              <div className="relative z-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-1.5 shadow-2xl shadow-emerald-900/30">
-                <div className="overflow-hidden rounded-xl">
-                  <Image
-                    src="/Me2.jpg"
-                    alt="Research"
-                    width={420}
-                    height={420}
-                    className="h-[380px] w-[380px] rounded-xl object-cover transition-transform duration-500 group-hover:scale-105 md:h-[420px] md:w-[420px]"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Research Statistics Section */}
-        <section className="mb-24">
-          <div className="mb-10 text-center">
-            <h2 className="inline-block bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-5xl font-black text-transparent">
-              Research Statistics
-            </h2>
-            <div className="mx-auto mt-4 h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500" />
-            <p className="mx-auto mt-5 max-w-3xl text-lg text-slate-400">
-              Current research profile summary, citation growth, and journal
-              ranking distribution.
-            </p>
-          </div>
-
-          <div className="mb-8 grid grid-cols-2 gap-5 md:grid-cols-4">
-            <StatBox label="Citations" value={researchStats.citations} />
-            <StatBox label="h-index" value={researchStats.hIndex} />
-            <StatBox label="i10-index" value={researchStats.i10Index} />
-            <StatBox label="Q1 Papers" value={researchStats.q1} suffix="%" />
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-1">
-              <SmallCitationGraph />
-            </div>
-            <div className="lg:col-span-1">
-              <SmallJournalRankGraph />
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl backdrop-blur-xl lg:col-span-1 transition-all duration-300 hover:border-cyan-400/30">
-              <div className="flex items-center gap-4">
-                <Image
-                  src="/profile.png"
-                  alt="Profile"
-                  width={90}
-                  height={90}
-                  className="h-[90px] w-[90px] rounded-full border-2 border-cyan-400/40 object-cover"
-                />
-                <div>
-                  <h3 className="text-2xl font-black text-white">
-                    FNU Nahiduzzaman
-                  </h3>
-                  <p className="text-sm text-slate-400">
-                    Bangladesh Agricultural University
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-cyan-300">
-                    Infectious Disease • Epidemiology • AMR • Bioinformatics
-                  </p>
-                </div>
-              </div>
-              <div className="mt-6">
-                <h4 className="mb-3 font-bold text-white">Research Keywords</h4>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "Epidemiology",
-                    "Genomics",
-                    "Bioinformatics",
-                  ].map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs font-bold text-cyan-200 transition hover:bg-cyan-500/20 hover:scale-105"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Work Environment */}
-        <section className="mb-16 text-center">
-          <div className="mb-10">
-            <h2 className="inline-block bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-5xl font-black text-transparent">
-              My Work Environment
-            </h2>
-            <div className="mx-auto mt-4 h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500" />
-          </div>
-
-          <div className="group relative inline-block">
-            <div className="absolute -inset-6 rounded-3xl bg-gradient-to-r from-blue-500/20 to-purple-500/20 opacity-0 blur-3xl transition duration-700 group-hover:opacity-100" />
-            <div className="relative z-10 rounded-3xl border border-white/10 bg-gradient-to-br from-slate-800 to-slate-900 p-2 shadow-2xl shadow-black/20">
+          <div className="group relative">
+            <div className="absolute -inset-6 rounded-[2rem] bg-gradient-to-r from-blue-500/15 to-purple-500/15 opacity-0 blur-3xl transition duration-700 group-hover:opacity-100" />
+            <div className="relative rounded-[2rem] border border-cyan-300/15 bg-slate-900/70 p-2 shadow-2xl shadow-black/20 backdrop-blur-xl">
               <Image
                 src="/Workstation.jpg"
                 alt="Workstation"
-                width={800}
-                height={480}
-                className="h-auto w-full max-w-5xl rounded-2xl object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                width={1100}
+                height={620}
+                className="h-auto w-full rounded-[1.5rem] object-cover transition duration-700 group-hover:scale-[1.01]"
               />
             </div>
           </div>
         </section>
 
-        {/* Connect / Social Links & Emails */}
-        <section className="mt-24">
-          <div className="mb-10 text-center">
-            <h2 className="inline-block bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-5xl font-black text-transparent">
-              Connect With Me
-            </h2>
-            <div className="mx-auto mt-4 h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500" />
-          </div>
+        <ContactSection />
 
-          <div className="grid gap-8 md:grid-cols-2">
-            {/* Social Networks */}
-            <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-8 backdrop-blur-xl shadow-2xl">
-              <h3 className="mb-6 text-2xl font-black text-white">
-                Academic & Social Profiles
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                {socialLinks.map((link) => (
-                  <a
-                    key={link.name}
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 transition-all hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:shadow-lg hover:shadow-cyan-500/20"
-                  >
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10 text-cyan-300 transition group-hover:bg-cyan-400/20 group-hover:text-cyan-200">
-                      {link.icon}
-                    </span>
-                    <span className="text-sm font-bold text-slate-200 transition group-hover:text-white">
-                      {link.name}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            {/* Email & Contact */}
-            <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-8 backdrop-blur-xl shadow-2xl">
-              <h3 className="mb-6 text-2xl font-black text-white">Email Me</h3>
-              <div className="space-y-4">
-                {emails.map((email) => (
-                  <a
-                    key={email}
-                    href={`mailto:${email}`}
-                    className="group flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 transition-all hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:shadow-lg hover:shadow-cyan-500/20"
-                  >
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10 text-cyan-300 transition group-hover:bg-cyan-400/20 group-hover:text-cyan-200">
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                        />
-                      </svg>
-                    </span>
-                    <span className="text-sm font-bold text-slate-200 transition group-hover:text-white break-all">
-                      {email}
-                    </span>
-                  </a>
-                ))}
-              </div>
-              <p className="mt-6 text-sm text-slate-400">
-                Feel free to reach out for collaborations, research inquiries,
-                or just to say hello.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Subtle footer space */}
-        <div className="h-16" />
+        <footer className="mt-16 border-t border-cyan-300/15 py-7 text-center">
+          <p className="text-sm text-slate-400">© 2026 Nahiduzzaman. All rights reserved.</p>
+          <p className="mt-1 text-sm font-bold text-cyan-300">Developed by Nahiduzzaman</p>
+        </footer>
       </div>
     </main>
   );
