@@ -589,7 +589,7 @@ function ResearchAreaCard({
 
 function HoverRevealProfileSections() {
   return (
-    <section id="profile-sections" className="px-6 pb-24">
+    <section id="profile-sections" className="px-4 pb-20 sm:px-6 md:pb-24">
       <div className="mx-auto max-w-7xl">
         <div className="mb-10">
           <SectionKicker>Profile</SectionKicker>
@@ -708,8 +708,8 @@ function HoverRevealProfileSections() {
           </article>
         </div>
 
-        <div className="grid gap-6 lg:hidden">
-          <article className="border border-cyan-300/20 bg-slate-950 p-7 shadow-2xl shadow-cyan-950/20">
+        <div className="grid gap-5 lg:hidden">
+          <article className="border border-cyan-300/20 bg-slate-950/90 p-5 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl sm:p-7">
             <SectionKicker>Biography</SectionKicker>
             <h3 className="mt-3 font-serif text-3xl font-bold text-white">
               Academic profile
@@ -719,7 +719,7 @@ function HoverRevealProfileSections() {
             </p>
           </article>
 
-          <article className="border border-cyan-300/20 bg-slate-950 p-7 shadow-2xl shadow-cyan-950/20">
+          <article className="border border-cyan-300/20 bg-slate-950/90 p-5 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl sm:p-7">
             <SectionKicker>Research Interest</SectionKicker>
             <h3 className="mt-3 font-serif text-3xl font-bold text-white">
               Research interest
@@ -776,11 +776,11 @@ export default function Home() {
                 Veterinary Microbiology • Genomics • Epidemiology
               </p>
 
-              <h1 className="max-w-5xl font-serif text-5xl font-bold leading-[0.96] tracking-tight text-white md:text-7xl lg:text-8xl">
+              <h1 className="max-w-5xl font-serif text-4xl font-bold leading-[0.98] tracking-tight text-white sm:text-5xl md:text-7xl lg:text-8xl">
                 Nahiduzzaman
               </h1>
 
-              <p className="mt-7 max-w-3xl font-serif text-2xl font-semibold leading-tight text-cyan-100 md:text-4xl">
+              <p className="mt-6 max-w-3xl font-serif text-xl font-semibold leading-tight text-cyan-100 sm:text-2xl md:text-4xl">
                 Veterinary researcher focused on microbiology, public health, genomics, and computational disease modeling.
               </p>
 
@@ -835,7 +835,7 @@ export default function Home() {
                   width={760}
                   height={860}
                   priority
-                  className="h-[470px] w-full object-cover object-center transition duration-700 hover:scale-[1.025]"
+                  className="h-[340px] w-full object-cover object-center transition duration-700 hover:scale-[1.025] sm:h-[420px] lg:h-[470px]"
                 />
               </div>
             </div>
@@ -855,7 +855,7 @@ export default function Home() {
                   alt="Nahiduzzaman working in laboratory"
                   width={900}
                   height={700}
-                  className="h-[420px] w-full object-cover object-center transition duration-700 hover:scale-[1.025]"
+                  className="h-[300px] w-full object-cover object-center transition duration-700 hover:scale-[1.025] sm:h-[380px] lg:h-[420px]"
                 />
               </div>
             </div>
@@ -920,7 +920,7 @@ export default function Home() {
           <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-2">
             <a
               href="/about"
-              className="group border border-cyan-300/15 bg-gradient-to-br from-blue-600/20 to-cyan-500/10 p-7 transition duration-300 hover:border-cyan-300 md:p-8"
+              className="group border border-cyan-300/15 bg-gradient-to-br from-blue-600/20 to-cyan-500/10 p-6 transition duration-300 hover:-translate-y-1 hover:border-cyan-300 md:p-8"
             >
               <SectionKicker>About</SectionKicker>
               <h3 className="mt-3 font-serif text-2xl font-bold md:text-3xl">
@@ -936,7 +936,7 @@ export default function Home() {
 
             <a
               href="/blog"
-              className="group border border-cyan-300/15 bg-gradient-to-br from-indigo-600/20 to-blue-500/10 p-7 transition duration-300 hover:border-cyan-300 md:p-8"
+              className="group border border-cyan-300/15 bg-gradient-to-br from-indigo-600/20 to-blue-500/10 p-6 transition duration-300 hover:-translate-y-1 hover:border-cyan-300 md:p-8"
             >
               <SectionKicker>Blog</SectionKicker>
               <h3 className="mt-3 font-serif text-2xl font-bold md:text-3xl">
@@ -951,7 +951,26 @@ export default function Home() {
             </a>
           </div>
         </section>
-      </div>
+
+        {/* FOOTER */}
+        <footer className="px-6 pb-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="relative overflow-hidden border border-cyan-300/15 bg-slate-950/80 px-5 py-6 text-center shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
+              <div className="pointer-events-none absolute left-1/2 top-0 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
+              <div className="pointer-events-none absolute -top-24 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-cyan-300/10 blur-3xl" />
+
+              <p className="relative font-serif text-sm leading-7 text-slate-300 md:text-base">
+                © 2026 Nahiduzzaman. All rights reserved.
+              </p>
+
+              <p className="relative mt-1 font-serif text-base font-bold text-cyan-300 transition duration-300 hover:text-cyan-100 md:text-lg">
+                Developed by Nahiduzzaman
+              </p>
+            </div>
+          </div>
+        </footer>
+
+</div>
     </main>
   );
 }
