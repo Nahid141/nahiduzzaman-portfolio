@@ -441,7 +441,7 @@ export default function Tools() {
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
   const [log, setLog] = useState<string[]>([
-    "> Hello! I'm Nahiduzzaman, the developer of this tool. I'd like to invite you to have a cup of coffee with me. Thank you for using my tool :)",
+    "> Tools page ready.",
     "> EGStat-N initialized.",
     "> QI-GeneX-N ready.",
   ]);
@@ -759,8 +759,25 @@ export default function Tools() {
 
     const formData = new FormData();
 
+    const liveRiskRows =
+      riskRows.length > 0
+        ? riskRows
+        : riskFile
+        ? await readSpreadsheetLikeFile(riskFile)
+        : [];
+
+    if (!liveRiskRows.length) {
+      pushLog(["> ERROR: Risk file could not be read. Open/view the dataset once, or upload a valid CSV/XLSX file."]);
+      return;
+    }
+
+    if (riskRows.length === 0) {
+      setRiskRows(liveRiskRows);
+    }
+
     formData.append("module", "risk");
-    formData.append("file", riskRows.length > 0 ? rowsAsUploadFile(riskRows, riskFileName || "egstat_n_risk_live_data.csv") : riskFile!);
+    formData.append("rows", JSON.stringify(liveRiskRows));
+    formData.append("file", rowsAsUploadFile(liveRiskRows, riskFileName || "egstat_n_risk_live_data.csv"));
     formData.append("outcome", riskOutcome);
     formData.append("predictors", riskPredictors);
     formData.append("threshold", riskThreshold);
@@ -793,6 +810,12 @@ export default function Tools() {
     pushLog([
       "> Risk-factor analysis completed from the current live-edited table.",
       `> Dependent variable=${riskOutcome}; independent variables=${riskPredictors}.`,
+      data?.risk?.excludedPredictors?.length
+        ? `> ${data.risk.excludedPredictors.length} unsuitable predictor(s) were excluded automatically. Check the excluded-predictor table.`
+        : "> No predictors were automatically excluded.",
+      data?.risk?.modelSelectionNotes?.length
+        ? `> Model selection note: ${data.risk.modelSelectionNotes.join(" ")}`
+        : "> Multivariable model selection completed.",
     ]);
   }
 
@@ -1164,7 +1187,7 @@ export default function Tools() {
               {[
                 "SEIR transmission",
                 "Interactive heatmap",
-                "Risk factor analysis",
+                "Risk analysis",
                 "Network analytics",
               ].map((item) => (
                 <div key={item} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-slate-200">
@@ -1248,7 +1271,7 @@ export default function Tools() {
                 />
 
                 <TabButton
-                  label="Risk Factor Analysis"
+                  label="Risk Analysis"
                   active={mainTab === "risk"}
                   onClick={() => setMainTab("risk")}
                 />
@@ -2443,7 +2466,7 @@ function RiskCategoryTable({
 
       {normalizedRows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-5 text-sm text-slate-400">
-          No category-level rows returned yet. Run risk factor analysis after selecting outcome, predictors, and reference categories.
+          No category-level rows returned yet. Run risk analysis after selecting outcome, predictors, and reference categories.
         </div>
       ) : (
         <div className="max-h-[520px] overflow-auto rounded-2xl border border-white/10">
@@ -2698,7 +2721,7 @@ function RiskSection(props: any) {
             onClick={runRiskAnalysis}
             className="w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
           >
-            Run Risk factor Analysis on Edited Data
+            Run Risk Analysis on Edited Data
           </button>
 
           {riskRows?.length > 0 && (

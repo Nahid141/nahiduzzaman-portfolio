@@ -827,6 +827,202 @@ function describeDataset(rows: RawRow[]) {
   };
 }
 
+
+function safeDivide(numerator: number, denominator: number): number | null {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || Math.abs(denominator) < 1e-12) return null;
+  return numerator / denominator;
+}
+
+function isIdLikeColumn(rows: RawRow[], column: string): boolean {
+  const lower = column.toLowerCase();
+  const levels = uniqueValues(rows, column);
+  const validCount = rows.filter((r) => !isMissing(r[column])).length;
+  const uniqueRatio = validCount > 0 ? levels.length / validCount : 0;
+
+  if (lower === "id" || lower.endsWith("_id") || lower.includes("seller_id") || lower.includes("sample_id") || lower.includes("animal_id")) return true;
+  return validCount >= 30 && uniqueRatio > 0.8;
+}
+
+function predictorCompleteness(rows: RawRow[], column: string): number {
+  if (!rows.length) return 0;
+  return rows.filter((r) => !isMissing(r[column])).length / rows.length;
+}
+
+function eventNonEventCounts(rows: RawRow[], outcome: string, eventLevel: string) {
+  const valid = rows.filter((r) => !isMissing(r[outcome]));
+  const events = valid.filter((r) => String(r[outcome]) === eventLevel).length;
+  const nonEvents = valid.length - events;
+  return { events, nonEvents, total: valid.length };
+}
+
+function isLikelyPostOutcomeColumn(rows: RawRow[], outcome: string, predictor: string, eventLevel: string): boolean {
+  const lower = predictor.toLowerCase();
+  if (lower.includes("mdr") || ["amp", "cip", "tet", "gen", "col", "ery", "ctx", "sxt"].includes(lower)) return true;
+
+  const valid = rows.filter((r) => !isMissing(r[predictor]) && !isMissing(r[outcome]));
+  if (!valid.length) return false;
+  const eventValid = valid.filter((r) => String(r[outcome]) === eventLevel).length;
+  const nonEventValid = valid.length - eventValid;
+
+  return eventValid > 0 && nonEventValid === 0;
+}
+
+function encodedTermCountForPredictor(rows: RawRow[], predictor: string, referenceCategories: RawRow = {}): number {
+  if (isNumericColumn(rows, predictor)) return 1;
+  const levels = orderedLevelsWithReference(rows, predictor, referenceCategories);
+  return Math.max(0, levels.length - 1);
+}
+
+function screenRiskPredictorsForModeling(
+  rows: RawRow[],
+  outcome: string,
+  requestedPredictors: string[],
+  referenceCategories: RawRow = {},
+  outcomeEventLevel = ""
+) {
+  const columns = getColumns(rows);
+  const enc = binaryOutcomeEncode(rows, outcome, outcomeEventLevel);
+  const eventLevel = enc?.positive ?? outcomeEventLevel;
+  const excluded: RawRow[] = [];
+  const usable: string[] = [];
+
+  requestedPredictors.forEach((predictor) => {
+    if (!columns.includes(predictor) || predictor === outcome) {
+      excluded.push({ variable: predictor, reason: "Column not found or same as outcome." });
+      return;
+    }
+
+    const completeness = predictorCompleteness(rows, predictor);
+    const levels = uniqueValues(rows, predictor);
+    const termCount = encodedTermCountForPredictor(rows, predictor, referenceCategories);
+
+    if (isIdLikeColumn(rows, predictor)) {
+      excluded.push({
+        variable: predictor,
+        reason: "Excluded from regression because it is ID-like or nearly unique per row.",
+        completeness,
+        uniqueValues: levels.length,
+        encodedTerms: termCount,
+      });
+      return;
+    }
+
+    if (completeness < 0.5) {
+      excluded.push({
+        variable: predictor,
+        reason: "Excluded from regression because more than 50% of values are missing.",
+        completeness,
+        uniqueValues: levels.length,
+        encodedTerms: termCount,
+      });
+      return;
+    }
+
+    if (enc && isLikelyPostOutcomeColumn(rows, outcome, predictor, eventLevel)) {
+      excluded.push({
+        variable: predictor,
+        reason: "Excluded from risk-factor regression because values exist only/mostly after a positive outcome, suggesting post-outcome AMR/MDR information rather than an exposure predictor.",
+        completeness,
+        uniqueValues: levels.length,
+        encodedTerms: termCount,
+      });
+      return;
+    }
+
+    if (!isNumericColumn(rows, predictor) && levels.length > 20) {
+      excluded.push({
+        variable: predictor,
+        reason: "Excluded from regression because categorical variable has too many levels for this sample size.",
+        completeness,
+        uniqueValues: levels.length,
+        encodedTerms: termCount,
+      });
+      return;
+    }
+
+    if (termCount < 1) {
+      excluded.push({
+        variable: predictor,
+        reason: "Excluded from regression because it has no usable variation after coding.",
+        completeness,
+        uniqueValues: levels.length,
+        encodedTerms: termCount,
+      });
+      return;
+    }
+
+    usable.push(predictor);
+  });
+
+  return { usable, excluded };
+}
+
+function chooseMultivariablePredictorsByEventCapacity(
+  rows: RawRow[],
+  outcome: string,
+  candidates: string[],
+  univariable: RawRow[],
+  referenceCategories: RawRow = {},
+  outcomeEventLevel = ""
+) {
+  const enc = binaryOutcomeEncode(rows, outcome, outcomeEventLevel);
+  if (!enc) return { predictors: candidates.slice(0, 8), notes: [] as string[] };
+
+  const counts = eventNonEventCounts(rows, outcome, enc.positive);
+  const limiting = Math.min(counts.events, counts.nonEvents);
+  const maxTerms = Math.max(1, Math.min(8, Math.floor(limiting / 5)));
+  const notes: string[] = [];
+
+  const orderedCandidates = [...candidates].sort((a, b) => {
+    const pa = Number((univariable.find((u: any) => u.variable === a) as any)?.pValue);
+    const pb = Number((univariable.find((u: any) => u.variable === b) as any)?.pValue);
+    const va = Number.isFinite(pa) ? pa : 999;
+    const vb = Number.isFinite(pb) ? pb : 999;
+    return va - vb;
+  });
+
+  const selected: string[] = [];
+  let usedTerms = 0;
+
+  for (const predictor of orderedCandidates) {
+    const terms = encodedTermCountForPredictor(rows, predictor, referenceCategories);
+    if (terms <= 0) continue;
+    if (usedTerms + terms > maxTerms && selected.length > 0) continue;
+    if (usedTerms + terms > Math.max(1, maxTerms)) continue;
+    selected.push(predictor);
+    usedTerms += terms;
+  }
+
+  if (orderedCandidates.length && selected.length < orderedCandidates.length) {
+    notes.push(
+      `Multivariable model was limited to ${selected.length} predictor(s) / ${usedTerms} encoded term(s) because the outcome has only ${counts.events} event(s) and ${counts.nonEvents} non-event(s).`
+    );
+  }
+
+  return { predictors: selected, notes };
+}
+
+function safePredictorSetMulticollinearity(rows: RawRow[], predictors: string[], referenceCategories: RawRow = {}) {
+  const encodedTerms = predictors.reduce((total, p) => total + encodedTermCountForPredictor(rows, p, referenceCategories), 0);
+
+  if (encodedTerms > 80) {
+    return {
+      method: "Variance inflation factor from predictor-only design matrix used for risk screening",
+      available: false,
+      message: `VIF was skipped because selected predictors create ${encodedTerms} encoded model terms; reduce predictors or remove high-cardinality variables.`,
+      variables: [],
+      summaryByVariable: [],
+      maximumVIF: null,
+      severeMulticollinearity: false,
+      moderateMulticollinearity: false,
+      thresholds: { moderate: 5, severe: 10 },
+    };
+  }
+
+  return predictorSetMulticollinearity(rows, predictors, referenceCategories);
+}
+
+
 function rank(values: number[]): number[] {
   const indexed = values.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
   const ranks = Array(values.length).fill(0);
@@ -2468,6 +2664,9 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
   const profile = describeDataset(rows);
   const outcomeIsNumeric = isNumericColumn(rows, outcome);
   const validPredictors = predictors.filter((p) => getColumns(rows).includes(p) && p !== outcome);
+  const screening = screenRiskPredictorsForModeling(rows, outcome, validPredictors, referenceCategories, outcomeEventLevel);
+  const modelablePredictors = screening.usable;
+  const excludedPredictors = screening.excluded;
 
   if (!getColumns(rows).includes(outcome)) {
     return {
@@ -2480,11 +2679,11 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
   }
 
   if (outcomeIsNumeric) {
-    const univariable = validPredictors.map((p) => numericOutcomeUnivariable(rows, outcome, p, referenceCategories));
+    const univariable = modelablePredictors.map((p) => numericOutcomeUnivariable(rows, outcome, p, referenceCategories));
     const selectedVariables = univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < threshold).map((u: any) => u.variable);
-    const multivariablePredictors = selectedVariables.length ? selectedVariables : validPredictors.slice(0, 8);
+    const multivariablePredictors = selectedVariables.length ? selectedVariables : modelablePredictors.slice(0, 8);
     const multivariable = multivariablePredictors.length ? linearRegression(rows, outcome, multivariablePredictors, referenceCategories) : null;
-    const candidateMulticollinearity = predictorSetMulticollinearity(rows, validPredictors, referenceCategories);
+    const candidateMulticollinearity = safePredictorSetMulticollinearity(rows, modelablePredictors, referenceCategories);
     const finalMulticollinearity = (multivariable as any)?.multicollinearity ?? null;
     const univariableScreeningTable = decorateRiskRowsWithVIF(
       univariable.map((u: any) => ({
@@ -2509,6 +2708,8 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
       outcome,
       outcomeType: "numeric",
       predictors: validPredictors,
+      modelablePredictors,
+      excludedPredictors,
       threshold,
       referenceCategories,
       clarifications,
@@ -2532,6 +2733,8 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
       multivariableCategoryTable,
       summary: {
         totalPredictors: validPredictors.length,
+        modelablePredictors: modelablePredictors.length,
+        excludedPredictors: excludedPredictors.length,
         significantAt005: univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < 0.05).length,
         selectedForMultivariable: selectedVariables.length,
         strongestPredictor: [...univariable].filter((u: any) => Number.isFinite(u.pValue)).sort((a: any, b: any) => a.pValue - b.pValue)[0] ?? null,
@@ -2560,7 +2763,7 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
   const outcomeLevels = uniqueValues(rows, outcome);
   const binary = outcomeLevels.length === 2;
 
-  const univariable = validPredictors.map((p) => {
+  const univariable = modelablePredictors.map((p) => {
     if (binary) {
       if (isNumericColumn(rows, p) && uniqueValues(rows, p).length > 5) {
         return continuousPredictorBinaryOutcome(rows, outcome, p, outcomeEventLevel);
@@ -2591,15 +2794,17 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
   });
 
   const univariableLogisticModels = binary
-    ? validPredictors.map((p) => ({
+    ? modelablePredictors.map((p) => ({
         variable: p,
         model: logisticRegression(rows, outcome, [p], referenceCategories, outcomeEventLevel),
       }))
     : [];
   const selectedVariables = univariable.filter((u: any) => Number.isFinite(u.pValue) && u.pValue < threshold).map((u: any) => u.variable);
-  const multivariablePredictors = selectedVariables.length ? selectedVariables : validPredictors.slice(0, 8);
+  const selectedOrFallback = selectedVariables.length ? selectedVariables : modelablePredictors;
+  const multivariableChoice = chooseMultivariablePredictorsByEventCapacity(rows, outcome, selectedOrFallback, univariable, referenceCategories, outcomeEventLevel);
+  const multivariablePredictors = multivariableChoice.predictors;
   const multivariable = binary && multivariablePredictors.length ? logisticRegression(rows, outcome, multivariablePredictors, referenceCategories, outcomeEventLevel) : null;
-  const candidateMulticollinearity = predictorSetMulticollinearity(rows, validPredictors, referenceCategories);
+  const candidateMulticollinearity = safePredictorSetMulticollinearity(rows, modelablePredictors, referenceCategories);
   const finalMulticollinearity = (multivariable as any)?.multicollinearity ?? null;
   const univariableCategoryTable = decorateRiskRowsWithVIF(
     decorateUnivariableRowsWithLogisticModels(buildUnivariableRiskTable(univariable, 0.05), univariableLogisticModels),
@@ -2620,6 +2825,8 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     outcomeNonEventLevel: binary ? (binaryOutcomeEncode(rows, outcome, outcomeEventLevel)?.negative ?? null) : null,
     positiveLevelSource: binary ? (binaryOutcomeEncode(rows, outcome, outcomeEventLevel)?.positiveLevelSource ?? null) : null,
     predictors: validPredictors,
+    modelablePredictors,
+    excludedPredictors,
     threshold,
     referenceCategories,
     clarifications,
@@ -2627,6 +2834,7 @@ function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], thre
     univariable,
     univariableLogisticModels,
     selectedVariables,
+    modelSelectionNotes: multivariableChoice.notes,
     multivariable,
     regression: { logistic: multivariable, univariable: univariableLogisticModels },
     logisticDiagnostics: multivariable
@@ -3647,7 +3855,7 @@ export async function POST(request: Request) {
           : parseList(formData.get("predictorColumns"));
 
       if (!outcome || predictors.length === 0) {
-        return NextResponse.json({ error: "Risk factor analysis requires a dependent/outcome variable and at least one independent/predictor variable." }, { status: 400 });
+        return NextResponse.json({ error: "Risk analysis requires a dependent/outcome variable and at least one independent/predictor variable." }, { status: 400 });
       }
 
       const threshold = safeNumber(formData.get("threshold"), 0.2);
@@ -3702,7 +3910,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Analysis failed.",
-        details: String(error),
+        details: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack?.split("\\n").slice(0, 6).join("\\n") : undefined,
       },
       { status: 500 }
     );
