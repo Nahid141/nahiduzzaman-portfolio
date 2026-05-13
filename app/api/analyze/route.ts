@@ -3855,7 +3855,7 @@ export async function POST(request: Request) {
           : parseList(formData.get("predictorColumns"));
 
       if (!outcome || predictors.length === 0) {
-        return NextResponse.json({ error: "Risk analysis requires a dependent/outcome variable and at least one independent/predictor variable." }, { status: 400 });
+        return NextResponse.json({ error: "Risk factor analysis requires a dependent/outcome variable and at least one independent/predictor variable." }, { status: 400 });
       }
 
       const threshold = safeNumber(formData.get("threshold"), 0.2);

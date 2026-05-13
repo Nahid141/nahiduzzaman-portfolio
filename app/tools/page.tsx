@@ -1187,7 +1187,7 @@ export default function Tools() {
               {[
                 "SEIR transmission",
                 "Interactive heatmap",
-                "Risk analysis",
+                "Risk factor analysis",
                 "Network analytics",
               ].map((item) => (
                 <div key={item} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-slate-200">
@@ -1271,7 +1271,7 @@ export default function Tools() {
                 />
 
                 <TabButton
-                  label="Risk Analysis"
+                  label="Risk Factor Analysis"
                   active={mainTab === "risk"}
                   onClick={() => setMainTab("risk")}
                 />
@@ -2466,7 +2466,7 @@ function RiskCategoryTable({
 
       {normalizedRows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-5 text-sm text-slate-400">
-          No category-level rows returned yet. Run risk analysis after selecting outcome, predictors, and reference categories.
+          No category-level rows returned yet. Run risk factor analysis after selecting outcome, predictors, and reference categories.
         </div>
       ) : (
         <div className="max-h-[520px] overflow-auto rounded-2xl border border-white/10">
@@ -2721,7 +2721,7 @@ function RiskSection(props: any) {
             onClick={runRiskAnalysis}
             className="w-full rounded-2xl bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-white"
           >
-            Run Risk Analysis on Edited Data
+            Run Risk Factor Analysis on Edited Data
           </button>
 
           {riskRows?.length > 0 && (
