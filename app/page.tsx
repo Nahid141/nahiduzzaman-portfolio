@@ -773,7 +773,7 @@ export default function Home() {
           <div className="mx-auto grid min-h-[78vh] max-w-7xl items-center gap-14 lg:grid-cols-[1fr_0.82fr]">
             <div>
               <p className="mb-6 font-serif text-sm font-bold uppercase tracking-[0.34em] text-cyan-300">
-                Veterinary Microbiology • Genomics • Epidemiology
+                Microbiology • Genomics • Epidemiology
               </p>
 
               <h1 className="max-w-5xl font-serif text-4xl font-bold leading-[0.98] tracking-tight text-white sm:text-5xl md:text-7xl lg:text-8xl">
