@@ -3,29 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-type AnalysisMode =
-  | "complete"
-  | "alignment"
-  | "qc"
-  | "classification"
-  | "gene_orf"
-  | "gp5"
-  | "mutation"
-  | "fitness"
-  | "evolution"
-  | "phylogeny"
-  | "genomic_intelligence"
-  | "ml_qml"
-  | "antigenic_drift"
-  | "antigenic_shift"
-  | "vaccine_escape"
-  | "geo_spatiotemporal"
-  | "animal_host"
-  | "visualization"
-  | "report_package";
-
-type QigenexAction = "analysis" | "figures" | "package";
-
 function normalizeBackendUrl(url: string) {
   return url.replace(/\/+$/, "");
 }
@@ -41,22 +18,11 @@ function cleanText(value: FormDataEntryValue | null | undefined, fallback = "") 
   return String(value).trim();
 }
 
-function boolText(value: FormDataEntryValue | null | undefined, fallback = false) {
-  const text = cleanText(value).toLowerCase();
-  if (!text) return fallback ? "true" : "false";
-  return ["1", "true", "yes", "y", "on"].includes(text) ? "true" : "false";
-}
-
 function makeTextFile(text: string, filename: string, type = "text/plain") {
   return new File([text], filename, { type });
 }
 
-function appendIfPresent(
-  target: FormData,
-  source: FormData,
-  sourceKey: string,
-  targetKey = sourceKey
-) {
+function appendIfPresent(target: FormData, source: FormData, sourceKey: string, targetKey = sourceKey) {
   const value = source.get(sourceKey);
   if (value === null || value === undefined) return;
 
@@ -74,13 +40,8 @@ function safeFilename(path: string) {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function isAllowedResultPath(path: string) {
-  return path.startsWith("/results/") || path.startsWith("/jobs/");
-}
-
 async function readJsonResponse(response: Response) {
   const contentType = response.headers.get("content-type") || "";
-
   if (!contentType.includes("application/json")) {
     const text = await response.text();
     return {
@@ -93,128 +54,51 @@ async function readJsonResponse(response: Response) {
       },
     };
   }
-
-  return {
-    ok: true,
-    data: await response.json(),
-  };
+  return { ok: true, data: await response.json() };
 }
 
-function normalizeAnalysisMode(value: FormDataEntryValue | null): AnalysisMode {
-  const mode = cleanText(value, "complete").toLowerCase() as AnalysisMode;
-  const allowed: AnalysisMode[] = [
-    "complete",
-    "alignment",
-    "qc",
-    "classification",
-    "gene_orf",
-    "gp5",
-    "mutation",
-    "fitness",
-    "evolution",
-    "phylogeny",
-    "genomic_intelligence",
-    "ml_qml",
-    "antigenic_drift",
-    "antigenic_shift",
-    "vaccine_escape",
-    "geo_spatiotemporal",
-    "animal_host",
-    "visualization",
-    "report_package",
-  ];
-  return allowed.includes(mode) ? mode : "complete";
-}
+async function proxyDownload(backendUrl: string, rawPath: string) {
+  const cleanPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
 
-function normalizeAction(value: FormDataEntryValue | null): QigenexAction {
-  const action = cleanText(value, "analysis").toLowerCase();
-  if (action === "figures" || action === "package") return action;
-  return "analysis";
-}
-
-function modeFromAnalysis(analysisMode: AnalysisMode, action: QigenexAction) {
-  if (action === "figures" || action === "package") return "advanced";
-
-  const standardModes: AnalysisMode[] = [
-    "complete",
-    "phylogeny",
-    "evolution",
-    "genomic_intelligence",
-    "ml_qml",
-    "fitness",
-    "geo_spatiotemporal",
-    "antigenic_drift",
-    "antigenic_shift",
-  ];
-
-  return standardModes.includes(analysisMode) ? "standard" : "fast";
-}
-
-function backendFlagsFor(analysisMode: AnalysisMode, action: QigenexAction) {
-  const flags: Record<string, string> = {
-    run_phylogeny: "false",
-    run_ml: "false",
-    run_qml: "false",
-    run_fitness: "false",
-    run_geospatial: "false",
-    run_report: "false",
-    run_visualization: "false",
-    run_composite_figures: "false",
-    run_packaging: "false",
-  };
-
-  if (action === "figures") {
-    flags.run_visualization = "true";
-    flags.run_composite_figures = "true";
-    return flags;
+  if (!cleanPath.startsWith("/results/") && !cleanPath.startsWith("/jobs/")) {
+    return NextResponse.json(
+      { status: "error", error: "Only /results/... or /jobs/... downloads are allowed.", path: cleanPath },
+      { status: 400 }
+    );
   }
 
-  if (action === "package") {
-    flags.run_report = "true";
-    flags.run_visualization = "true";
-    flags.run_composite_figures = "true";
-    flags.run_packaging = "true";
-    return flags;
+  let backendFileUrl = `${backendUrl}${cleanPath}`;
+  let backendResponse = await fetch(backendFileUrl, { method: "GET", cache: "no-store" });
+
+  if (!backendResponse.ok && cleanPath.startsWith("/results/")) {
+    const parts = cleanPath.split("/").filter(Boolean);
+    if (parts.length >= 3) {
+      const [, jobId, ...fileParts] = parts;
+      const filename = fileParts.join("/");
+      backendFileUrl = `${backendUrl}/jobs/${encodeURIComponent(jobId)}/download/${encodeURIComponent(filename)}`;
+      backendResponse = await fetch(backendFileUrl, { method: "GET", cache: "no-store" });
+    }
   }
 
-  switch (analysisMode) {
-    case "complete":
-      Object.keys(flags).forEach((key) => {
-        flags[key] = "true";
-      });
-      break;
-    case "phylogeny":
-    case "evolution":
-    case "antigenic_drift":
-    case "antigenic_shift":
-      flags.run_phylogeny = "true";
-      break;
-    case "genomic_intelligence":
-      flags.run_phylogeny = "true";
-      break;
-    case "ml_qml":
-      flags.run_ml = "true";
-      flags.run_qml = "true";
-      break;
-    case "fitness":
-      flags.run_fitness = "true";
-      break;
-    case "geo_spatiotemporal":
-      flags.run_geospatial = "true";
-      break;
-    case "visualization":
-      flags.run_visualization = "true";
-      flags.run_composite_figures = "true";
-      break;
-    case "report_package":
-      flags.run_report = "true";
-      flags.run_packaging = "true";
-      break;
-    default:
-      break;
+  if (!backendResponse.ok) {
+    return NextResponse.json(
+      {
+        status: "error",
+        error: "Failed to download backend result file.",
+        backendStatus: backendResponse.status,
+        path: cleanPath,
+        backendFileUrl,
+      },
+      { status: backendResponse.status }
+    );
   }
 
-  return flags;
+  const arrayBuffer = await backendResponse.arrayBuffer();
+  const headers = new Headers();
+  headers.set("Content-Type", backendResponse.headers.get("content-type") || "application/octet-stream");
+  headers.set("Content-Disposition", `attachment; filename="${safeFilename(cleanPath)}"`);
+  headers.set("Cache-Control", "no-store");
+  return new NextResponse(arrayBuffer, { status: 200, headers });
 }
 
 export async function GET(req: NextRequest) {
@@ -226,7 +110,7 @@ export async function GET(req: NextRequest) {
         {
           status: "error",
           error: "QIGENEX_BACKEND_URL is not configured.",
-          fix: "Add QIGENEX_BACKEND_URL=http://140.245.47.234 in Vercel environment variables, then redeploy.",
+          fix: "Set QIGENEX_BACKEND_URL=http://140.245.47.234 in Vercel and redeploy.",
         },
         { status: 500 }
       );
@@ -236,112 +120,30 @@ export async function GET(req: NextRequest) {
     const jobId = searchParams.get("job_id");
     const resultPath = searchParams.get("path");
 
-    if (resultPath) {
-      const cleanPath = resultPath.startsWith("/") ? resultPath : `/${resultPath}`;
-
-      if (!isAllowedResultPath(cleanPath)) {
-        return NextResponse.json(
-          {
-            status: "error",
-            error: "Invalid result path. Only /results/... or /jobs/... paths are allowed.",
-            path: cleanPath,
-          },
-          { status: 400 }
-        );
-      }
-
-      let backendFileUrl = `${backendUrl}${cleanPath}`;
-      let backendResponse = await fetch(backendFileUrl, {
-        method: "GET",
-        cache: "no-store",
-      });
-
-      if (!backendResponse.ok && cleanPath.startsWith("/results/")) {
-        const parts = cleanPath.split("/").filter(Boolean);
-        if (parts.length >= 3) {
-          const [, resultJobId, ...fileParts] = parts;
-          const filename = fileParts.join("/");
-          backendFileUrl = `${backendUrl}/jobs/${encodeURIComponent(resultJobId)}/download/${encodeURIComponent(filename)}`;
-          backendResponse = await fetch(backendFileUrl, {
-            method: "GET",
-            cache: "no-store",
-          });
-        }
-      }
-
-      if (!backendResponse.ok) {
-        return NextResponse.json(
-          {
-            status: "error",
-            error: "Failed to download backend result file.",
-            backendStatus: backendResponse.status,
-            path: cleanPath,
-            backendFileUrl,
-          },
-          { status: backendResponse.status }
-        );
-      }
-
-      const arrayBuffer = await backendResponse.arrayBuffer();
-      const filename = safeFilename(cleanPath);
-      const headers = new Headers();
-
-      headers.set(
-        "Content-Type",
-        backendResponse.headers.get("content-type") || "application/octet-stream"
-      );
-      headers.set("Content-Disposition", `attachment; filename="${filename}"`);
-      headers.set("Cache-Control", "no-store");
-
-      return new NextResponse(arrayBuffer, { status: 200, headers });
-    }
+    if (resultPath) return proxyDownload(backendUrl, resultPath);
 
     if (jobId) {
       const response = await fetch(`${backendUrl}/jobs/${encodeURIComponent(jobId)}`, {
         method: "GET",
         cache: "no-store",
       });
-
       const parsed = await readJsonResponse(response);
-
-      if (!parsed.ok) {
-        return NextResponse.json(parsed.data, { status: 502 });
-      }
-
+      if (!parsed.ok) return NextResponse.json(parsed.data, { status: 502 });
       return NextResponse.json(
-        {
-          ...parsed.data,
-          bridge: {
-            route: "/api/qigenex",
-            backendUrl,
-            backendStatus: response.status,
-            jobId,
-          },
-        },
+        { ...parsed.data, bridge: { route: "/api/qigenex", backendUrl, backendStatus: response.status, jobId } },
         { status: response.status }
       );
     }
 
-    const healthResponse = await fetch(`${backendUrl}/health`, {
-      method: "GET",
-      cache: "no-store",
-    }).catch(() => null);
-
-    const backendHealth =
-      healthResponse && healthResponse.ok ? await healthResponse.json().catch(() => null) : null;
+    const healthResponse = await fetch(`${backendUrl}/health`, { method: "GET", cache: "no-store" }).catch(() => null);
+    const backendHealth = healthResponse?.ok ? await healthResponse.json().catch(() => null) : null;
 
     return NextResponse.json({
       status: "running",
       route: "/api/qigenex",
-      message: "QI-GeneX-N Vercel bridge route is active.",
-      backendConfigured: Boolean(backendUrl),
+      backendConfigured: true,
       backendUrl,
       backendHealth,
-      behavior: {
-        selectedAnalysisIsForwarded: true,
-        figuresAreOnlyGeneratedWhenRequested: true,
-        figureCustomizationIsForwarded: true,
-      },
       endpoints: {
         submit: "POST /api/qigenex",
         status: "GET /api/qigenex?job_id=JOB_ID",
@@ -350,11 +152,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     return NextResponse.json(
-      {
-        status: "error",
-        error: "Failed to query QI-GeneX-N backend.",
-        details: error instanceof Error ? error.message : String(error),
-      },
+      { status: "error", error: "Failed to query QI-GeneX-N backend.", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -363,14 +161,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const backendUrl = getBackendUrl();
-
     if (!backendUrl) {
       return NextResponse.json(
-        {
-          status: "error",
-          error: "QIGENEX_BACKEND_URL is not configured.",
-          fix: "Add QIGENEX_BACKEND_URL=http://140.245.47.234 in Vercel environment variables, then redeploy.",
-        },
+        { status: "error", error: "QIGENEX_BACKEND_URL is not configured.", fix: "Set QIGENEX_BACKEND_URL=http://140.245.47.234 in Vercel and redeploy." },
         { status: 500 }
       );
     }
@@ -378,22 +171,46 @@ export async function POST(req: NextRequest) {
     const incoming = await req.formData();
     const backendForm = new FormData();
 
-    const action = normalizeAction(incoming.get("action"));
-    const analysisMode = normalizeAnalysisMode(incoming.get("analysisMode"));
-    const selectedAnalysis = normalizeAnalysisMode(
-      incoming.get("selected_analysis") || incoming.get("analysisMode")
-    );
+    const action = cleanText(incoming.get("action"), "analysis").toLowerCase();
+    const analysisMode = cleanText(incoming.get("analysisMode"), "complete").toLowerCase();
+    const selectedAnalysis = cleanText(incoming.get("selected_analysis"), analysisMode).toLowerCase();
+    const mode = cleanText(incoming.get("mode"), "fast");
 
-    const requestedMode = cleanText(incoming.get("mode"));
-    const backendMode = requestedMode || modeFromAnalysis(analysisMode, action);
-
-    backendForm.append("mode", backendMode);
+    backendForm.append("action", action);
     backendForm.append("analysisMode", analysisMode);
     backendForm.append("selected_analysis", selectedAnalysis);
-    backendForm.append("action", action);
+    backendForm.append("mode", mode);
 
-    const flags = backendFlagsFor(selectedAnalysis, action);
-    Object.entries(flags).forEach(([key, value]) => backendForm.set(key, value));
+    [
+      "run_visualization",
+      "run_composite_figures",
+      "run_packaging",
+      "run_ml",
+      "run_qml",
+      "run_fitness",
+      "run_geospatial",
+      "run_report",
+      "run_phylogeny",
+      "figure_set",
+      "figure_plot_style",
+      "figure_styles",
+      "figure_formats",
+      "figure_dpi",
+      "figure_layout",
+      "panel_mode",
+      "separate_or_panel",
+      "figure_title_mode",
+      "figure_title_text",
+      "figure_title_font_size",
+      "figure_title_font_weight",
+      "x_title_font_size",
+      "y_title_font_size",
+      "x_label_font_size",
+      "y_label_font_size",
+      "x_title_font_weight",
+      "y_title_font_weight",
+      "transparent_background",
+    ].forEach((key) => appendIfPresent(backendForm, incoming, key));
 
     const fastaDirect = incoming.get("fasta");
     const fastaFile = incoming.get("fastaFile");
@@ -412,13 +229,7 @@ export async function POST(req: NextRequest) {
     } else if (alignedText) {
       backendForm.append("fasta", makeTextFile(alignedText, "pasted_aligned_input.fasta"));
     } else {
-      return NextResponse.json(
-        {
-          status: "error",
-          error: "No FASTA input found. Provide fasta, fastaFile, alignedFile, fastaText, or alignedText.",
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({ status: "error", error: "No FASTA input found." }, { status: 400 });
     }
 
     const metadataDirect = incoming.get("metadata");
@@ -446,90 +257,22 @@ export async function POST(req: NextRequest) {
     appendIfPresent(backendForm, incoming, "vaccineStrainText");
     appendIfPresent(backendForm, incoming, "notes");
 
-    const figureFields = [
-      "figure_set",
-      "figure_styles",
-      "figure_formats",
-      "figure_dpi",
-      "figure_layout",
-      "figure_title_mode",
-      "figure_title_text",
-      "figure_title_font_size",
-      "figure_title_font_weight",
-      "x_title_font_size",
-      "x_title_font_weight",
-      "x_label_font_size",
-      "x_label_font_weight",
-      "y_title_font_size",
-      "y_title_font_weight",
-      "y_label_font_size",
-      "y_label_font_weight",
-      "legend_font_size",
-      "legend_font_weight",
-      "panel_mode",
-      "separate_or_panel",
-      "transparent_background",
-    ];
-
-    figureFields.forEach((key) => appendIfPresent(backendForm, incoming, key));
-
-    backendForm.set("figure_formats", cleanText(incoming.get("figure_formats"), "png,svg,pdf"));
-    backendForm.set("figure_dpi", cleanText(incoming.get("figure_dpi"), "900"));
-    backendForm.set("figure_styles", cleanText(incoming.get("figure_styles"), "journal_clean"));
-    backendForm.set("figure_set", cleanText(incoming.get("figure_set"), action === "analysis" ? "selected" : "full"));
-    backendForm.set("figure_layout", cleanText(incoming.get("figure_layout"), "separate"));
-    backendForm.set("figure_title_mode", cleanText(incoming.get("figure_title_mode"), "none"));
-    backendForm.set("transparent_background", boolText(incoming.get("transparent_background"), false));
-
-    const response = await fetch(`${backendUrl}/jobs/analyze`, {
-      method: "POST",
-      body: backendForm,
-      cache: "no-store",
-    });
-
+    const response = await fetch(`${backendUrl}/jobs/analyze`, { method: "POST", body: backendForm, cache: "no-store" });
     const parsed = await readJsonResponse(response);
-
-    if (!parsed.ok) {
-      return NextResponse.json(
-        {
-          ...parsed.data,
-          backendUrl,
-        },
-        { status: 502 }
-      );
-    }
+    if (!parsed.ok) return NextResponse.json({ ...parsed.data, backendUrl }, { status: 502 });
 
     return NextResponse.json(
       {
         ...parsed.data,
         action,
-        analysisMode,
         selected_analysis: selectedAnalysis,
-        backend_flags: flags,
-        figure_options: {
-          figure_set: backendForm.get("figure_set"),
-          figure_styles: backendForm.get("figure_styles"),
-          figure_formats: backendForm.get("figure_formats"),
-          figure_dpi: backendForm.get("figure_dpi"),
-          figure_layout: backendForm.get("figure_layout"),
-          figure_title_mode: backendForm.get("figure_title_mode"),
-        },
-        bridge: {
-          route: "/api/qigenex",
-          backendUrl,
-          backendStatus: response.status,
-          backendSubmitEndpoint: "/jobs/analyze",
-        },
+        bridge: { route: "/api/qigenex", backendUrl, backendStatus: response.status, backendSubmitEndpoint: "/jobs/analyze" },
       },
       { status: response.status }
     );
   } catch (error) {
     return NextResponse.json(
-      {
-        status: "error",
-        error: "Failed to connect with QI-GeneX-N Oracle backend.",
-        details: error instanceof Error ? error.message : String(error),
-      },
+      { status: "error", error: "Failed to connect with QI-GeneX-N Oracle backend.", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
