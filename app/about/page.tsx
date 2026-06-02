@@ -10,29 +10,70 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const emails = ["nahiduzzaman.2001055@bau.edu.bd", "nahid007@umn.edu"];
 
 const profileLinks = [
-  { name: "Google Scholar", short: "GS", url: "https://scholar.google.com/citations?user=37f5LKUAAAAJ&hl=en" },
-  { name: "Scopus", short: "SC", url: "https://www.scopus.com/authid/detail.uri?authorId=59914950700" },
-  { name: "ResearchGate", short: "RG", url: "https://www.researchgate.net/profile/Fnu-Nahiduzzaman" },
-  { name: "LinkedIn", short: "in", url: "https://www.linkedin.com/in/fnu-nahiduzzaman-20195419b" },
-  { name: "ORCID", short: "iD", url: "https://orcid.org/0009-0000-1970-9480" },
+  {
+    name: "Google Scholar",
+    short: "GS",
+    url: "https://scholar.google.com/citations?user=37f5LKUAAAAJ&hl=en",
+  },
+  {
+    name: "Scopus",
+    short: "SC",
+    url: "https://www.scopus.com/authid/detail.uri?authorId=59914950700",
+  },
+  {
+    name: "ResearchGate",
+    short: "RG",
+    url: "https://www.researchgate.net/profile/Fnu-Nahiduzzaman",
+  },
+  {
+    name: "LinkedIn",
+    short: "in",
+    url: "https://www.linkedin.com/in/fnu-nahiduzzaman-20195419b",
+  },
+  {
+    name: "ORCID",
+    short: "iD",
+    url: "https://orcid.org/0009-0000-1970-9480",
+  },
 ];
 
 const yearlyCitations = [
   { year: "2025", citations: 4 },
-  { year: "2026", citations: 10 },
+  { year: "2026", citations: 13 },
 ];
 
 const researchStats = [
-  { label: "Citations", value: "14" },
-  { label: "h-index", value: "2" },
-  { label: "i10-index", value: "0" },
-  { label: "Q1 papers", value: "60%" },
+  {
+    label: "Citations",
+    value: "17",
+    note: "Current citation count",
+    glow: "from-cyan-300 to-blue-500",
+  },
+  {
+    label: "h-index",
+    value: "2",
+    note: "Research influence index",
+    glow: "from-emerald-300 to-cyan-500",
+  },
+  {
+    label: "i10-index",
+    value: "1",
+    note: "Papers with ≥10 citations",
+    glow: "from-purple-300 to-pink-500",
+  },
+  {
+    label: "Q1 papers",
+    value: "60%",
+    note: "High-ranking journal share",
+    glow: "from-amber-300 to-orange-500",
+  },
 ];
 
 const skillDomains = [
   {
     title: "Microbiology Laboratory",
-    summary: "Pathogen isolation, identification, molecular confirmation, and antimicrobial resistance analysis.",
+    summary:
+      "Pathogen isolation, identification, molecular confirmation, and antimicrobial resistance analysis.",
     points: [
       "Microbial culture, media preparation, bacterial isolation, and colony characterization",
       "Cell culture, virus isolation, and basic virological investigation",
@@ -42,7 +83,8 @@ const skillDomains = [
   },
   {
     title: "Research Development",
-    summary: "Scientific writing, evidence synthesis, study design, and interpretation of biological data.",
+    summary:
+      "Scientific writing, evidence synthesis, study design, and interpretation of biological data.",
     points: [
       "Manuscript, review article, report, and research proposal writing",
       "Literature review, meta-analysis, knowledge-gap identification, and study planning",
@@ -52,7 +94,8 @@ const skillDomains = [
   },
   {
     title: "Bioinformatics and Genomics",
-    summary: "Microbial and viral genome analysis using reproducible computational workflows.",
+    summary:
+      "Microbial and viral genome analysis using reproducible computational workflows.",
     points: [
       "Whole-genome sequence analysis, microbial genomics, and viral genomics",
       "Phylogenetic interpretation, molecular epidemiology, and evolutionary analysis",
@@ -62,7 +105,8 @@ const skillDomains = [
   },
   {
     title: "ML, QML and Software Development",
-    summary: "Predictive and computational tools for genomics, molecular epidemiology, and disease dynamics.",
+    summary:
+      "Predictive and computational tools for genomics, molecular epidemiology, and disease dynamics.",
     points: [
       "Machine learning for surveillance, outbreak prediction, and risk assessment",
       "Quantum machine learning concepts for genomics and molecular epidemiology",
@@ -72,7 +116,8 @@ const skillDomains = [
   },
   {
     title: "Veterinary Academic Base",
-    summary: "DVM training across veterinary, biomedical, clinical, and public-health disciplines.",
+    summary:
+      "DVM training across veterinary, biomedical, clinical, and public-health disciplines.",
     points: [
       "Anatomy, histology, physiology, biochemistry, genetics, and toxicology",
       "Microbiology, immunology, parasitology, pathology, public health, and epidemiology",
@@ -127,7 +172,7 @@ const educationData = [
 ];
 
 /* -------------------------------------------------------------------------- */
-/*  Enhanced Dynamic Background                                                */
+/*  Dynamic Background                                                        */
 /* -------------------------------------------------------------------------- */
 
 type Particle = {
@@ -177,7 +222,7 @@ function EnhancedResearchBackground() {
 
       sizeRef.current = { width, height };
 
-      const particleCount = width < 768 ? 42 : 88;
+      const particleCount = width < 768 ? 45 : 92;
       particlesRef.current = Array.from({ length: particleCount }, () => ({
         x: Math.random() * width,
         y: Math.random() * height,
@@ -187,7 +232,7 @@ function EnhancedResearchBackground() {
         glow: 0.45 + Math.random() * 0.55,
       }));
 
-      const microbeCount = width < 768 ? 9 : 18;
+      const microbeCount = width < 768 ? 10 : 20;
       microbesRef.current = Array.from({ length: microbeCount }, (_, i) => ({
         x: Math.random() * width,
         y: Math.random() * height,
@@ -231,7 +276,7 @@ function EnhancedResearchBackground() {
 
     const drawGrid = (width: number, height: number) => {
       ctx.save();
-      ctx.strokeStyle = "rgba(56,189,248,0.048)";
+      ctx.strokeStyle = "rgba(56,189,248,0.05)";
       ctx.lineWidth = 1;
 
       const spacing = 80;
@@ -252,11 +297,30 @@ function EnhancedResearchBackground() {
       ctx.restore();
     };
 
+    const drawGenomeArc = (time: number, width: number, height: number) => {
+      ctx.save();
+      ctx.strokeStyle = "rgba(34,211,238,0.1)";
+      ctx.lineWidth = 1.25;
+
+      for (let i = 0; i < 7; i += 1) {
+        const baseY = height * (0.16 + i * 0.105);
+        ctx.beginPath();
+        for (let x = -50; x <= width + 50; x += 18) {
+          const y = baseY + Math.sin((x + time * 0.035) * 0.012 + i) * 18;
+          if (x === -50) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    };
+
     const drawPhylogeneticField = (time: number, width: number, height: number) => {
       const rootX = width * 0.045;
       const rootY = height * 0.54;
       const endX = width * 0.98;
-      const tips = width < 768 ? 18 : 42;
+      const tips = width < 768 ? 18 : 44;
       const top = height * 0.09;
       const span = height * 0.78;
 
@@ -298,29 +362,8 @@ function EnhancedResearchBackground() {
       ctx.restore();
     };
 
-    const drawGenomeArc = (time: number, width: number, height: number) => {
-      ctx.save();
-      ctx.strokeStyle = "rgba(34,211,238,0.095)";
-      ctx.lineWidth = 1.2;
-
-      for (let i = 0; i < 6; i += 1) {
-        const baseY = height * (0.18 + i * 0.11);
-        ctx.beginPath();
-        for (let x = -50; x <= width + 50; x += 18) {
-          const y = baseY + Math.sin((x + time * 0.035) * 0.012 + i) * 18;
-          if (x === -50) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    };
-
     const drawMicrobes = (time: number, width: number, height: number) => {
-      const microbes = microbesRef.current;
-
-      for (const m of microbes) {
+      for (const m of microbesRef.current) {
         m.x += m.vx;
         m.y += m.vy;
         m.rotation += m.speed;
@@ -333,7 +376,7 @@ function EnhancedResearchBackground() {
         ctx.save();
         ctx.translate(m.x, m.y);
         ctx.rotate(m.rotation);
-        ctx.strokeStyle = "rgba(34,211,238,0.20)";
+        ctx.strokeStyle = "rgba(34,211,238,0.2)";
         ctx.fillStyle = "rgba(34,211,238,0.045)";
         ctx.lineWidth = 1.1;
 
@@ -476,7 +519,6 @@ function EnhancedResearchBackground() {
     };
 
     frameRef.current = requestAnimationFrame(animate);
-
     return () => cancelAnimationFrame(frameRef.current);
   }, []);
 
@@ -498,9 +540,17 @@ function SectionHeading({
 }) {
   return (
     <div className="mx-auto mb-10 max-w-4xl text-center">
-      <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">{eyebrow}</p>
-      <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl">{title}</h2>
-      {subtitle && <p className="mx-auto mt-4 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">{subtitle}</p>}
+      <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">
+        {eyebrow}
+      </p>
+      <h2 className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl">
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="mx-auto mt-4 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }
@@ -521,7 +571,11 @@ function EducationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-md">
-      <button className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close education modal" />
+      <button
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        aria-label="Close education modal"
+      />
 
       <div className="relative max-h-[86vh] w-full max-w-3xl overflow-y-auto rounded-[2rem] border border-cyan-300/20 bg-slate-950/95 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl md:p-8">
         <button
@@ -592,14 +646,17 @@ function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
       </div>
 
       <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 p-6 text-center shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-8 lg:p-10">
-        <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-300">About Nahiduzzaman</p>
+        <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-300">
+          About Nahiduzzaman
+        </p>
 
         <h1 className="mx-auto mt-4 max-w-3xl text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl">
           Microbiology researcher connecting laboratory evidence with computational biology.
         </h1>
 
         <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
-          His work brings together veterinary microbiology, infectious disease investigation, molecular epidemiology, microbial genomics, public health, and data-driven research.
+          His work brings together veterinary microbiology, infectious disease investigation,
+          molecular epidemiology, microbial genomics, public health, and data-driven research.
         </p>
 
         <div className="mt-7 grid gap-3 sm:grid-cols-3">
@@ -647,26 +704,33 @@ function MotivationSection() {
 
           <div className="relative flex h-full flex-col justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">About Me</p>
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">
+                About Me
+              </p>
               <h2 className="mt-4 text-3xl font-black leading-tight text-white md:text-5xl">
-                A researcher shaped by nature and microbiology.
+                Decode complexity and deliver progress
               </h2>
             </div>
 
             <p className="mt-8 text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">
-              Curiosity • Microscopy • Discovery
             </p>
           </div>
         </div>
 
         <div className="p-7 md:p-10">
           <blockquote className="border-l-2 border-cyan-300/50 pl-5 text-lg font-semibold leading-9 text-slate-200 md:text-xl md:leading-10">
-            “Nature has always captivated me with her gentle voice, soothing presence, and limitless beauty. Her whispers inspire my curiosity to explore the unseen microbial world, understand life’s hidden mechanisms at the microscopic level, and share meaningful discoveries.”
+            “Nature has always captivated me with her gentle voice, soothing presence,
+            and limitless beauty. Her whispers inspire my curiosity to explore the unseen
+            microbial world, understand life’s hidden mechanisms at the microscopic level,
+            and share meaningful discoveries.”
           </blockquote>
 
           <div className="mt-7 grid gap-3 md:grid-cols-2">
             {bullets.map((bullet) => (
-              <div key={bullet} className="rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-4 text-sm leading-7 text-slate-300">
+              <div
+                key={bullet}
+                className="rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-4 text-sm leading-7 text-slate-300"
+              >
                 <div className="flex gap-3">
                   <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
                   <span>{bullet}</span>
@@ -684,6 +748,22 @@ function MotivationSection() {
   );
 }
 
+function ResearchAreaBand() {
+  return (
+    <section className="mt-16 rounded-[2rem] border border-cyan-300/15 bg-slate-900/62 p-5 shadow-2xl shadow-cyan-950/10 backdrop-blur-xl md:p-7">
+      <div className="flex flex-wrap justify-center gap-3">
+        {researchAreas.map((area) => (
+          <span
+            key={area}
+            className="rounded-full border border-cyan-300/18 bg-cyan-300/6 px-4 py-2 text-sm font-bold text-slate-200 transition hover:-translate-y-1 hover:border-cyan-300/50 hover:bg-cyan-300/12"
+          >
+            {area}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function DynamicVisualDivider() {
   return (
@@ -720,40 +800,27 @@ function DynamicVisualDivider() {
   );
 }
 
-function ResearchAreaBand() {
-  return (
-    <section className="mt-16 rounded-[2rem] border border-cyan-300/15 bg-slate-900/62 p-5 shadow-2xl shadow-cyan-950/10 backdrop-blur-xl md:p-7">
-      <div className="flex flex-wrap justify-center gap-3">
-        {researchAreas.map((area) => (
-          <span
-            key={area}
-            className="rounded-full border border-cyan-300/18 bg-cyan-300/6 px-4 py-2 text-sm font-bold text-slate-200 transition hover:-translate-y-1 hover:border-cyan-300/50 hover:bg-cyan-300/12"
-          >
-            {area}
-          </span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function StandardResearchModel() {
   const modelSteps = [
     {
       title: "Field and sample source",
-      detail: "Animal, food, environmental, and public-health contexts generate the first layer of evidence.",
+      detail:
+        "Animal, food, environmental, and public-health contexts generate the first layer of evidence.",
     },
     {
       title: "Laboratory confirmation",
-      detail: "Culture, molecular diagnostics, and phenotypic analysis confirm the biological signal.",
+      detail:
+        "Culture, molecular diagnostics, and phenotypic analysis confirm the biological signal.",
     },
     {
       title: "Genomic interpretation",
-      detail: "Genome analysis, phylogenetics, resistance profiling, and molecular epidemiology explain relationships.",
+      detail:
+        "Genome analysis, phylogenetics, resistance profiling, and molecular epidemiology explain relationships.",
     },
     {
       title: "Predictive insight",
-      detail: "Biostatistics, machine learning, and QML concepts support surveillance, forecasting, and risk assessment.",
+      detail:
+        "Biostatistics, machine learning, and QML concepts support surveillance, forecasting, and risk assessment.",
     },
   ];
 
@@ -863,7 +930,8 @@ function SkillsSection() {
 
             <div className="mt-6 rounded-2xl border border-cyan-300/12 bg-cyan-300/5 p-4">
               <p className="text-sm font-bold leading-7 text-cyan-100">
-                Skill integration: laboratory methods, genomic interpretation, statistical thinking, and software-driven visualization are combined to support infectious disease research.
+                Skill integration: laboratory methods, genomic interpretation, statistical thinking,
+                and software-driven visualization are combined to support infectious disease research.
               </p>
             </div>
           </div>
@@ -898,8 +966,13 @@ function WorkflowSection() {
 
         <div className="grid gap-4 md:grid-cols-2">
           {workflowSteps.map((step, index) => (
-            <div key={step} className="rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-4 transition hover:border-cyan-300/45 hover:bg-cyan-300/5">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-300">Step 0{index + 1}</p>
+            <div
+              key={step}
+              className="rounded-2xl border border-cyan-300/12 bg-white/[0.035] p-4 transition hover:border-cyan-300/45 hover:bg-cyan-300/5"
+            >
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-300">
+                Step 0{index + 1}
+              </p>
               <p className="mt-2 text-sm leading-7 text-slate-300">{step}</p>
             </div>
           ))}
@@ -911,6 +984,7 @@ function WorkflowSection() {
 
 function MetricsSection() {
   const [hovered, setHovered] = useState<string | null>(null);
+  const [activeStat, setActiveStat] = useState(researchStats[0]);
   const max = Math.max(...yearlyCitations.map((item) => item.citations));
 
   return (
@@ -918,24 +992,53 @@ function MetricsSection() {
       <SectionHeading
         eyebrow="Research Metrics"
         title="Research profile at a glance"
-        subtitle="A compact summary of the current citation trend and publication profile."
+        subtitle="Updated profile summary with citations, h-index, i10-index, and journal-ranking distribution."
       />
 
       <div className="grid gap-4 md:grid-cols-4">
         {researchStats.map((stat) => (
-          <div key={stat.label} className="rounded-2xl border border-cyan-300/15 bg-slate-900/75 p-5 text-center shadow-xl backdrop-blur-xl transition hover:-translate-y-1 hover:border-cyan-300/50 hover:bg-cyan-300/10">
-            <p className="text-3xl font-black text-cyan-300">{stat.value}</p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{stat.label}</p>
-          </div>
+          <button
+            key={stat.label}
+            onClick={() => setActiveStat(stat)}
+            onMouseEnter={() => setActiveStat(stat)}
+            className={`group relative overflow-hidden rounded-2xl border p-5 text-center shadow-xl backdrop-blur-xl transition hover:-translate-y-1 ${
+              activeStat.label === stat.label
+                ? "border-cyan-300/70 bg-cyan-300/12"
+                : "border-cyan-300/15 bg-slate-900/75 hover:border-cyan-300/50 hover:bg-cyan-300/10"
+            }`}
+          >
+            <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${stat.glow}`} />
+            <div className={`absolute -right-10 -top-10 h-24 w-24 rounded-full bg-gradient-to-r ${stat.glow} opacity-20 blur-2xl transition group-hover:opacity-35`} />
+            <p className="relative text-4xl font-black text-cyan-300">{stat.value}</p>
+            <p className="relative mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+              {stat.label}
+            </p>
+            <p className="relative mt-3 text-xs leading-5 text-slate-500">{stat.note}</p>
+          </button>
         ))}
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 p-4 text-center shadow-xl">
+        <p className="text-sm font-bold text-cyan-100">
+          Selected metric: <span className="text-white">{activeStat.label}</span> ={" "}
+          <span className="text-cyan-300">{activeStat.value}</span>. {activeStat.note}.
+        </p>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
-          <h3 className="text-2xl font-black text-white">Citation Growth</h3>
-          <p className="mt-1 text-sm text-slate-400">Yearly citation trend</p>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 className="text-2xl font-black text-white">Citation Growth</h3>
+              <p className="mt-1 text-sm text-slate-400">Yearly citation trend</p>
+            </div>
 
-          <div className="mt-6 flex h-44 items-end justify-center gap-10 border-b border-l border-slate-700/70 px-4 pb-3">
+            <div className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100">
+              Total: 17
+            </div>
+          </div>
+
+          <div className="mt-6 flex h-52 items-end justify-center gap-10 border-b border-l border-slate-700/70 px-4 pb-3">
             {yearlyCitations.map((item) => (
               <button
                 key={item.year}
@@ -949,17 +1052,25 @@ function MetricsSection() {
                 <div className="mb-2 text-xs font-bold text-cyan-300 opacity-0 transition group-hover:opacity-100 group-focus:opacity-100">
                   {item.citations}
                 </div>
+
                 <div
-                  className="w-16 rounded-t-xl bg-gradient-to-t from-blue-700 to-cyan-300 shadow-lg shadow-cyan-500/20 transition-all duration-500 group-hover:scale-105 group-focus:scale-105"
-                  style={{ height: `${(item.citations / max) * 122}px` }}
-                />
+                  className="relative w-20 overflow-hidden rounded-t-xl bg-gradient-to-t from-blue-700 via-sky-400 to-cyan-200 shadow-lg shadow-cyan-500/20 transition-all duration-500 group-hover:scale-105 group-focus:scale-105"
+                  style={{ height: `${(item.citations / max) * 150}px` }}
+                >
+                  <div className="absolute inset-0 bg-white/20 opacity-0 transition group-hover:opacity-100" />
+                </div>
+
                 <div className="mt-3 text-sm font-bold text-slate-300">{item.year}</div>
               </button>
             ))}
           </div>
 
           <div className="mt-4 min-h-11 rounded-xl border border-cyan-300/10 bg-cyan-300/5 p-3 text-sm text-cyan-100">
-            {hovered ? `${hovered}: ${yearlyCitations.find((item) => item.year === hovered)?.citations} citations` : "Hover over a bar to inspect yearly citations."}
+            {hovered
+              ? `${hovered}: ${
+                  yearlyCitations.find((item) => item.year === hovered)?.citations
+                } citations`
+              : "Hover over a bar to inspect yearly citations."}
           </div>
         </div>
 
@@ -979,13 +1090,18 @@ function MetricsSection() {
                   <span>{item.value}%</span>
                 </div>
                 <div className="h-4 overflow-hidden rounded-full bg-slate-800">
-                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-700" style={{ width: `${item.value}%` }} />
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-700"
+                    style={{ width: `${item.value}%` }}
+                  />
                 </div>
               </div>
             ))}
           </div>
 
-          <p className="mt-6 text-xs leading-6 text-slate-400">Based on the current publication profile summary.</p>
+          <p className="mt-6 text-xs leading-6 text-slate-400">
+            Based on the current publication profile summary.
+          </p>
         </div>
       </div>
     </section>
@@ -1017,7 +1133,9 @@ function ContactSection() {
                 <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-sm font-black text-cyan-300">
                   {link.short}
                 </span>
-                <span className="text-sm font-bold text-slate-200 group-hover:text-white">{link.name}</span>
+                <span className="text-sm font-bold text-slate-200 group-hover:text-white">
+                  {link.name}
+                </span>
               </a>
             ))}
           </div>
@@ -1035,10 +1153,16 @@ function ContactSection() {
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
                   </svg>
                 </span>
-                <span className="break-all text-sm font-bold text-slate-200 group-hover:text-white">{email}</span>
+                <span className="break-all text-sm font-bold text-slate-200 group-hover:text-white">
+                  {email}
+                </span>
               </a>
             ))}
           </div>
