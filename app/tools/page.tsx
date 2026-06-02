@@ -68,6 +68,209 @@ type QigenexAnalysisMode =
   | "visualization"
   | "report_package";
 
+
+type QigenexAction = "analysis" | "figures" | "package";
+type QigenexFigureTitleMode = "none" | "auto" | "custom";
+type QigenexFigureLayout = "separate" | "panel";
+type QigenexFontWeight = "normal" | "bold" | "black";
+
+const QIGENEX_ANALYSIS_GROUPS: {
+  id: QigenexAnalysisMode;
+  title: string;
+  subtitle: string;
+  chips: string[];
+  modeHint: "fast" | "standard" | "advanced";
+  accent: string;
+}[] = [
+  {
+    id: "complete",
+    title: "Full workflow",
+    subtitle: "Run all core modules, advanced modules, reports, figures, and ZIP packaging.",
+    chips: ["QC", "genes", "mutations", "ML/QML", "figures"],
+    modeHint: "advanced",
+    accent: "border-purple-300/50 bg-purple-400/10 text-purple-100",
+  },
+  {
+    id: "qc",
+    title: "Genome QC only",
+    subtitle: "Sequence quality, length, GC content, N content, and QC tables.",
+    chips: ["quality", "length", "GC"],
+    modeHint: "fast",
+    accent: "border-cyan-300/50 bg-cyan-400/10 text-cyan-100",
+  },
+  {
+    id: "classification",
+    title: "PRRSV classification",
+    subtitle: "Reference similarity and PRRSV type/subtype support.",
+    chips: ["PRRSV-1/2", "reference", "similarity"],
+    modeHint: "fast",
+    accent: "border-indigo-300/50 bg-indigo-400/10 text-indigo-100",
+  },
+  {
+    id: "gene_orf",
+    title: "Gene and ORF extraction",
+    subtitle: "Reference-guided gene extraction, ORF annotation, and coding-region outputs.",
+    chips: ["ORF", "genes", "proteins"],
+    modeHint: "fast",
+    accent: "border-sky-300/50 bg-sky-400/10 text-sky-100",
+  },
+  {
+    id: "gp5",
+    title: "GP5 specialized analysis",
+    subtitle: "ORF5/GP5 features, amino-acid changes, and glycosylation screening.",
+    chips: ["GP5", "ORF5", "glycosylation"],
+    modeHint: "fast",
+    accent: "border-fuchsia-300/50 bg-fuchsia-400/10 text-fuchsia-100",
+  },
+  {
+    id: "mutation",
+    title: "Mutation profiling",
+    subtitle: "SNPs, indels, hotspots, and mutation feature tables.",
+    chips: ["SNPs", "indels", "hotspots"],
+    modeHint: "fast",
+    accent: "border-rose-300/50 bg-rose-400/10 text-rose-100",
+  },
+  {
+    id: "vaccine_escape",
+    title: "Vaccine mismatch",
+    subtitle: "Vaccine-reference mismatch scoring and escape-risk support.",
+    chips: ["mismatch", "vaccine", "escape"],
+    modeHint: "fast",
+    accent: "border-amber-300/50 bg-amber-400/10 text-amber-100",
+  },
+  {
+    id: "phylogeny",
+    title: "Phylogeny",
+    subtitle: "Alignment, tree-ready files, distances, and relationship outputs.",
+    chips: ["MAFFT", "tree", "distance"],
+    modeHint: "standard",
+    accent: "border-blue-300/50 bg-blue-400/10 text-blue-100",
+  },
+  {
+    id: "genomic_intelligence",
+    title: "Genomic intelligence",
+    subtitle: "Molecular epidemiology signals, clusters, and surveillance priority.",
+    chips: ["clusters", "risk", "emergence"],
+    modeHint: "standard",
+    accent: "border-teal-300/50 bg-teal-400/10 text-teal-100",
+  },
+  {
+    id: "ml_qml",
+    title: "ML/QML analysis",
+    subtitle: "Classical ML layer, quantum benchmark, predictions, and feature importance.",
+    chips: ["ML", "QML", "SHAP"],
+    modeHint: "standard",
+    accent: "border-lime-300/50 bg-lime-400/10 text-lime-100",
+  },
+  {
+    id: "fitness",
+    title: "Fitness landscape",
+    subtitle: "Fitness score, expansion signal, and landscape-ready outputs.",
+    chips: ["fitness", "expansion", "3D"],
+    modeHint: "standard",
+    accent: "border-emerald-300/50 bg-emerald-400/10 text-emerald-100",
+  },
+  {
+    id: "geo_spatiotemporal",
+    title: "Geo-spatiotemporal",
+    subtitle: "Map-ready data, timeline data, and regional summaries.",
+    chips: ["map", "timeline", "region"],
+    modeHint: "standard",
+    accent: "border-orange-300/50 bg-orange-400/10 text-orange-100",
+  },
+  {
+    id: "visualization",
+    title: "Figure engine",
+    subtitle: "Generate publication-grade figures using your selected design.",
+    chips: ["PNG", "SVG", "PDF"],
+    modeHint: "advanced",
+    accent: "border-pink-300/50 bg-pink-400/10 text-pink-100",
+  },
+  {
+    id: "report_package",
+    title: "Report and package",
+    subtitle: "Generate report, manifest, and downloadable ZIP outputs.",
+    chips: ["report", "manifest", "ZIP"],
+    modeHint: "advanced",
+    accent: "border-slate-300/50 bg-white/10 text-slate-100",
+  },
+];
+
+function qigenexModuleTitle(mode: QigenexAnalysisMode) {
+  return QIGENEX_ANALYSIS_GROUPS.find((item) => item.id === mode)?.title ?? mode;
+}
+
+function qigenexModeHint(mode: QigenexAnalysisMode) {
+  return QIGENEX_ANALYSIS_GROUPS.find((item) => item.id === mode)?.modeHint ?? "fast";
+}
+
+function qigenexBackendFlags(mode: QigenexAnalysisMode, action: QigenexAction) {
+  const flags: Record<string, string> = {
+    run_phylogeny: "false",
+    run_ml: "false",
+    run_qml: "false",
+    run_fitness: "false",
+    run_geospatial: "false",
+    run_report: "false",
+    run_visualization: "false",
+    run_composite_figures: "false",
+    run_packaging: "false",
+  };
+
+  if (action === "figures") {
+    flags.run_visualization = "true";
+    flags.run_composite_figures = "true";
+    return flags;
+  }
+
+  if (action === "package") {
+    flags.run_report = "true";
+    flags.run_visualization = "true";
+    flags.run_composite_figures = "true";
+    flags.run_packaging = "true";
+    return flags;
+  }
+
+  switch (mode) {
+    case "complete":
+      Object.keys(flags).forEach((key) => {
+        flags[key] = "true";
+      });
+      break;
+    case "phylogeny":
+    case "evolution":
+    case "antigenic_drift":
+    case "antigenic_shift":
+      flags.run_phylogeny = "true";
+      break;
+    case "genomic_intelligence":
+      flags.run_phylogeny = "true";
+      break;
+    case "ml_qml":
+      flags.run_ml = "true";
+      flags.run_qml = "true";
+      break;
+    case "fitness":
+      flags.run_fitness = "true";
+      break;
+    case "geo_spatiotemporal":
+      flags.run_geospatial = "true";
+      break;
+    case "visualization":
+      flags.run_visualization = "true";
+      flags.run_composite_figures = "true";
+      break;
+    case "report_package":
+      flags.run_report = "true";
+      flags.run_packaging = "true";
+      break;
+    default:
+      break;
+  }
+
+  return flags;
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -324,7 +527,7 @@ function csvFromRows(rows: ObsRow[]) {
 
 const QIGENEX_PUBLIC_BACKEND =
   process.env.NEXT_PUBLIC_QIGENEX_BACKEND_PUBLIC_URL?.replace(/\/+$/, "") ||
-  "http://34.67.1.205:8000";
+  "http://140.245.47.234";
 
 function qigenexResultUrl(path?: string) {
   if (!path) return "";
@@ -334,7 +537,7 @@ function qigenexResultUrl(path?: string) {
   }
 
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${QIGENEX_PUBLIC_BACKEND}${cleanPath}`;
+  return `/api/qigenex?path=${encodeURIComponent(cleanPath)}`;
 }
 
 function qigenexDownloadName(path: string) {
@@ -439,6 +642,26 @@ export default function Tools() {
   const [qigenexNotes, setQigenexNotes] = useState("");
   const [qigenexResult, setQigenexResult] = useState<any>(null);
   const [qigenexLoading, setQigenexLoading] = useState(false);
+  const [qigenexFigureTitleMode, setQigenexFigureTitleMode] = useState<QigenexFigureTitleMode>("none");
+  const [qigenexFigureTitleText, setQigenexFigureTitleText] = useState("");
+  const [qigenexFigureStyles, setQigenexFigureStyles] = useState("journal_clean");
+  const [qigenexFigureFormats, setQigenexFigureFormats] = useState("png,svg,pdf");
+  const [qigenexFigureDpi, setQigenexFigureDpi] = useState("900");
+  const [qigenexFigureLayout, setQigenexFigureLayout] = useState<QigenexFigureLayout>("separate");
+  const [qigenexFigureTitleFontSize, setQigenexFigureTitleFontSize] = useState("18");
+  const [qigenexFigureTitleFontWeight, setQigenexFigureTitleFontWeight] = useState<QigenexFontWeight>("bold");
+  const [qigenexXTitleFontSize, setQigenexXTitleFontSize] = useState("14");
+  const [qigenexYTitleFontSize, setQigenexYTitleFontSize] = useState("14");
+  const [qigenexXLabelFontSize, setQigenexXLabelFontSize] = useState("12");
+  const [qigenexYLabelFontSize, setQigenexYLabelFontSize] = useState("12");
+  const [qigenexXTitleFontWeight, setQigenexXTitleFontWeight] = useState<QigenexFontWeight>("bold");
+  const [qigenexYTitleFontWeight, setQigenexYTitleFontWeight] = useState<QigenexFontWeight>("bold");
+  const [qigenexXLabelFontWeight, setQigenexXLabelFontWeight] = useState<QigenexFontWeight>("normal");
+  const [qigenexYLabelFontWeight, setQigenexYLabelFontWeight] = useState<QigenexFontWeight>("normal");
+  const [qigenexLegendFontSize, setQigenexLegendFontSize] = useState("11");
+  const [qigenexLegendFontWeight, setQigenexLegendFontWeight] = useState<QigenexFontWeight>("normal");
+  const [qigenexTransparentBackground, setQigenexTransparentBackground] = useState(false);
+
 
   const [log, setLog] = useState<string[]>([
     "> Tools page ready.",
@@ -969,7 +1192,7 @@ export default function Tools() {
     return null;
   }
 
-  async function runQigenexAnalysis() {
+  function buildQigenexFormData(action: QigenexAction) {
     const hasSequence =
       qigenexFastaText.trim() ||
       qigenexFastaFile ||
@@ -977,76 +1200,92 @@ export default function Tools() {
       qigenexAlignedFile;
 
     if (!hasSequence) {
+      return null;
+    }
+
+    const formData = new FormData();
+    const modeHint = qigenexModeHint(qigenexAnalysisMode);
+    const backendMode = action === "figures" || action === "package" ? "advanced" : modeHint;
+
+    formData.append("action", action);
+    formData.append("analysisMode", qigenexAnalysisMode);
+    formData.append("selected_analysis", qigenexAnalysisMode);
+    formData.append("sequenceMode", qigenexSequenceMode);
+    formData.append("tool", "QI-GeneX-N");
+    formData.append("mode", backendMode);
+
+    const flags = qigenexBackendFlags(qigenexAnalysisMode, action);
+    Object.entries(flags).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+
+    formData.append("figure_set", action === "analysis" ? "selected" : "full");
+    formData.append("figure_styles", qigenexFigureStyles);
+    formData.append("figure_formats", qigenexFigureFormats);
+    formData.append("figure_dpi", qigenexFigureDpi);
+    formData.append("figure_layout", qigenexFigureLayout);
+    formData.append("panel_mode", qigenexFigureLayout);
+    formData.append("separate_or_panel", qigenexFigureLayout);
+    formData.append("figure_title_mode", qigenexFigureTitleMode);
+    formData.append("figure_title_text", qigenexFigureTitleText);
+    formData.append("figure_title_font_size", qigenexFigureTitleFontSize);
+    formData.append("figure_title_font_weight", qigenexFigureTitleFontWeight);
+    formData.append("x_title_font_size", qigenexXTitleFontSize);
+    formData.append("x_title_font_weight", qigenexXTitleFontWeight);
+    formData.append("x_label_font_size", qigenexXLabelFontSize);
+    formData.append("x_label_font_weight", qigenexXLabelFontWeight);
+    formData.append("y_title_font_size", qigenexYTitleFontSize);
+    formData.append("y_title_font_weight", qigenexYTitleFontWeight);
+    formData.append("y_label_font_size", qigenexYLabelFontSize);
+    formData.append("y_label_font_weight", qigenexYLabelFontWeight);
+    formData.append("legend_font_size", qigenexLegendFontSize);
+    formData.append("legend_font_weight", qigenexLegendFontWeight);
+    formData.append("transparent_background", qigenexTransparentBackground ? "true" : "false");
+
+    if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText.trim());
+    if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile);
+
+    if (qigenexAlignedText.trim()) formData.append("alignedText", qigenexAlignedText.trim());
+    if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
+
+    if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText.trim());
+    if (qigenexVaccineStrainText.trim()) {
+      formData.append("vaccineStrainText", qigenexVaccineStrainText.trim());
+    }
+
+    if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
+    if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText.trim());
+
+    if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
+    if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText.trim());
+
+    if (qigenexNotes.trim()) formData.append("notes", qigenexNotes.trim());
+
+    return formData;
+  }
+
+  async function submitQigenex(action: QigenexAction) {
+    const formData = buildQigenexFormData(action);
+
+    if (!formData) {
       pushLog([
         "> ERROR: QI-GeneX-N requires FASTA text, FASTA file, aligned text, or aligned FASTA file.",
       ]);
       return;
     }
 
-    const formData = new FormData();
-
-    formData.append("analysisMode", qigenexAnalysisMode);
-    formData.append("sequenceMode", qigenexSequenceMode);
-    formData.append("tool", "QI-GeneX-N");
-
-    const selectedBackendMode =
-      qigenexAnalysisMode === "phylogeny" ||
-      qigenexAnalysisMode === "genomic_intelligence" ||
-      qigenexAnalysisMode === "evolution" ||
-      qigenexAnalysisMode === "antigenic_drift" ||
-      qigenexAnalysisMode === "antigenic_shift"
-        ? "standard"
-        : "fast";
-
-    formData.append("mode", selectedBackendMode);
-
-    formData.append("run_visualization", "true");
-    formData.append("run_composite_figures", "true");
-    formData.append("run_packaging", "true");
-    formData.append("run_ml", "true");
-    formData.append("run_qml", "true");
-    formData.append("run_fitness", "true");
-    formData.append("run_geospatial", "true");
-    formData.append("run_report", "true");
-
-    if (
-      qigenexAnalysisMode === "evolution" ||
-      qigenexAnalysisMode === "phylogeny" ||
-      qigenexAnalysisMode === "genomic_intelligence" ||
-      qigenexAnalysisMode === "antigenic_drift" ||
-      qigenexAnalysisMode === "antigenic_shift"
-    ) {
-      formData.append("run_phylogeny", "true");
-    }
-
-    formData.append("figure_set", "full");
-    formData.append("figure_styles", "journal_clean,journal_colorblind,journal_mono");
-    formData.append("figure_formats", "png,svg,pdf");
-    formData.append("figure_dpi", "600");
-
-    if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText);
-    if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile);
-
-    if (qigenexAlignedText.trim()) formData.append("alignedText", qigenexAlignedText);
-    if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
-
-    if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
-    if (qigenexVaccineStrainText.trim()) {
-      formData.append("vaccineStrainText", qigenexVaccineStrainText);
-    }
-
-    if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
-    if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
-
-    if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
-    if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText);
-
-    if (qigenexNotes.trim()) formData.append("notes", qigenexNotes);
-
     setQigenexLoading(true);
     setQigenexResult(null);
 
     try {
+      pushLog([
+        `> QI-GeneX-N ${action} request submitted to Oracle backend.`,
+        `> Selected module: ${qigenexModuleTitle(qigenexAnalysisMode)}.`,
+        action === "figures"
+          ? `> Figure settings: ${qigenexFigureStyles}; ${qigenexFigureFormats}; ${qigenexFigureDpi} DPI; ${qigenexFigureLayout}.`
+          : `> Backend mode: ${qigenexModeHint(qigenexAnalysisMode)}.`,
+      ]);
+
       const response = await fetch("/api/qigenex", {
         method: "POST",
         body: formData,
@@ -1056,7 +1295,7 @@ export default function Tools() {
 
       if (!response.ok || data.status === "error") {
         setQigenexResult(data);
-        pushLog([`> QI-GeneX-N ERROR: ${data.error || data.message || "Google Cloud analysis failed."}`]);
+        pushLog([`> QI-GeneX-N ERROR: ${data.error || data.message || "Oracle analysis failed."}`]);
         return;
       }
 
@@ -1065,9 +1304,10 @@ export default function Tools() {
       const jobId = data.job_id;
 
       pushLog([
-        "> QI-GeneX-N job submitted to Google Cloud.",
-        `> Job ID: ${jobId}`,
-        `> Backend mode: ${data.mode ?? selectedBackendMode}`,
+        "> QI-GeneX-N job accepted.",
+        `> Job ID: ${jobId || "not returned"}`,
+        `> Action: ${data.action ?? action}`,
+        `> Selected analysis: ${data.selected_analysis ?? qigenexAnalysisMode}`,
         "> Polling job status...",
       ]);
 
@@ -1079,6 +1319,18 @@ export default function Tools() {
     } finally {
       setQigenexLoading(false);
     }
+  }
+
+  async function runQigenexAnalysis() {
+    await submitQigenex("analysis");
+  }
+
+  async function runQigenexFigures() {
+    await submitQigenex("figures");
+  }
+
+  async function runQigenexPackage() {
+    await submitQigenex("package");
   }
 
 
@@ -1509,6 +1761,46 @@ export default function Tools() {
                 clearQigenexInputs={clearQigenexInputs}
                 downloadJSON={downloadJSON}
                 downloadCSV={downloadCSV}
+                runQigenexFigures={runQigenexFigures}
+                runQigenexPackage={runQigenexPackage}
+                figureTitleMode={qigenexFigureTitleMode}
+                setFigureTitleMode={setQigenexFigureTitleMode}
+                figureTitleText={qigenexFigureTitleText}
+                setFigureTitleText={setQigenexFigureTitleText}
+                figureStyles={qigenexFigureStyles}
+                setFigureStyles={setQigenexFigureStyles}
+                figureFormats={qigenexFigureFormats}
+                setFigureFormats={setQigenexFigureFormats}
+                figureDpi={qigenexFigureDpi}
+                setFigureDpi={setQigenexFigureDpi}
+                figureLayout={qigenexFigureLayout}
+                setFigureLayout={setQigenexFigureLayout}
+                figureTitleFontSize={qigenexFigureTitleFontSize}
+                setFigureTitleFontSize={setQigenexFigureTitleFontSize}
+                figureTitleFontWeight={qigenexFigureTitleFontWeight}
+                setFigureTitleFontWeight={setQigenexFigureTitleFontWeight}
+                xTitleFontSize={qigenexXTitleFontSize}
+                setXTitleFontSize={setQigenexXTitleFontSize}
+                yTitleFontSize={qigenexYTitleFontSize}
+                setYTitleFontSize={setQigenexYTitleFontSize}
+                xLabelFontSize={qigenexXLabelFontSize}
+                setXLabelFontSize={setQigenexXLabelFontSize}
+                yLabelFontSize={qigenexYLabelFontSize}
+                setYLabelFontSize={setQigenexYLabelFontSize}
+                xTitleFontWeight={qigenexXTitleFontWeight}
+                setXTitleFontWeight={setQigenexXTitleFontWeight}
+                yTitleFontWeight={qigenexYTitleFontWeight}
+                setYTitleFontWeight={setQigenexYTitleFontWeight}
+                xLabelFontWeight={qigenexXLabelFontWeight}
+                setXLabelFontWeight={setQigenexXLabelFontWeight}
+                yLabelFontWeight={qigenexYLabelFontWeight}
+                setYLabelFontWeight={setQigenexYLabelFontWeight}
+                legendFontSize={qigenexLegendFontSize}
+                setLegendFontSize={setQigenexLegendFontSize}
+                legendFontWeight={qigenexLegendFontWeight}
+                setLegendFontWeight={setQigenexLegendFontWeight}
+                transparentBackground={qigenexTransparentBackground}
+                setTransparentBackground={setQigenexTransparentBackground}
                 log={log}
               />
             </div>
@@ -3477,82 +3769,76 @@ function QigenexSection(props: any) {
     result,
     loading,
     runQigenexAnalysis,
+    runQigenexFigures,
+    runQigenexPackage,
     clearQigenexInputs,
     downloadJSON,
-    downloadCSV,
+    figureTitleMode,
+    setFigureTitleMode,
+    figureTitleText,
+    setFigureTitleText,
+    figureStyles,
+    setFigureStyles,
+    figureFormats,
+    setFigureFormats,
+    figureDpi,
+    setFigureDpi,
+    figureLayout,
+    setFigureLayout,
+    figureTitleFontSize,
+    setFigureTitleFontSize,
+    figureTitleFontWeight,
+    setFigureTitleFontWeight,
+    xTitleFontSize,
+    setXTitleFontSize,
+    yTitleFontSize,
+    setYTitleFontSize,
+    xLabelFontSize,
+    setXLabelFontSize,
+    yLabelFontSize,
+    setYLabelFontSize,
+    xTitleFontWeight,
+    setXTitleFontWeight,
+    yTitleFontWeight,
+    setYTitleFontWeight,
+    xLabelFontWeight,
+    setXLabelFontWeight,
+    yLabelFontWeight,
+    setYLabelFontWeight,
+    legendFontSize,
+    setLegendFontSize,
+    legendFontWeight,
+    setLegendFontWeight,
+    transparentBackground,
+    setTransparentBackground,
     log,
   } = props;
 
   const hasSequence = Boolean(fastaText.trim() || fastaFileName || alignedText.trim() || alignedFileName);
   const hasMetadata = Boolean(geoRowsText.trim() || geoFileName || animalRowsText.trim() || animalFileName);
-
-  const analysisOptions = [
-    {
-      id: "complete",
-      title: "Full analysis",
-      subtitle: "Complete workflow.",
-      accent: "border-purple-300/40 bg-purple-400/10 text-purple-100",
-      chips: ["QC", "genes", "mutations", "figures", "ZIP"],
-    },
-    {
-      id: "mutation",
-      title: "Mutation profile",
-      subtitle: "Variants and hotspots.",
-      accent: "border-rose-300/40 bg-rose-400/10 text-rose-100",
-      chips: ["variants", "indels", "hotspots"],
-    },
-    {
-      id: "vaccine_escape",
-      title: "Vaccine mismatch",
-      subtitle: "Mismatch screening.",
-      accent: "border-amber-300/40 bg-amber-400/10 text-amber-100",
-      chips: ["GP5", "mismatch", "screening"],
-    },
-    {
-      id: "fitness",
-      title: "Fitness landscape",
-      subtitle: "Expansion score.",
-      accent: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100",
-      chips: ["fitness", "expansion", "3D plot"],
-    },
-    {
-      id: "phylogeny",
-      title: "Relationship analysis",
-      subtitle: "Tree and distance views.",
-      accent: "border-blue-300/40 bg-blue-400/10 text-blue-100",
-      chips: ["tree", "PCA", "network"],
-    },
-    {
-      id: "geo_spatiotemporal",
-      title: "Map and timeline",
-      subtitle: "Map and timeline outputs.",
-      accent: "border-lime-300/40 bg-lime-400/10 text-lime-100",
-      chips: ["map", "timeline", "region"],
-    },
-    {
-      id: "visualization",
-      title: "Figures only",
-      subtitle: "Figure export.",
-      accent: "border-fuchsia-300/40 bg-fuchsia-400/10 text-fuchsia-100",
-      chips: ["PNG", "SVG", "PDF"],
-    },
-    {
-      id: "report_package",
-      title: "Report package",
-      subtitle: "Report downloads.",
-      accent: "border-slate-300/40 bg-white/10 text-slate-100",
-      chips: ["report", "tables", "downloads"],
-    },
-  ];
-
   const selectedOption =
-    analysisOptions.find((option) => option.id === analysisMode) ?? analysisOptions[0];
+    QIGENEX_ANALYSIS_GROUPS.find((option) => option.id === analysisMode) ?? QIGENEX_ANALYSIS_GROUPS[0];
 
   const runSteps = [
-    { label: "Choose", active: true },
-    { label: "Add data", active: hasSequence },
-    { label: "Run", active: loading || Boolean(result) },
-    { label: "Download", active: result?.status === "completed" },
+    { label: "Choose one module", active: true },
+    { label: "Add sequence", active: hasSequence },
+    { label: "Run analysis", active: loading || Boolean(result) },
+    { label: "Generate figures/package", active: result?.status === "completed" },
+  ];
+
+  const modeFlags = qigenexBackendFlags(analysisMode, "analysis");
+
+  const figurePreviewRows = [
+    ["Title", figureTitleMode === "none" ? "No upper title" : figureTitleMode === "auto" ? "Automatic title" : figureTitleText || "Custom title"],
+    ["Style", figureStyles],
+    ["Format", figureFormats],
+    ["DPI", figureDpi],
+    ["Layout", figureLayout === "panel" ? "Panel/multi-figure" : "Separate figures"],
+    ["X title", `${xTitleFontSize}px, ${xTitleFontWeight}`],
+    ["Y title", `${yTitleFontSize}px, ${yTitleFontWeight}`],
+    ["X label", `${xLabelFontSize}px, ${xLabelFontWeight}`],
+    ["Y label", `${yLabelFontSize}px, ${yLabelFontWeight}`],
+    ["Legend", `${legendFontSize}px, ${legendFontWeight}`],
   ];
 
   return (
@@ -3564,8 +3850,12 @@ function QigenexSection(props: any) {
               QI-GeneX-N
             </p>
             <h3 className="text-3xl font-black text-purple-100">
-              Select, upload, run, download
+              Selected module • custom figures • separate packaging
             </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+              This interface no longer forces all advanced modules for every click. Use <b>Run selected analysis</b> for one module,
+              <b> Generate figures</b> only when you need figures, and <b>Report package</b> only when you need downloadable packages.
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -3587,14 +3877,17 @@ function QigenexSection(props: any) {
         <Panel>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h4 className="text-2xl font-black text-purple-300">Analysis option</h4>
+              <h4 className="text-2xl font-black text-purple-300">1. Choose exactly one analysis</h4>
+              <p className="mt-1 text-sm text-slate-400">
+                The selected module is sent as <code>selected_analysis</code>. Figure and packaging flags remain off unless requested.
+              </p>
             </div>
             <select
               value={analysisMode}
               onChange={(e) => setAnalysisMode(e.target.value)}
               className="rounded-2xl border border-purple-300/20 bg-slate-900 px-4 py-3 text-sm font-black text-white outline-none focus:border-purple-300"
             >
-              {analysisOptions.map((option) => (
+              {QIGENEX_ANALYSIS_GROUPS.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.title}
                 </option>
@@ -3603,7 +3896,7 @@ function QigenexSection(props: any) {
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            {analysisOptions.map((option) => {
+            {QIGENEX_ANALYSIS_GROUPS.map((option) => {
               const active = option.id === selectedOption.id;
               return (
                 <button
@@ -3618,7 +3911,9 @@ function QigenexSection(props: any) {
                       <h5 className="text-lg font-black">{option.title}</h5>
                       <p className="mt-2 text-sm leading-6 opacity-80">{option.subtitle}</p>
                     </div>
-                    {active && <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-950">selected</span>}
+                    <span className="rounded-full bg-black/30 px-3 py-1 text-[10px] font-black uppercase">
+                      {option.modeHint}
+                    </span>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {option.chips.map((chip) => (
@@ -3634,7 +3929,7 @@ function QigenexSection(props: any) {
         </Panel>
 
         <Panel>
-          <h4 className="text-2xl font-black text-purple-300">Run setup</h4>
+          <h4 className="text-2xl font-black text-purple-300">2. Run setup</h4>
           <div className="mt-5 grid gap-4">
             <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Selected</p>
@@ -3645,8 +3940,20 @@ function QigenexSection(props: any) {
             <div className="grid gap-3 md:grid-cols-2">
               <ResultCard title="Sequence" value={hasSequence ? "Ready" : "Required"} />
               <ResultCard title="Metadata" value={hasMetadata ? "Added" : "Optional"} />
-              <ResultCard title="Figures" value="On" />
-              <ResultCard title="Downloads" value="On" />
+              <ResultCard title="Backend mode" value={selectedOption.modeHint} />
+              <ResultCard title="Figures by default" value="Off" />
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="mb-3 text-sm font-black text-purple-200">Flags for selected analysis</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                {Object.entries(modeFlags).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between rounded-xl bg-slate-950 px-3 py-2 text-xs">
+                    <span className="text-slate-400">{key}</span>
+                    <span className={value === "true" ? "font-black text-emerald-300" : "text-slate-600"}>{value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -3719,7 +4026,175 @@ function QigenexSection(props: any) {
       <Panel>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h4 className="text-2xl font-black text-purple-300">Optional data</h4>
+            <h4 className="text-2xl font-black text-purple-300">3. Figure design and customization</h4>
+            <p className="mt-1 text-sm text-slate-400">
+              These settings are forwarded to the backend. They will be used when you click <b>Generate figures</b> or <b>Report package</b>.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="mb-3 font-black text-purple-200">Title and export</p>
+            <div className="grid gap-3">
+              <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Upper title</label>
+              <select
+                value={figureTitleMode}
+                onChange={(e) => setFigureTitleMode(e.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="none">No upper title</option>
+                <option value="auto">Automatic upper title</option>
+                <option value="custom">Custom upper title</option>
+              </select>
+
+              <input
+                value={figureTitleText}
+                onChange={(e) => setFigureTitleText(e.target.value)}
+                placeholder="Custom figure title"
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+              />
+
+              <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Style</label>
+              <select
+                value={figureStyles}
+                onChange={(e) => setFigureStyles(e.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="journal_clean">Journal clean</option>
+                <option value="journal_colorblind">Journal colorblind</option>
+                <option value="journal_mono">Journal mono</option>
+                <option value="professional_clean">Professional clean</option>
+                <option value="presentation_dark">Presentation dark</option>
+              </select>
+
+              <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Image formats</label>
+              <input
+                value={figureFormats}
+                onChange={(e) => setFigureFormats(e.target.value)}
+                placeholder="png,svg,pdf"
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+              />
+
+              <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">DPI</label>
+              <select
+                value={figureDpi}
+                onChange={(e) => setFigureDpi(e.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="300">300</option>
+                <option value="600">600</option>
+                <option value="900">900</option>
+                <option value="1200">1200</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="mb-3 font-black text-purple-200">Layout and fonts</p>
+            <div className="grid gap-3">
+              <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Output layout</label>
+              <select
+                value={figureLayout}
+                onChange={(e) => setFigureLayout(e.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="separate">Each figure separately</option>
+                <option value="panel">Multi-panel figure</option>
+              </select>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input value={figureTitleFontSize} onChange={(e) => setFigureTitleFontSize(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm" placeholder="Title size" />
+                <select value={figureTitleFontWeight} onChange={(e) => setFigureTitleFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm">
+                  <option value="normal">Title normal</option>
+                  <option value="bold">Title bold</option>
+                  <option value="black">Title black</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input value={xTitleFontSize} onChange={(e) => setXTitleFontSize(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm" placeholder="X title size" />
+                <select value={xTitleFontWeight} onChange={(e) => setXTitleFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm">
+                  <option value="normal">X title normal</option>
+                  <option value="bold">X title bold</option>
+                  <option value="black">X title black</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input value={yTitleFontSize} onChange={(e) => setYTitleFontSize(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm" placeholder="Y title size" />
+                <select value={yTitleFontWeight} onChange={(e) => setYTitleFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm">
+                  <option value="normal">Y title normal</option>
+                  <option value="bold">Y title bold</option>
+                  <option value="black">Y title black</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input value={xLabelFontSize} onChange={(e) => setXLabelFontSize(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm" placeholder="X label size" />
+                <select value={xLabelFontWeight} onChange={(e) => setXLabelFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm">
+                  <option value="normal">X label normal</option>
+                  <option value="bold">X label bold</option>
+                  <option value="black">X label black</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input value={yLabelFontSize} onChange={(e) => setYLabelFontSize(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm" placeholder="Y label size" />
+                <select value={yLabelFontWeight} onChange={(e) => setYLabelFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm">
+                  <option value="normal">Y label normal</option>
+                  <option value="bold">Y label bold</option>
+                  <option value="black">Y label black</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <p className="mb-3 font-black text-purple-200">Preview settings</p>
+            <div className="grid gap-2">
+              {figurePreviewRows.map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between rounded-xl bg-slate-950 px-3 py-2 text-xs">
+                  <span className="font-bold text-slate-400">{label}</span>
+                  <span className="max-w-[60%] truncate font-black text-purple-100">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <input
+                value={legendFontSize}
+                onChange={(e) => setLegendFontSize(e.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+                placeholder="Legend size"
+              />
+              <select
+                value={legendFontWeight}
+                onChange={(e) => setLegendFontWeight(e.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="normal">Legend normal</option>
+                <option value="bold">Legend bold</option>
+                <option value="black">Legend black</option>
+              </select>
+            </div>
+
+            <label className="mt-3 flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-bold text-slate-200">
+              <input
+                type="checkbox"
+                checked={transparentBackground}
+                onChange={(e) => setTransparentBackground(e.target.checked)}
+              />
+              Transparent background
+            </label>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-2xl font-black text-purple-300">4. Optional data</h4>
             <p className="mt-1 text-sm text-slate-400">Add these only when available.</p>
           </div>
           <button
@@ -3804,9 +4279,9 @@ function QigenexSection(props: any) {
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h4 className="text-2xl font-black text-purple-300">Run</h4>
+            <h4 className="text-2xl font-black text-purple-300">5. Run actions</h4>
             <p className="mt-1 text-sm text-slate-400">
-              {hasSequence ? "Ready." : "FASTA required."}
+              {hasSequence ? "Ready." : "FASTA required."} Figures and report packaging are separated from selected analysis.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -3817,6 +4292,23 @@ function QigenexSection(props: any) {
             >
               {loading ? "Running..." : "Run selected analysis"}
             </button>
+
+            <button
+              onClick={runQigenexFigures}
+              disabled={loading || !hasSequence}
+              className="rounded-2xl bg-cyan-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Generate figures
+            </button>
+
+            <button
+              onClick={runQigenexPackage}
+              disabled={loading || !hasSequence}
+              className="rounded-2xl bg-emerald-400 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-1 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Report package
+            </button>
+
             {result && (
               <button
                 onClick={() => downloadJSON(result, "qigenex_n_results.json")}
