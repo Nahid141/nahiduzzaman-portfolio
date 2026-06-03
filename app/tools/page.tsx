@@ -155,6 +155,11 @@ type QigenexFigureOptions = {
   run_serovar?: string;
   run_antigen?: string;
   run_mlst?: string;
+  targetGenomeFile?: File | null;
+  manualComparableGenomeFile?: File | null;
+  bacterial_wgs_task?: string;
+  bacterial_wgs_figure_type?: string;
+  bacterial_wgs_figure_designs?: string;
 };
 
 
@@ -1208,7 +1213,7 @@ export default function Tools() {
     const hasSequence =
       qigenexFastaText.trim() ||
       qigenexFastaFile ||
-      targetGenomeFile ||
+      figureOptions.targetGenomeFile ||
       qigenexAlignedText.trim() ||
       qigenexAlignedFile;
 
@@ -1413,8 +1418,8 @@ export default function Tools() {
     if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
     if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
     if (qigenexVaccineStrainText.trim()) formData.append("vaccineStrainText", qigenexVaccineStrainText);
-    if (targetGenomeFile) formData.append("targetGenomeFile", targetGenomeFile, targetGenomeFile.name || "target_genome.fasta");
-    if (manualComparableGenomeFile) formData.append("manualComparableGenomeFile", manualComparableGenomeFile, manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
+    if (figureOptions.targetGenomeFile) formData.append("targetGenomeFile", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
+    if (figureOptions.manualComparableGenomeFile) formData.append("manualComparableGenomeFile", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
     if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
     if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
     if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
@@ -4312,6 +4317,8 @@ function QigenexSection(props: any) {
       bacterial_wgs_task: bacterialWgsTask,
       bacterial_wgs_figure_type: bacterialWgsFigureType,
       bacterial_wgs_figure_designs: bacterialWgsFigureDesigns.join(","),
+      targetGenomeFile: targetGenomeFile,
+      manualComparableGenomeFile: manualComparableGenomeFile,
       novel_hypothesis: hypothesis,
       metadata_schema_preset: metadataPreset,
       metadata_template_fields: metadataFields,
