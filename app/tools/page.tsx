@@ -160,6 +160,18 @@ type QigenexFigureOptions = {
   bacterial_wgs_task?: string;
   bacterial_wgs_figure_type?: string;
   bacterial_wgs_figure_designs?: string;
+  comparable_genome_mode?: string;
+  download_taxon_name?: string;
+  comparable_genome_class?: string;
+  comparable_host_groups?: string;
+  comparable_environment_groups?: string;
+  comparable_state_groups?: string;
+  comparable_genome_purpose?: string;
+  download_representative_only?: string;
+  include_reference_genomes?: string;
+  bacterial_tree_workflow?: string;
+  pangenome_workflow?: string;
+  bacterial_output_package?: string;
 };
 
 
@@ -1386,23 +1398,23 @@ export default function Tools() {
     formData.append("genome_per_year", figureOptions.genome_per_year || "5");
     formData.append("ani_threshold", figureOptions.ani_threshold || "95");
     formData.append("mash_distance_threshold", figureOptions.mash_distance_threshold || "0.05");
-    formData.append("target_genome_required", isBacterialAnalysis ? "true" : "false");
+    formData.append("target_genome_required", figureOptions.bacterial_wgs_task ? "true" : "false");
     formData.append("target_genome_input_mode", "manual_upload");
-    formData.append("comparable_genome_mode", comparableGenomeMode);
-    formData.append("download_taxon_name", downloadTaxonName);
-    formData.append("comparable_genome_class", comparableGenomeClass);
-    formData.append("comparable_host_groups", comparableHostGroups.join(","));
-    formData.append("comparable_environment_groups", comparableEnvironmentGroups.join(","));
-    formData.append("comparable_state_groups", comparableStateGroups.join(","));
-    formData.append("comparable_genome_purpose", comparableGenomePurpose);
-    formData.append("download_representative_only", downloadRepresentativeOnly);
-    formData.append("include_reference_genomes", includeReferenceGenomes);
-    formData.append("bacterial_tree_workflow", bacterialTreeWorkflow);
-    formData.append("pangenome_workflow", pangenomeWorkflow);
-    formData.append("bacterial_output_package", bacterialOutputPackage);
-    formData.append("bacterial_wgs_task", figureOptions.bacterial_wgs_task || bacterialWgsTask);
-    formData.append("bacterial_wgs_figure_type", figureOptions.bacterial_wgs_figure_type || bacterialWgsFigureType);
-    formData.append("bacterial_wgs_figure_designs", figureOptions.bacterial_wgs_figure_designs || bacterialWgsFigureDesigns.join(","));
+    formData.append("comparable_genome_mode", figureOptions.comparable_genome_mode || "auto_download");
+    formData.append("download_taxon_name", figureOptions.download_taxon_name || "auto_from_target");
+    formData.append("comparable_genome_class", figureOptions.comparable_genome_class || "balanced");
+    formData.append("comparable_host_groups", figureOptions.comparable_host_groups || "human,poultry,swine,cattle,environment");
+    formData.append("comparable_environment_groups", figureOptions.comparable_environment_groups || "clinical,farm,slaughterhouse,food,water");
+    formData.append("comparable_state_groups", figureOptions.comparable_state_groups || "clinical,outbreak,surveillance,reference");
+    formData.append("comparable_genome_purpose", figureOptions.comparable_genome_purpose || figureOptions.bacterial_wgs_task || "phylogeny");
+    formData.append("download_representative_only", figureOptions.download_representative_only || "true");
+    formData.append("include_reference_genomes", figureOptions.include_reference_genomes || "true");
+    formData.append("bacterial_tree_workflow", figureOptions.bacterial_tree_workflow || "ani_mash_core_snp");
+    formData.append("pangenome_workflow", figureOptions.pangenome_workflow || "panaroo_roary");
+    formData.append("bacterial_output_package", figureOptions.bacterial_output_package || "standard_plus_figures");
+    formData.append("bacterial_wgs_task", figureOptions.bacterial_wgs_task || "phylogeny");
+    formData.append("bacterial_wgs_figure_type", figureOptions.bacterial_wgs_figure_type || "bacterial_phylogeny_plot");
+    formData.append("bacterial_wgs_figure_designs", figureOptions.bacterial_wgs_figure_designs || "wgs_ani_mash_tree,metadata_annotated_tree,ani_heatmap_tree");
     formData.append("use_manual_genomes", figureOptions.use_manual_genomes || "true");
     formData.append("run_pangenome", figureOptions.run_pangenome || (qigenexAnalysisMode === "bacterial_pangenome" ? "true" : "false"));
     formData.append("run_amr", figureOptions.run_amr || (qigenexAnalysisMode === "bacterial_amr" ? "true" : "false"));
@@ -1455,9 +1467,9 @@ export default function Tools() {
         `> Module: ${qigenexAnalysisMode}.`,
         `> Figure: ${figureType}.`,
         `> Job ID: ${jobId}`,
-        ...(isBacterialAnalysis ? [
-          `> Bacterial workflow: target genome manual upload; comparable genomes=${comparableGenomeMode}.`,
-          `> Comparable filters: host=${comparableHostGroups.join("|") || "none"}; environment=${comparableEnvironmentGroups.join("|") || "none"}; state=${comparableStateGroups.join("|") || "none"}.`,
+        ...(figureOptions.bacterial_wgs_task ? [
+          `> Bacterial workflow: target genome manual upload; comparable genomes=${figureOptions.comparable_genome_mode || "auto_download"}.`,
+          `> Comparable filters: host=${figureOptions.comparable_host_groups || "none"}; environment=${figureOptions.comparable_environment_groups || "none"}; state=${figureOptions.comparable_state_groups || "none"}.`,
         ] : []),
         "> Polling status.",
       ]);
@@ -4317,6 +4329,18 @@ function QigenexSection(props: any) {
       bacterial_wgs_task: bacterialWgsTask,
       bacterial_wgs_figure_type: bacterialWgsFigureType,
       bacterial_wgs_figure_designs: bacterialWgsFigureDesigns.join(","),
+      comparable_genome_mode: comparableGenomeMode,
+      download_taxon_name: downloadTaxonName,
+      comparable_genome_class: comparableGenomeClass,
+      comparable_host_groups: comparableHostGroups.join(","),
+      comparable_environment_groups: comparableEnvironmentGroups.join(","),
+      comparable_state_groups: comparableStateGroups.join(","),
+      comparable_genome_purpose: comparableGenomePurpose,
+      download_representative_only: downloadRepresentativeOnly,
+      include_reference_genomes: includeReferenceGenomes,
+      bacterial_tree_workflow: bacterialTreeWorkflow,
+      pangenome_workflow: pangenomeWorkflow,
+      bacterial_output_package: bacterialOutputPackage,
       targetGenomeFile: targetGenomeFile,
       manualComparableGenomeFile: manualComparableGenomeFile,
       novel_hypothesis: hypothesis,
