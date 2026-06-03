@@ -3851,6 +3851,7 @@ function NetworkSection(props: any) {
 
 
 function QigenexSection(props: any) {
+  // v22_no_pushlog_scope_fix: QigenexSection must not call parent-only pushLog directly.
   const {
     sequenceMode,
     setSequenceMode,
@@ -4432,7 +4433,7 @@ function QigenexSection(props: any) {
         ? "sample_id,country,collection_date,host,source_country,sink_country"
         : "sample_id,country,collection_date,host"
     );
-    pushLog([`> Metadata sheet preset loaded: ${template.label}. Columns=${template.columns.length}; rows=${template.sampleRows.length}.`]);
+    console.info(`Metadata sheet preset loaded: ${template.label}. Columns=${template.columns.length}; rows=${template.sampleRows.length}.`);
   }
 
   function updateMetadataCell(rowIndex: number, column: string, value: string) {
