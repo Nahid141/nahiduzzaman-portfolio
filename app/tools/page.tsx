@@ -80,7 +80,17 @@ type QigenexAnalysisMode =
   | "geo_spatiotemporal"
   | "animal_host"
   | "visualization"
-  | "report_package";
+  | "report_package"
+  | "bacterial_wgs_phylogeny"
+  | "bacterial_partial_phylogeny"
+  | "bacterial_pangenome"
+  | "bacterial_amr"
+  | "bacterial_virulence"
+  | "bacterial_strain_serovar"
+  | "bacterial_antigen"
+  | "bacterial_mlst"
+  | "bacterial_plasmid"
+  | "bacterial_genome_download";
 
 type QigenexAction = "analysis" | "figures" | "package";
 
@@ -108,7 +118,145 @@ type QigenexFigureOptions = {
   nt_distance_threshold?: string;
   fitness_figure_designs?: string;
   novel_hypothesis?: string;
+  metadata_schema_preset?: string;
+  metadata_template_fields?: string;
+  metadata_required_fields?: string;
+  auto_enrich_metadata?: string;
+  auto_geocode_country?: string;
+  auto_typing?: string;
+  node_color_by?: string;
+  node_shape_by?: string;
+  map_projection?: string;
+  map_background?: string;
+  map_extent?: string;
+  route_level?: string;
+  aggregate_routes?: string;
+  arrow_style?: string;
+  arrow_width_by?: string;
+  arrow_color_by?: string;
+  arrowhead_style?: string;
+  line_curve_style?: string;
+  max_routes?: string;
+  route_support_threshold?: string;
+  bacterial_mode?: string;
+  genome_query_count?: string;
+  genome_source?: string;
+  genome_download_strategy?: string;
+  genome_host_filter?: string;
+  genome_country_filter?: string;
+  genome_year_filter?: string;
+  genome_per_year?: string;
+  ani_threshold?: string;
+  mash_distance_threshold?: string;
+  use_manual_genomes?: string;
+  run_pangenome?: string;
+  run_amr?: string;
+  run_virulence?: string;
+  run_serovar?: string;
+  run_antigen?: string;
+  run_mlst?: string;
 };
+
+
+type QigenexMetadataPreset =
+  | "public_health_genomics"
+  | "transmission_map"
+  | "bacterial_wgs"
+  | "bacterial_partial"
+  | "pangenome"
+  | "amr_virulence"
+  | "custom";
+
+type QigenexMetadataRow = Record<string, string>;
+
+const QIGENEX_METADATA_PRESETS: Record<QigenexMetadataPreset, { label: string; columns: string[]; sampleRows: QigenexMetadataRow[] }> = {
+  public_health_genomics: {
+    label: "Public-health genomic metadata",
+    columns: ["sample_id", "strain", "accession", "country", "latitude", "longitude", "collection_date", "year", "host", "species", "genotype", "lineage", "clade", "source", "isolation_site", "study_id"],
+    sampleRows: [
+      { sample_id: "ISO_001", strain: "Strain_A", accession: "", country: "Bangladesh", latitude: "23.6850", longitude: "90.3563", collection_date: "2026-01-01", year: "2026", host: "swine", species: "PRRSV", genotype: "", lineage: "", clade: "", source: "clinical", isolation_site: "lung", study_id: "Study_1" },
+      { sample_id: "ISO_002", strain: "Strain_B", accession: "", country: "India", latitude: "20.5937", longitude: "78.9629", collection_date: "2026-01-05", year: "2026", host: "swine", species: "PRRSV", genotype: "", lineage: "", clade: "", source: "clinical", isolation_site: "serum", study_id: "Study_1" },
+      { sample_id: "ISO_003", strain: "Strain_C", accession: "", country: "China", latitude: "35.8617", longitude: "104.1954", collection_date: "2025-12-20", year: "2025", host: "swine", species: "PRRSV", genotype: "", lineage: "", clade: "", source: "farm", isolation_site: "lymph_node", study_id: "Study_1" },
+    ],
+  },
+  transmission_map: {
+    label: "Transmission / phylogeographic map metadata",
+    columns: ["sample_id", "strain", "country", "admin_region", "latitude", "longitude", "collection_date", "year", "host", "genotype", "lineage", "source_country", "sink_country", "route_support", "nt_distance", "cluster_id"],
+    sampleRows: [
+      { sample_id: "ISO_001", strain: "Strain_A", country: "Bangladesh", admin_region: "Mymensingh", latitude: "24.7471", longitude: "90.4203", collection_date: "2026-01-01", year: "2026", host: "swine", genotype: "auto", lineage: "auto", source_country: "Bangladesh", sink_country: "India", route_support: "5", nt_distance: "0.004", cluster_id: "C1" },
+      { sample_id: "ISO_002", strain: "Strain_B", country: "India", admin_region: "West Bengal", latitude: "22.9868", longitude: "87.8550", collection_date: "2026-01-05", year: "2026", host: "swine", genotype: "auto", lineage: "auto", source_country: "India", sink_country: "China", route_support: "3", nt_distance: "0.007", cluster_id: "C1" },
+      { sample_id: "ISO_003", strain: "Strain_C", country: "China", admin_region: "Guangxi", latitude: "23.8298", longitude: "108.7881", collection_date: "2025-12-20", year: "2025", host: "swine", genotype: "auto", lineage: "auto", source_country: "China", sink_country: "Vietnam", route_support: "2", nt_distance: "0.010", cluster_id: "C2" },
+    ],
+  },
+  bacterial_wgs: {
+    label: "Bacterial WGS metadata",
+    columns: ["sample_id", "assembly_accession", "organism", "strain", "serovar", "sequence_type", "country", "latitude", "longitude", "collection_date", "year", "host", "source", "isolation_site", "biosample", "bioproject"],
+    sampleRows: [
+      { sample_id: "BACT_001", assembly_accession: "", organism: "Salmonella enterica", strain: "BAU_01", serovar: "auto", sequence_type: "auto", country: "Bangladesh", latitude: "23.6850", longitude: "90.3563", collection_date: "2026-01-01", year: "2026", host: "poultry", source: "meat", isolation_site: "carcass", biosample: "", bioproject: "" },
+      { sample_id: "BACT_002", assembly_accession: "", organism: "Salmonella enterica", strain: "BAU_02", serovar: "auto", sequence_type: "auto", country: "India", latitude: "20.5937", longitude: "78.9629", collection_date: "2025-11-12", year: "2025", host: "human", source: "clinical", isolation_site: "stool", biosample: "", bioproject: "" },
+      { sample_id: "BACT_003", assembly_accession: "", organism: "Salmonella enterica", strain: "BAU_03", serovar: "auto", sequence_type: "auto", country: "China", latitude: "35.8617", longitude: "104.1954", collection_date: "2024-08-15", year: "2024", host: "swine", source: "farm", isolation_site: "feces", biosample: "", bioproject: "" },
+    ],
+  },
+  bacterial_partial: {
+    label: "Bacterial partial-gene metadata",
+    columns: ["sample_id", "accession", "organism", "gene", "primer_set", "amplicon_size", "country", "collection_date", "year", "host", "source", "strain", "serovar", "sequence_type"],
+    sampleRows: [
+      { sample_id: "PART_001", accession: "", organism: "Lactobacillus fermentum", gene: "16S rRNA", primer_set: "27F/1492R", amplicon_size: "1500", country: "Bangladesh", collection_date: "2026-01-01", year: "2026", host: "food", source: "culture", strain: "Lacto_BAU", serovar: "", sequence_type: "" },
+      { sample_id: "PART_002", accession: "", organism: "Pseudomonas spp.", gene: "16S rRNA", primer_set: "27F/1492R", amplicon_size: "1500", country: "Bangladesh", collection_date: "2026-01-02", year: "2026", host: "environment", source: "water", strain: "P_BAU", serovar: "", sequence_type: "" },
+    ],
+  },
+  pangenome: {
+    label: "Pangenome metadata",
+    columns: ["sample_id", "assembly_accession", "organism", "strain", "country", "year", "host", "source", "serovar", "sequence_type", "genome_size", "n50", "contigs", "gc_percent", "included_group"],
+    sampleRows: [
+      { sample_id: "PAN_001", assembly_accession: "", organism: "Enterococcus faecium", strain: "EFM_01", country: "Bangladesh", year: "2026", host: "poultry", source: "meat", serovar: "", sequence_type: "auto", genome_size: "", n50: "", contigs: "", gc_percent: "", included_group: "query" },
+      { sample_id: "PAN_002", assembly_accession: "", organism: "Enterococcus faecium", strain: "EFM_02", country: "India", year: "2025", host: "human", source: "clinical", serovar: "", sequence_type: "auto", genome_size: "", n50: "", contigs: "", gc_percent: "", included_group: "reference" },
+    ],
+  },
+  amr_virulence: {
+    label: "AMR / virulence metadata",
+    columns: ["sample_id", "organism", "strain", "country", "year", "host", "source", "phenotype", "antibiotics_tested", "amr_genes", "virulence_genes", "plasmids", "serovar", "sequence_type"],
+    sampleRows: [
+      { sample_id: "AMR_001", organism: "Salmonella enterica", strain: "rk_bau_01", country: "Bangladesh", year: "2026", host: "poultry", source: "carcass", phenotype: "MDR", antibiotics_tested: "AMP,CTX,GEN,CIP", amr_genes: "auto", virulence_genes: "auto", plasmids: "auto", serovar: "auto", sequence_type: "auto" },
+      { sample_id: "AMR_002", organism: "Escherichia coli", strain: "EC_01", country: "Bangladesh", year: "2025", host: "cattle", source: "feces", phenotype: "auto", antibiotics_tested: "", amr_genes: "auto", virulence_genes: "auto", plasmids: "auto", serovar: "auto", sequence_type: "auto" },
+    ],
+  },
+  custom: {
+    label: "Custom editable sheet",
+    columns: ["sample_id", "country", "collection_date", "host", "genotype", "lineage", "latitude", "longitude", "notes"],
+    sampleRows: [
+      { sample_id: "Sample_1", country: "", collection_date: "", host: "", genotype: "", lineage: "", latitude: "", longitude: "", notes: "" },
+      { sample_id: "Sample_2", country: "", collection_date: "", host: "", genotype: "", lineage: "", latitude: "", longitude: "", notes: "" },
+    ],
+  },
+};
+
+function makeMetadataRows(columns: string[], rows: QigenexMetadataRow[]) {
+  return rows.map((row) => {
+    const out: QigenexMetadataRow = {};
+    columns.forEach((col) => {
+      out[col] = row[col] ?? "";
+    });
+    return out;
+  });
+}
+
+function metadataRowsToCsv(columns: string[], rows: QigenexMetadataRow[]) {
+  const escape = (value: string) => {
+    const raw = String(value ?? "");
+    return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+  };
+  return [columns.join(","), ...rows.map((row) => columns.map((col) => escape(row[col] ?? "")).join(","))].join("\n");
+}
+
+function metadataRowsToFile(columns: string[], rows: QigenexMetadataRow[], filename = "qigenex_metadata_template.csv") {
+  return new File([metadataRowsToCsv(columns, rows)], filename, { type: "text/csv;charset=utf-8" });
+}
+
+function splitFieldNames(value: string) {
+  return value.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -469,7 +617,7 @@ export default function Tools() {
   const [qigenexSequenceMode, setQigenexSequenceMode] = useState<QigenexSequenceMode>("unaligned");
   const [qigenexAnalysisMode, setQigenexAnalysisMode] = useState<QigenexAnalysisMode>("complete");
   const [qigenexFastaFile, setQigenexFastaFile] = useState<File | null>(null);
-  const [qigenexFastaFileName, setQigenexFastaFileName] = useState("");
+  const [qigenexFastaName, setQigenexFastaFileName] = useState("");
   const [qigenexFastaText, setQigenexFastaText] = useState("");
   const [qigenexAlignedFile, setQigenexAlignedFile] = useState<File | null>(null);
   const [qigenexAlignedFileName, setQigenexAlignedFileName] = useState("");
@@ -985,7 +1133,10 @@ export default function Tools() {
   }
 
   async function pollQigenexJob(jobId: string) {
-    for (let i = 0; i < 240; i++) {
+    let lastMessage = "";
+    let lastPercent = -1;
+
+    while (true) {
       const response = await fetch(`/api/qigenex?job_id=${encodeURIComponent(jobId)}`, {
         method: "GET",
         cache: "no-store",
@@ -994,7 +1145,17 @@ export default function Tools() {
       const data = await response.json();
       setQigenexResult(data);
 
-      if (data.status === "completed") {
+      const state = String(data.status || data.state || "").toLowerCase();
+      const percentValue = Number(data.progress_percent ?? data.percent ?? 0);
+      const message = String(data.message || data.current_step || state || "Analysis is in progress.")
+        .replace(/REAL BEAST\/tMRCA running/gi, "BEAST/tMRCA analysis in progress")
+        .replace(/REAL BEAST running/gi, "BEAST/tMRCA analysis in progress")
+        .replace(/Real BEAST/gi, "BEAST/tMRCA analysis")
+        .replace(/QI-GeneX-N still running:\s*/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (state === "completed") {
         pushLog([
           "> QI-GeneX-N completed.",
           `> Status: ${data.message ?? "completed"}.`,
@@ -1003,20 +1164,41 @@ export default function Tools() {
         return data;
       }
 
-      if (data.status === "failed" || data.status === "error") {
+      if (state === "failed" || state === "error") {
         pushLog([`> QI-GeneX-N failed: ${data.message || data.error || "Unknown error"}`]);
         return data;
       }
 
-      if (i % 4 === 0) {
-        pushLog([`> QI-GeneX-N still running: ${data.message ?? data.status ?? "processing"}`]);
+      if (state === "cancelled") {
+        pushLog(["> QI-GeneX-N cancelled."]);
+        return data;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      if (message !== lastMessage || percentValue !== lastPercent) {
+        pushLog([`> QI-GeneX-N: ${message}${Number.isFinite(percentValue) && percentValue > 0 ? ` (${percentValue}%)` : ""}`]);
+        lastMessage = message;
+        lastPercent = percentValue;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+  }
+
+  async function cancelQigenexJob(jobId?: string) {
+    const target = jobId || qigenexResult?.job_id;
+    if (!target) {
+      pushLog(["> ERROR: No QI-GeneX-N job ID is available for cancellation."]);
+      return;
     }
 
-    pushLog(["> QI-GeneX-N polling timeout. Check backend job status manually."]);
-    return null;
+    const response = await fetch(`/api/qigenex?job_id=${encodeURIComponent(target)}&action=cancel`, {
+      method: "POST",
+      cache: "no-store",
+    });
+
+    const data = await response.json();
+    setQigenexResult(data);
+    pushLog([data.status === "cancelled" ? "> QI-GeneX-N cancellation requested." : `> QI-GeneX-N cancel response: ${data.message || data.error || data.status}`]);
   }
 
   async function runQigenexAnalysis(
@@ -1026,6 +1208,7 @@ export default function Tools() {
     const hasSequence =
       qigenexFastaText.trim() ||
       qigenexFastaFile ||
+      targetGenomeFile ||
       qigenexAlignedText.trim() ||
       qigenexAlignedFile;
 
@@ -1166,6 +1349,62 @@ export default function Tools() {
     formData.append("tmrca_substitution_rate", figureOptions.tmrca_substitution_rate || "0.001");
     formData.append("transmission_mode", figureOptions.transmission_mode || "standard");
     formData.append("nt_distance_threshold", figureOptions.nt_distance_threshold || "0.015");
+    formData.append("metadata_schema_preset", figureOptions.metadata_schema_preset || "viral_bacterial_public_health");
+    formData.append("metadata_template_fields", figureOptions.metadata_template_fields || "");
+    formData.append("metadata_required_fields", figureOptions.metadata_required_fields || "");
+    formData.append("auto_enrich_metadata", figureOptions.auto_enrich_metadata || "true");
+    formData.append("auto_geocode_country", figureOptions.auto_geocode_country || "true");
+    formData.append("auto_typing", figureOptions.auto_typing || "true");
+    formData.append("node_color_by", figureOptions.node_color_by || "dominant_genotype");
+    formData.append("node_shape_by", figureOptions.node_shape_by || "dominant_host");
+
+    formData.append("map_projection", figureOptions.map_projection || "rectangular");
+    formData.append("map_background", figureOptions.map_background || "natural_earth_clean");
+    formData.append("map_extent", figureOptions.map_extent || "world");
+    formData.append("route_level", figureOptions.route_level || "country");
+    formData.append("aggregate_routes", figureOptions.aggregate_routes || "true");
+    formData.append("arrow_style", figureOptions.arrow_style || "curved_arrow");
+    formData.append("arrow_width_by", figureOptions.arrow_width_by || "route_support");
+    formData.append("arrow_color_by", figureOptions.arrow_color_by || "dominant_genotype");
+    formData.append("arrowhead_style", figureOptions.arrowhead_style || "standard_filled");
+    formData.append("line_curve_style", figureOptions.line_curve_style || "great_circle_curve");
+    formData.append("max_routes", figureOptions.max_routes || "80");
+    formData.append("route_support_threshold", figureOptions.route_support_threshold || "1");
+
+    formData.append("bacterial_mode", figureOptions.bacterial_mode || "wgs");
+    formData.append("genome_query_count", figureOptions.genome_query_count || "50");
+    formData.append("genome_source", figureOptions.genome_source || "ncbi_assembly");
+    formData.append("genome_download_strategy", figureOptions.genome_download_strategy || "ani_mash_balanced");
+    formData.append("genome_host_filter", figureOptions.genome_host_filter || "");
+    formData.append("genome_country_filter", figureOptions.genome_country_filter || "");
+    formData.append("genome_year_filter", figureOptions.genome_year_filter || "");
+    formData.append("genome_per_year", figureOptions.genome_per_year || "5");
+    formData.append("ani_threshold", figureOptions.ani_threshold || "95");
+    formData.append("mash_distance_threshold", figureOptions.mash_distance_threshold || "0.05");
+    formData.append("target_genome_required", isBacterialAnalysis ? "true" : "false");
+    formData.append("target_genome_input_mode", "manual_upload");
+    formData.append("comparable_genome_mode", comparableGenomeMode);
+    formData.append("download_taxon_name", downloadTaxonName);
+    formData.append("comparable_genome_class", comparableGenomeClass);
+    formData.append("comparable_host_groups", comparableHostGroups.join(","));
+    formData.append("comparable_environment_groups", comparableEnvironmentGroups.join(","));
+    formData.append("comparable_state_groups", comparableStateGroups.join(","));
+    formData.append("comparable_genome_purpose", comparableGenomePurpose);
+    formData.append("download_representative_only", downloadRepresentativeOnly);
+    formData.append("include_reference_genomes", includeReferenceGenomes);
+    formData.append("bacterial_tree_workflow", bacterialTreeWorkflow);
+    formData.append("pangenome_workflow", pangenomeWorkflow);
+    formData.append("bacterial_output_package", bacterialOutputPackage);
+    formData.append("bacterial_wgs_task", figureOptions.bacterial_wgs_task || bacterialWgsTask);
+    formData.append("bacterial_wgs_figure_type", figureOptions.bacterial_wgs_figure_type || bacterialWgsFigureType);
+    formData.append("bacterial_wgs_figure_designs", figureOptions.bacterial_wgs_figure_designs || bacterialWgsFigureDesigns.join(","));
+    formData.append("use_manual_genomes", figureOptions.use_manual_genomes || "true");
+    formData.append("run_pangenome", figureOptions.run_pangenome || (qigenexAnalysisMode === "bacterial_pangenome" ? "true" : "false"));
+    formData.append("run_amr", figureOptions.run_amr || (qigenexAnalysisMode === "bacterial_amr" ? "true" : "false"));
+    formData.append("run_virulence", figureOptions.run_virulence || (qigenexAnalysisMode === "bacterial_virulence" ? "true" : "false"));
+    formData.append("run_serovar", figureOptions.run_serovar || (qigenexAnalysisMode === "bacterial_strain_serovar" ? "true" : "false"));
+    formData.append("run_antigen", figureOptions.run_antigen || (qigenexAnalysisMode === "bacterial_antigen" ? "true" : "false"));
+    formData.append("run_mlst", figureOptions.run_mlst || (qigenexAnalysisMode === "bacterial_mlst" ? "true" : "false"));
     formData.append("fitness_figure_designs", figureOptions.fitness_figure_designs || (figureType.includes("fitness") ? figureDesigns : ""));
 
     if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText);
@@ -1174,10 +1413,16 @@ export default function Tools() {
     if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
     if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
     if (qigenexVaccineStrainText.trim()) formData.append("vaccineStrainText", qigenexVaccineStrainText);
+    if (targetGenomeFile) formData.append("targetGenomeFile", targetGenomeFile, targetGenomeFile.name || "target_genome.fasta");
+    if (manualComparableGenomeFile) formData.append("manualComparableGenomeFile", manualComparableGenomeFile, manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
     if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
     if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
     if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
     if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText);
+    if (metadataRows.length > 0 && metadataColumns.length > 0) {
+      formData.append("metadata", metadataRowsToFile(metadataColumns, metadataRows, `qigenex_${metadataPreset}_metadata.csv`));
+      formData.append("metadataText", metadataRowsToCsv(metadataColumns, metadataRows));
+    }
     if (qigenexNotes.trim()) formData.append("notes", qigenexNotes);
 
     setQigenexLoading(true);
@@ -1205,6 +1450,10 @@ export default function Tools() {
         `> Module: ${qigenexAnalysisMode}.`,
         `> Figure: ${figureType}.`,
         `> Job ID: ${jobId}`,
+        ...(isBacterialAnalysis ? [
+          `> Bacterial workflow: target genome manual upload; comparable genomes=${comparableGenomeMode}.`,
+          `> Comparable filters: host=${comparableHostGroups.join("|") || "none"}; environment=${comparableEnvironmentGroups.join("|") || "none"}; state=${comparableStateGroups.join("|") || "none"}.`,
+        ] : []),
         "> Polling status.",
       ]);
 
@@ -1611,7 +1860,8 @@ export default function Tools() {
                 setSequenceMode={setQigenexSequenceMode}
                 analysisMode={qigenexAnalysisMode}
                 setAnalysisMode={setQigenexAnalysisMode}
-                fastaFileName={qigenexFastaFileName}
+                fastaFileName={qigenexFastaName}
+                  fastaFile={qigenexFastaFile}
                 setFastaFile={setQigenexFastaFile}
                 setFastaFileName={setQigenexFastaFileName}
                 fastaText={qigenexFastaText}
@@ -3585,6 +3835,7 @@ function QigenexSection(props: any) {
     analysisMode,
     setAnalysisMode,
     fastaFileName,
+    fastaFile,
     setFastaFile,
     setFastaFileName,
     fastaText,
@@ -3636,6 +3887,61 @@ function QigenexSection(props: any) {
   const [selectedFigure, setSelectedFigure] = useState("");
   const [selectedText, setSelectedText] = useState("");
 
+  const [metadataPreset, setMetadataPreset] = useState<QigenexMetadataPreset>("public_health_genomics");
+  const [metadataColumns, setMetadataColumns] = useState<string[]>(QIGENEX_METADATA_PRESETS.public_health_genomics.columns);
+  const [metadataRows, setMetadataRows] = useState<QigenexMetadataRow[]>(makeMetadataRows(QIGENEX_METADATA_PRESETS.public_health_genomics.columns, QIGENEX_METADATA_PRESETS.public_health_genomics.sampleRows));
+  const [metadataFields, setMetadataFields] = useState(QIGENEX_METADATA_PRESETS.public_health_genomics.columns.join(","));
+  const [requiredMetadataFields, setRequiredMetadataFields] = useState("sample_id,country,collection_date,host");
+  const [autoEnrichMetadata, setAutoEnrichMetadata] = useState("true");
+  const [autoGeocodeCountry, setAutoGeocodeCountry] = useState("true");
+  const [autoTyping, setAutoTyping] = useState("true");
+
+  const [mapProjection, setMapProjection] = useState("rectangular");
+  const [mapBackground, setMapBackground] = useState("natural_earth_clean");
+  const [mapExtent, setMapExtent] = useState("world");
+  const [routeLevel, setRouteLevel] = useState("country");
+  const [aggregateRoutes, setAggregateRoutes] = useState("true");
+  const [arrowStyle, setArrowStyle] = useState("curved_arrow");
+  const [arrowWidthBy, setArrowWidthBy] = useState("route_support");
+  const [arrowColorBy, setArrowColorBy] = useState("dominant_genotype");
+  const [arrowheadStyle, setArrowheadStyle] = useState("standard_filled");
+  const [lineCurveStyle, setLineCurveStyle] = useState("great_circle_curve");
+  const [nodeColorBy, setNodeColorBy] = useState("dominant_genotype");
+  const [nodeShapeBy, setNodeShapeBy] = useState("dominant_host");
+  const [maxRoutes, setMaxRoutes] = useState("80");
+  const [routeSupportThreshold, setRouteSupportThreshold] = useState("1");
+
+  const [bacterialMode, setBacterialMode] = useState("wgs");
+  const [genomeSource, setGenomeSource] = useState("ncbi_assembly");
+  const [genomeQueryCount, setGenomeQueryCount] = useState("50");
+  const [genomeDownloadStrategy, setGenomeDownloadStrategy] = useState("ani_mash_balanced");
+  const [genomeHostFilter, setGenomeHostFilter] = useState("swine,cattle,poultry,human,goat,sheep,dog,cat,wild_boar,wild_bird,water,food,environment,unknown");
+  const [genomeCountryFilter, setGenomeCountryFilter] = useState("auto");
+  const [genomeYearFilter, setGenomeYearFilter] = useState("auto");
+  const [genomePerYear, setGenomePerYear] = useState("5");
+  const [aniThreshold, setAniThreshold] = useState("95");
+  const [mashDistanceThreshold, setMashDistanceThreshold] = useState("0.05");
+
+  const [targetGenomeFile, setTargetGenomeFile] = useState<File | null>(null);
+  const [targetGenomeFileName, setTargetGenomeFileName] = useState("");
+  const [manualComparableGenomeFile, setManualComparableGenomeFile] = useState<File | null>(null);
+  const [manualComparableGenomeFileName, setManualComparableGenomeFileName] = useState("");
+  const [comparableGenomeMode, setComparableGenomeMode] = useState("auto_download");
+  const [downloadTaxonName, setDownloadTaxonName] = useState("auto_from_target");
+  const [comparableGenomeClass, setComparableGenomeClass] = useState("balanced");
+  const [comparableHostGroups, setComparableHostGroups] = useState<string[]>(["human", "poultry", "swine", "cattle", "environment"]);
+  const [comparableEnvironmentGroups, setComparableEnvironmentGroups] = useState<string[]>(["clinical", "farm", "slaughterhouse", "food", "water"]);
+  const [comparableStateGroups, setComparableStateGroups] = useState<string[]>(["clinical", "outbreak", "surveillance", "reference"]);
+  const [comparableGenomePurpose, setComparableGenomePurpose] = useState("phylogeny");
+  const [downloadRepresentativeOnly, setDownloadRepresentativeOnly] = useState("true");
+  const [includeReferenceGenomes, setIncludeReferenceGenomes] = useState("true");
+  const [bacterialTreeWorkflow, setBacterialTreeWorkflow] = useState("ani_mash_core_snp");
+  const [pangenomeWorkflow, setPangenomeWorkflow] = useState("panaroo_roary");
+  const [bacterialOutputPackage, setBacterialOutputPackage] = useState("standard_plus_figures");
+  const [bacterialWgsTask, setBacterialWgsTask] = useState("phylogeny");
+  const [bacterialWgsFigureType, setBacterialWgsFigureType] = useState("bacterial_phylogeny_plot");
+  const [bacterialWgsFigureDesigns, setBacterialWgsFigureDesigns] = useState<string[]>(["wgs_ani_mash_tree", "metadata_annotated_tree", "ani_heatmap_tree"]);
+
   const hasSequence = Boolean(fastaText.trim() || fastaFileName || alignedText.trim() || alignedFileName);
 
   const analysisList = [
@@ -3667,6 +3973,7 @@ function QigenexSection(props: any) {
     { id: "animal_host", label: "Animal / host" },
     { id: "ml_qml", label: "ML/QML" },
     { id: "genomic_intelligence", label: "Genomic intelligence" },
+    { id: "bacterial_wgs_analysis", label: "Bacterial WGS Analysis" },
     { id: "report_package", label: "Report" },
     { id: "complete", label: "Complete" },
   ];
@@ -3771,6 +4078,72 @@ function QigenexSection(props: any) {
         "recombination_composite",
       ],
     },
+    bacterial_phylogeny_plot: {
+      label: "Bacterial phylogeny",
+      designs: [
+        "wgs_ani_mash_tree",
+        "core_snp_ml_tree",
+        "core_gene_tree",
+        "partial_gene_tree",
+        "clade_rectangular_tree",
+        "clade_circular_tree",
+        "metadata_annotated_tree",
+        "host_country_lineage_tree",
+        "ani_heatmap_tree",
+        "mash_distance_network",
+        "clade_distribution_bars",
+        "phylogeny_composite_panel",
+      ],
+    },
+    bacterial_pangenome_plot: {
+      label: "Pangenome",
+      designs: [
+        "pan_core_gene_curve",
+        "gene_presence_absence_heatmap",
+        "accessory_gene_tree",
+        "functional_category_bar",
+        "gene_accumulation_box",
+        "shell_cloud_partition",
+        "pangenome_pca",
+        "roary_panaroo_summary",
+        "pangenome_composite_panel",
+      ],
+    },
+    bacterial_amr_plot: {
+      label: "AMR profile",
+      designs: [
+        "amr_gene_heatmap",
+        "amr_class_bar",
+        "resistome_tree_annotation",
+        "amr_presence_matrix",
+        "amr_genotype_network",
+        "mar_index_plot",
+        "amr_country_host_panel",
+        "amr_composite_panel",
+      ],
+    },
+    bacterial_virulence_plot: {
+      label: "Virulence profile",
+      designs: [
+        "virulence_gene_heatmap",
+        "pathogenicity_island_map",
+        "toxin_adhesion_invasion_panel",
+        "virulence_tree_annotation",
+        "vfdb_category_bar",
+        "virulence_composite_panel",
+      ],
+    },
+    bacterial_typing_plot: {
+      label: "Strain / serovar / antigen typing",
+      designs: [
+        "serovar_summary_bar",
+        "mlst_sequence_type_bar",
+        "antigen_profile_matrix",
+        "strain_cluster_tree",
+        "typing_confidence_plot",
+        "serovar_country_host_panel",
+      ],
+    },
     hypothesis_plot: {
       label: "Hypothesis test",
       designs: [
@@ -3792,7 +4165,7 @@ function QigenexSection(props: any) {
     },
     map_spatiotemporal_plot: {
       label: "Map / timeline",
-      designs: ["world_route_map", "country_bubble_map", "choropleth_map", "timeline_map_panel", "flow_network_map", "spatiotemporal_heatmap", "route_animation_frames", "source_sink_map"],
+      designs: ["rectangular_route_map", "round_projection_map", "country_bubble_map", "choropleth_map", "timeline_map_panel", "flow_network_map", "spatiotemporal_heatmap", "route_animation_frames", "source_sink_map", "lineage_route_map", "host_shape_map", "import_export_balance_map", "route_support_map", "map_composite_panel"],
     },
     ml_qml_performance_plot: {
       label: "ML/QML plot",
@@ -3829,6 +4202,17 @@ function QigenexSection(props: any) {
     animal_host: ["map_spatiotemporal_plot", "phylogenetic_tree", "fitness_landscape"],
     ml_qml: ["ml_qml_performance_plot"],
     genomic_intelligence: ["phylogenetic_tree", "transmission_distance", "fitness_landscape", "mutation_plot", "hypothesis_plot"],
+    bacterial_wgs_analysis: ["bacterial_phylogeny_plot"],
+    bacterial_wgs_phylogeny: ["bacterial_phylogeny_plot", "map_spatiotemporal_plot", "bacterial_typing_plot"],
+    bacterial_partial_phylogeny: ["bacterial_phylogeny_plot", "bacterial_typing_plot"],
+    bacterial_pangenome: ["bacterial_pangenome_plot", "bacterial_phylogeny_plot"],
+    bacterial_amr: ["bacterial_amr_plot", "bacterial_phylogeny_plot"],
+    bacterial_virulence: ["bacterial_virulence_plot", "bacterial_phylogeny_plot"],
+    bacterial_strain_serovar: ["bacterial_typing_plot", "bacterial_phylogeny_plot"],
+    bacterial_antigen: ["bacterial_typing_plot"],
+    bacterial_mlst: ["bacterial_typing_plot", "bacterial_phylogeny_plot"],
+    bacterial_plasmid: ["bacterial_amr_plot", "bacterial_phylogeny_plot"],
+    bacterial_genome_download: ["bacterial_phylogeny_plot", "bacterial_pangenome_plot", "bacterial_amr_plot"],
     report_package: ["qc_summary_plot"],
     complete: Object.keys(figureCatalog),
   };
@@ -3869,9 +4253,31 @@ function QigenexSection(props: any) {
   const textItems = outputItems.filter((item) =>
     /\.(csv|tsv|txt|json|xlsx|xls|fasta|fa|fas|fna|treefile|nwk|newick|log|md|html|xml)$/i.test(item.path)
   );
-  const figureItems = outputItems.filter((item) =>
+  const figureItemsRaw = outputItems.filter((item) =>
     /\.(png|jpg|jpeg|svg|pdf|webp)$/i.test(item.path)
   );
+
+  const selectedDesignTokens = selectedDesigns.map((x) => x.toLowerCase());
+  const figureContextTokens = [currentFigureType, ...selectedDesignTokens]
+    .map((x) => x.toLowerCase().replace(/_/g, " "))
+    .flatMap((x) => [x, x.replace(/ /g, "_")]);
+
+  const figureItemsFiltered = figureItemsRaw.filter((item) => {
+    const name = item.filename.toLowerCase();
+    const path = item.path.toLowerCase();
+    if (currentFigureType === "transmission_distance") {
+      return /(transmission|route|country|source|sink|sharing|lineage|map|sankey)/i.test(name + " " + path);
+    }
+    if (currentFigureType === "map_spatiotemporal_plot") {
+      return /(map|route|country|geo|spatio|source|sink|timeline)/i.test(name + " " + path);
+    }
+    if (currentFigureType.includes("bacterial")) {
+      return /(bacterial|amr|virulence|pangenome|serovar|mlst|ani|mash|strain|antigen|tree|phylo)/i.test(name + " " + path);
+    }
+    return figureContextTokens.some((token) => token && (name.includes(token) || path.includes(token))) || figureItemsRaw.length <= 3;
+  });
+
+  const figureItems = figureItemsFiltered.length ? figureItemsFiltered : figureItemsRaw;
 
   const selectedFigurePath = selectedFigure || figureItems[0]?.path || "";
   const selectedTextPath = selectedText || textItems[0]?.path || "";
@@ -3882,9 +4288,9 @@ function QigenexSection(props: any) {
 
   function runNow() {
     runQigenexAnalysis("analysis", {
-      figure_type: currentFigureType,
+      figure_type: showBacterialWgsPanel ? bacterialWgsFigureType : currentFigureType,
       figure_plot_style: currentFigureType,
-      figure_designs: selectedDesigns.join(","),
+      figure_designs: (showBacterialWgsPanel ? bacterialWgsFigureDesigns : selectedDesigns).join(","),
       figure_styles: "journal_clean",
       figure_formats: figureFormats,
       figure_dpi: figureDpi,
@@ -3903,7 +4309,47 @@ function QigenexSection(props: any) {
       transmission_mode: transmissionMode,
       nt_distance_threshold: ntThreshold,
       fitness_figure_designs: currentFigureType === "fitness_landscape" ? selectedDesigns.join(",") : "",
+      bacterial_wgs_task: bacterialWgsTask,
+      bacterial_wgs_figure_type: bacterialWgsFigureType,
+      bacterial_wgs_figure_designs: bacterialWgsFigureDesigns.join(","),
       novel_hypothesis: hypothesis,
+      metadata_schema_preset: metadataPreset,
+      metadata_template_fields: metadataFields,
+      metadata_required_fields: requiredMetadataFields,
+      auto_enrich_metadata: autoEnrichMetadata,
+      auto_geocode_country: autoGeocodeCountry,
+      auto_typing: autoTyping,
+      node_color_by: nodeColorBy,
+      node_shape_by: nodeShapeBy,
+      map_projection: mapProjection,
+      map_background: mapBackground,
+      map_extent: mapExtent,
+      route_level: routeLevel,
+      aggregate_routes: aggregateRoutes,
+      arrow_style: arrowStyle,
+      arrow_width_by: arrowWidthBy,
+      arrow_color_by: arrowColorBy,
+      arrowhead_style: arrowheadStyle,
+      line_curve_style: lineCurveStyle,
+      max_routes: maxRoutes,
+      route_support_threshold: routeSupportThreshold,
+      bacterial_mode: bacterialMode,
+      genome_query_count: genomeQueryCount,
+      genome_source: genomeSource,
+      genome_download_strategy: genomeDownloadStrategy,
+      genome_host_filter: genomeHostFilter,
+      genome_country_filter: genomeCountryFilter,
+      genome_year_filter: genomeYearFilter,
+      genome_per_year: genomePerYear,
+      ani_threshold: aniThreshold,
+      mash_distance_threshold: mashDistanceThreshold,
+      use_manual_genomes: "true",
+      run_pangenome: showBacterialWgsPanel && bacterialWgsTask === "pangenome" ? "true" : analysisMode === "bacterial_pangenome" ? "true" : "false",
+      run_amr: showBacterialWgsPanel && bacterialWgsTask === "amr" ? "true" : analysisMode === "bacterial_amr" ? "true" : "false",
+      run_virulence: showBacterialWgsPanel && bacterialWgsTask === "virulence" ? "true" : analysisMode === "bacterial_virulence" ? "true" : "false",
+      run_serovar: showBacterialWgsPanel && bacterialWgsTask === "typing" ? "true" : analysisMode === "bacterial_strain_serovar" ? "true" : "false",
+      run_antigen: showBacterialWgsPanel && bacterialWgsTask === "antigen" ? "true" : analysisMode === "bacterial_antigen" ? "true" : "false",
+      run_mlst: showBacterialWgsPanel && bacterialWgsTask === "mlst" ? "true" : analysisMode === "bacterial_mlst" ? "true" : "false",
     });
   }
 
@@ -3917,12 +4363,120 @@ function QigenexSection(props: any) {
       return <iframe title="QI-GeneX-N figure preview" src={url} className="h-[760px] w-full rounded-2xl border border-white/10 bg-white" />;
     }
 
-    return (
+
+  return (
       <div className="rounded-2xl border border-white/10 bg-white p-3">
         <img src={url} alt="QI-GeneX-N figure" className="max-h-[760px] w-full rounded-xl object-contain" />
       </div>
     );
   }
+
+
+
+  function toggleStringSelection(value: string, selected: string[], setter: (items: string[]) => void) {
+    setter(selected.includes(value) ? selected.filter((x) => x !== value) : [...selected, value]);
+  }
+
+  const isBacterialAnalysis = analysisMode === "bacterial_wgs_analysis" || String(analysisMode).startsWith("bacterial_");
+  const showBacterialWgsPanel = analysisMode === "bacterial_wgs_analysis";
+
+  function applyMetadataPreset(preset: QigenexMetadataPreset) {
+    const template = QIGENEX_METADATA_PRESETS[preset];
+    setMetadataPreset(preset);
+    setMetadataColumns(template.columns);
+    setMetadataRows(makeMetadataRows(template.columns, template.sampleRows));
+    setMetadataFields(template.columns.join(","));
+    setRequiredMetadataFields(
+      preset === "bacterial_wgs"
+        ? "sample_id,organism,country,collection_date,host"
+        : preset === "transmission_map"
+        ? "sample_id,country,collection_date,host,source_country,sink_country"
+        : "sample_id,country,collection_date,host"
+    );
+    pushLog([`> Metadata sheet preset loaded: ${template.label}. Columns=${template.columns.length}; rows=${template.sampleRows.length}.`]);
+  }
+
+  function updateMetadataCell(rowIndex: number, column: string, value: string) {
+    setMetadataRows((old) =>
+      old.map((row, i) => (i === rowIndex ? { ...row, [column]: value } : row))
+    );
+  }
+
+  function addMetadataRow() {
+    const blank: QigenexMetadataRow = {};
+    metadataColumns.forEach((col) => {
+      blank[col] = "";
+    });
+    blank.sample_id = `Sample_${metadataRows.length + 1}`;
+    setMetadataRows((old) => [...old, blank]);
+  }
+
+  function removeMetadataRow(rowIndex: number) {
+    setMetadataRows((old) => old.filter((_, i) => i !== rowIndex));
+  }
+
+  function addMetadataColumn() {
+    const cleanName = `custom_field_${metadataColumns.length + 1}`;
+    if (metadataColumns.includes(cleanName)) return;
+    setMetadataColumns((old) => [...old, cleanName]);
+    setMetadataRows((old) => old.map((row) => ({ ...row, [cleanName]: "" })));
+    setMetadataFields((old) => [...splitFieldNames(old), cleanName].join(","));
+  }
+
+  function rebuildMetadataColumnsFromFieldText() {
+    const cols = splitFieldNames(metadataFields);
+    if (!cols.length) return;
+    setMetadataColumns(cols);
+    setMetadataRows((old) =>
+      old.length
+        ? old.map((row) => {
+            const next: QigenexMetadataRow = {};
+            cols.forEach((col) => {
+              next[col] = row[col] ?? "";
+            });
+            return next;
+          })
+        : makeMetadataRows(cols, [{}])
+    );
+  }
+
+
+  function renameMetadataColumn(columnIndex: number, value: string) {
+    const cleanName = value.trim().replace(/\s+/g, "_");
+    if (!cleanName) return;
+    const oldColumn = metadataColumns[columnIndex];
+    if (!oldColumn || oldColumn === cleanName) return;
+    if (metadataColumns.includes(cleanName)) return;
+
+    setMetadataColumns((old) => old.map((col, i) => (i === columnIndex ? cleanName : col)));
+    setMetadataRows((old) =>
+      old.map((row) => {
+        const next = { ...row };
+        next[cleanName] = next[oldColumn] ?? "";
+        delete next[oldColumn];
+        return next;
+      })
+    );
+    setMetadataFields((old) => splitFieldNames(old).map((col) => (col === oldColumn ? cleanName : col)).join(","));
+  }
+
+  function removeMetadataColumn(column: string) {
+    if (["sample_id"].includes(column)) return;
+    setMetadataColumns((old) => old.filter((col) => col !== column));
+    setMetadataRows((old) =>
+      old.map((row) => {
+        const next = { ...row };
+        delete next[column];
+        return next;
+      })
+    );
+    setMetadataFields((old) => splitFieldNames(old).filter((col) => col !== column).join(","));
+  }
+
+  function downloadMetadataTemplate() {
+    downloadCSV(metadataRowsToCsv(metadataColumns, metadataRows), `qigenex_${metadataPreset}_metadata_template.csv`);
+  }
+
 
   return (
     <section className="space-y-5">
@@ -3955,12 +4509,16 @@ function QigenexSection(props: any) {
             </select>
           </div>
 
-          <div>
-            <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Figure</label>
-            <select value={currentFigureType} onChange={(e) => setFigureType(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none">
-              {availableFigureTypes.map((type) => <option key={type} value={type}>{figureCatalog[type]?.label || type}</option>)}
-            </select>
-          </div>
+          {!showBacterialWgsPanel && (
+            <div>
+              <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Figure</label>
+              <select value={currentFigureType} onChange={(e) => setCurrentFigureType(e.target.value)} className="w-full rounded-[1.2rem] border border-white/10 bg-slate-900 px-4 py-4 text-sm font-black text-white outline-none focus:border-cyan-300">
+                {availableFigureTypes.map((item) => (
+                  <option key={item} value={item}>{figureCatalog[item]?.label || item}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex items-end gap-3">
             <button onClick={runNow} disabled={loading || !hasSequence || selectedDesigns.length === 0} className="rounded-2xl bg-purple-400 px-6 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">
@@ -3971,6 +4529,269 @@ function QigenexSection(props: any) {
             </button>
           </div>
         </div>
+
+
+        {showBacterialWgsPanel && (
+          <div className="mt-5 rounded-[1.4rem] border border-emerald-300/20 bg-slate-950/90 p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.22em] text-emerald-200">Bacterial genome workflow</p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Target genome is always uploaded manually. Comparable genomes can be downloaded automatically or uploaded manually, then filtered by host, environment/source, country/year and analysis purpose.
+                </p>
+              </div>
+              <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs font-black text-emerald-100">
+                Target required
+              </div>
+            </div>
+
+
+            <div className="mb-4 rounded-2xl border border-emerald-300/10 bg-slate-900/50 p-4">
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div>
+                  <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Bacterial WGS task</label>
+                  <select
+                    value={bacterialWgsTask}
+                    onChange={(e) => {
+                      const task = e.target.value;
+                      setBacterialWgsTask(task);
+                      const nextFigure =
+                        task === "pangenome" ? "bacterial_pangenome_plot" :
+                        task === "amr" ? "bacterial_amr_plot" :
+                        task === "virulence" ? "bacterial_virulence_plot" :
+                        ["typing", "antigen", "mlst"].includes(task) ? "bacterial_typing_plot" :
+                        "bacterial_phylogeny_plot";
+                      setBacterialWgsFigureType(nextFigure);
+                      setBacterialWgsFigureDesigns((figureCatalog[nextFigure]?.designs || ["wgs_ani_mash_tree"]).slice(0, 3));
+                      setComparableGenomePurpose(task);
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-black text-white"
+                  >
+                    <option value="phylogeny">Phylogenetic analysis</option>
+                    <option value="pangenome">Pangenome analysis</option>
+                    <option value="amr">AMR gene profiling</option>
+                    <option value="virulence">Virulence/pathogenic gene profiling</option>
+                    <option value="typing">Strain / serovar identification</option>
+                    <option value="antigen">Antigen profiling</option>
+                    <option value="mlst">MLST typing</option>
+                    <option value="combined">Combined bacterial genome analysis</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Result / figure family</label>
+                  <select
+                    value={bacterialWgsFigureType}
+                    onChange={(e) => {
+                      setBacterialWgsFigureType(e.target.value);
+                      setBacterialWgsFigureDesigns((figureCatalog[e.target.value]?.designs || []).slice(0, 3));
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-black text-white"
+                  >
+                    {["bacterial_phylogeny_plot", "bacterial_pangenome_plot", "bacterial_amr_plot", "bacterial_virulence_plot", "bacterial_typing_plot", "map_spatiotemporal_plot"].map((item) => (
+                      <option key={item} value={item}>{figureCatalog[item]?.label || item}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Output design mode</label>
+                  <select value={bacterialOutputPackage} onChange={(e) => setBacterialOutputPackage(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-black text-white">
+                    <option value="standard_plus_figures">Standard + figures</option>
+                    <option value="publication_ready">Publication-ready</option>
+                    <option value="minimal_fast">Minimal fast</option>
+                    <option value="full_research">Full research package</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">Designs for selected bacterial task</p>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {(figureCatalog[bacterialWgsFigureType]?.designs || []).map((design) => (
+                    <button
+                      key={design}
+                      type="button"
+                      onClick={() =>
+                        setBacterialWgsFigureDesigns((old) =>
+                          old.includes(design) ? old.filter((x) => x !== design) : [...old, design]
+                        )
+                      }
+                      className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${
+                        bacterialWgsFigureDesigns.includes(design)
+                          ? "border-emerald-300 bg-emerald-300/15 text-emerald-100"
+                          : "border-white/10 bg-slate-950 text-slate-300"
+                      }`}
+                    >
+                      {design.replace(/_/g, " ")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Target genome(s)</label>
+                <input
+                  type="file"
+                  accept=".fasta,.fa,.fna,.ffn,.faa,.fas,.gz,.zip"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setTargetGenomeFile(file);
+                    setTargetGenomeFileName(file?.name || "");
+                    if (file && !fastaFile) {
+                      setFastaFile(file);
+                      setFastaFileName(file.name);
+                    }
+                  }}
+                  className="block w-full text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-purple-300 file:px-4 file:py-2 file:font-black file:text-slate-950"
+                />
+                <p className="mt-2 break-all text-xs font-semibold text-slate-400">{targetGenomeFileName || fastaFileName || "No target genome selected"}</p>
+                <p className="mt-2 text-xs text-slate-500">Use assembled genome FASTA/contigs. This file is also used as the main FASTA input.</p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Comparable genome source</label>
+                <select value={comparableGenomeMode} onChange={(e) => setComparableGenomeMode(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                  <option value="auto_download">Automatically download comparable genomes</option>
+                  <option value="manual_upload">Manual comparable genome upload only</option>
+                  <option value="auto_plus_manual">Auto download + manual uploaded genomes</option>
+                </select>
+
+                {(comparableGenomeMode === "manual_upload" || comparableGenomeMode === "auto_plus_manual") && (
+                  <div className="mt-3">
+                    <input
+                      type="file"
+                      accept=".fasta,.fa,.fna,.ffn,.faa,.fas,.gz,.zip"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setManualComparableGenomeFile(file);
+                        setManualComparableGenomeFileName(file?.name || "");
+                      }}
+                      className="block w-full text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-cyan-300 file:px-4 file:py-2 file:font-black file:text-slate-950"
+                    />
+                    <p className="mt-2 break-all text-xs font-semibold text-slate-400">{manualComparableGenomeFileName || "No manual comparable genome file selected"}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Workflow algorithm</label>
+                <select value={comparableGenomePurpose} onChange={(e) => setComparableGenomePurpose(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                  <option value="phylogeny">Phylogeny</option>
+                  <option value="pangenome">Pangenome</option>
+                  <option value="amr">AMR profiling</option>
+                  <option value="virulence">Virulence profiling</option>
+                  <option value="typing">Serovar / MLST / antigen typing</option>
+                  <option value="combined">Combined bacterial genome analysis</option>
+                </select>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <select value={bacterialTreeWorkflow} onChange={(e) => setBacterialTreeWorkflow(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white">
+                    <option value="ani_mash_core_snp">ANI + Mash + core SNP</option>
+                    <option value="core_snp_only">Core SNP tree</option>
+                    <option value="core_gene_alignment">Core gene alignment</option>
+                    <option value="partial_gene_tree">Partial gene tree</option>
+                  </select>
+                  <select value={bacterialOutputPackage} onChange={(e) => setBacterialOutputPackage(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white">
+                    <option value="standard_plus_figures">Standard + figures</option>
+                    <option value="publication_ready">Publication-ready</option>
+                    <option value="minimal_fast">Minimal fast</option>
+                    <option value="full_research">Full research package</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Taxon / organism query</label>
+                <input value={downloadTaxonName} onChange={(e) => setDownloadTaxonName(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" placeholder="auto_from_target or Salmonella enterica" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Genome selection class</label>
+                <select value={comparableGenomeClass} onChange={(e) => setComparableGenomeClass(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                  <option value="balanced">Balanced</option>
+                  <option value="host_wise">Host-wise</option>
+                  <option value="country_wise">Country-wise</option>
+                  <option value="year_wise">Year-wise</option>
+                  <option value="ani_nearest">ANI nearest</option>
+                  <option value="mash_diverse">Mash diverse</option>
+                  <option value="reference_representative">Reference representative</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Comparable genomes</label>
+                <input value={genomeQueryCount} onChange={(e) => setGenomeQueryCount(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Per year</label>
+                <input value={genomePerYear} onChange={(e) => setGenomePerYear(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">Host selection</p>
+                <div className="flex flex-wrap gap-2">
+                  {["human", "poultry", "swine", "cattle", "goat", "sheep", "dog", "cat", "wild_bird", "wild_boar", "fish", "food", "environment", "unknown"].map((item) => (
+                    <button key={item} type="button" onClick={() => toggleStringSelection(item, comparableHostGroups, setComparableHostGroups)} className={`rounded-xl px-3 py-2 text-xs font-black ${comparableHostGroups.includes(item) ? "bg-emerald-300 text-slate-950" : "bg-slate-950 text-slate-300 ring-1 ring-white/10"}`}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">Environment / source</p>
+                <div className="flex flex-wrap gap-2">
+                  {["clinical", "farm", "slaughterhouse", "food", "meat", "milk", "water", "soil", "wastewater", "wildlife", "hospital", "market", "reference"].map((item) => (
+                    <button key={item} type="button" onClick={() => toggleStringSelection(item, comparableEnvironmentGroups, setComparableEnvironmentGroups)} className={`rounded-xl px-3 py-2 text-xs font-black ${comparableEnvironmentGroups.includes(item) ? "bg-cyan-300 text-slate-950" : "bg-slate-950 text-slate-300 ring-1 ring-white/10"}`}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">State / sampling class</p>
+                <div className="flex flex-wrap gap-2">
+                  {["clinical", "carrier", "outbreak", "surveillance", "reference", "environmental", "foodborne", "zoonotic", "unknown"].map((item) => (
+                    <button key={item} type="button" onClick={() => toggleStringSelection(item, comparableStateGroups, setComparableStateGroups)} className={`rounded-xl px-3 py-2 text-xs font-black ${comparableStateGroups.includes(item) ? "bg-purple-300 text-slate-950" : "bg-slate-950 text-slate-300 ring-1 ring-white/10"}`}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Country filter</label>
+                <input value={genomeCountryFilter} onChange={(e) => setGenomeCountryFilter(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" placeholder="auto or Bangladesh,India,China" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Year filter</label>
+                <input value={genomeYearFilter} onChange={(e) => setGenomeYearFilter(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" placeholder="auto or 2015-2026" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Representative only</label>
+                <select value={downloadRepresentativeOnly} onChange={(e) => setDownloadRepresentativeOnly(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                  <option value="true">Yes, reduce duplicates</option>
+                  <option value="false">No, keep all matches</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Reference genomes</label>
+                <select value={includeReferenceGenomes} onChange={(e) => setIncludeReferenceGenomes(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                  <option value="true">Include references</option>
+                  <option value="false">Exclude references</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {moreOpen && (
           <div className="mt-5 space-y-5 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
@@ -4042,6 +4863,274 @@ function QigenexSection(props: any) {
               </div>
             </div>
 
+            <details className="rounded-2xl border border-cyan-300/20 bg-slate-950 p-4" open>
+              <summary className="cursor-pointer text-sm font-black text-cyan-200">Metadata sheet and image/map customization</summary>
+
+              <div className="mt-4 rounded-2xl border border-cyan-300/10 bg-slate-900/50 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-white">Excel-like metadata entry sheet</p>
+                    <p className="text-xs font-semibold text-slate-400">Choose a preset, edit cells directly, add rows/columns, then submit. This sheet is sent as a real CSV metadata file.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={addMetadataRow} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-white">Add row</button>
+                    <button type="button" onClick={addMetadataColumn} className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-black text-white ring-1 ring-white/10 hover:bg-slate-700">Add column</button>
+                    <button type="button" onClick={downloadMetadataTemplate} className="rounded-xl bg-purple-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-white">Download metadata CSV</button>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Metadata preset</label>
+                    <select value={metadataPreset} onChange={(e) => applyMetadataPreset(e.target.value as QigenexMetadataPreset)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      {Object.entries(QIGENEX_METADATA_PRESETS).map(([key, item]) => (
+                        <option key={key} value={key}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Auto enrich metadata</label>
+                    <select value={autoEnrichMetadata} onChange={(e) => setAutoEnrichMetadata(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Auto country coordinates</label>
+                    <select value={autoGeocodeCountry} onChange={(e) => setAutoGeocodeCountry(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="true">Use country centroids if lat/lon missing</option>
+                      <option value="false">Use uploaded coordinates only</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Auto typing</label>
+                    <select value={autoTyping} onChange={(e) => setAutoTyping(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="true">Infer genotype/lineage/serovar</option>
+                      <option value="false">Use metadata only</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-slate-950">
+                  <table className="min-w-[1200px] w-full border-collapse text-left text-xs">
+                    <thead className="sticky top-0 z-10 bg-slate-900 text-slate-300">
+                      <tr>
+                        <th className="border-b border-white/10 px-3 py-2 font-black uppercase tracking-[0.12em]">#</th>
+                        {metadataColumns.map((col, colIndex) => (
+                          <th key={col} className="border-b border-white/10 px-3 py-2">
+                            <div className="flex min-w-[150px] items-center gap-2">
+                              <input
+                                value={col}
+                                onChange={(e) => renameMetadataColumn(colIndex, e.target.value)}
+                                className="w-full rounded-lg border border-white/10 bg-slate-950 px-2 py-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-cyan-100 outline-none focus:border-cyan-300"
+                              />
+                              {col !== "sample_id" && (
+                                <button type="button" onClick={() => removeMetadataColumn(col)} className="rounded-md bg-red-400/90 px-2 py-1 text-[10px] font-black text-slate-950 hover:bg-white">
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          </th>
+                        ))}
+                        <th className="border-b border-white/10 px-3 py-2 font-black uppercase tracking-[0.12em]">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metadataRows.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="odd:bg-slate-900/40 even:bg-slate-950">
+                          <td className="border-b border-white/5 px-3 py-2 font-black text-cyan-200">{rowIndex + 1}</td>
+                          {metadataColumns.map((col) => (
+                            <td key={col} className="border-b border-white/5 px-2 py-2">
+                              <input
+                                value={row[col] ?? ""}
+                                onChange={(e) => updateMetadataCell(rowIndex, col, e.target.value)}
+                                className="w-full min-w-[120px] rounded-lg border border-white/10 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-300"
+                              />
+                            </td>
+                          ))}
+                          <td className="border-b border-white/5 px-2 py-2">
+                            <button type="button" onClick={() => removeMetadataRow(rowIndex)} className="rounded-lg bg-red-400/90 px-2 py-1 text-xs font-black text-slate-950 hover:bg-white">
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <details className="mt-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
+                  <summary className="cursor-pointer text-xs font-black text-slate-300">Advanced field-name editor</summary>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Current column names</label>
+                      <textarea value={metadataFields} onChange={(e) => setMetadataFields(e.target.value)} className="h-20 w-full rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                      <button type="button" onClick={rebuildMetadataColumnsFromFieldText} className="mt-2 rounded-xl bg-slate-800 px-3 py-2 text-xs font-black text-white ring-1 ring-white/10 hover:bg-slate-700">Rebuild sheet from names</button>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Required fields</label>
+                      <textarea value={requiredMetadataFields} onChange={(e) => setRequiredMetadataFields(e.target.value)} className="h-20 w-full rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                    </div>
+                  </div>
+                </details>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-purple-300/10 bg-slate-900/40 p-4">
+                <p className="mb-3 text-sm font-black text-white">Map and plot style controls</p>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Map projection</label>
+                    <select value={mapProjection} onChange={(e) => setMapProjection(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="rectangular">Rectangular</option>
+                      <option value="round_robinson">Round / Robinson</option>
+                      <option value="orthographic">Globe / orthographic</option>
+                      <option value="mercator">Mercator</option>
+                      <option value="plate_carree">PlateCarree</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Map background</label>
+                    <select value={mapBackground} onChange={(e) => setMapBackground(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="natural_earth_clean">Natural Earth clean</option>
+                      <option value="white_publication">White publication</option>
+                      <option value="light_ocean">Light ocean</option>
+                      <option value="dark_map">Dark map</option>
+                      <option value="border_only">Border only</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Arrow style</label>
+                    <select value={arrowStyle} onChange={(e) => setArrowStyle(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="curved_arrow">Curved arrow</option>
+                      <option value="straight_arrow">Straight arrow</option>
+                      <option value="great_circle_arrow">Great-circle arrow</option>
+                      <option value="bezier_arrow">Bezier arrow</option>
+                      <option value="dashed_route_arrow">Dashed route arrow</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Arrowhead</label>
+                    <select value={arrowheadStyle} onChange={(e) => setArrowheadStyle(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="standard_filled">Standard filled</option>
+                      <option value="large_filled">Large filled</option>
+                      <option value="small_clean">Small clean</option>
+                      <option value="wedge">Wedge</option>
+                      <option value="triangle">Triangle</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Arrow width by</label>
+                    <select value={arrowWidthBy} onChange={(e) => setArrowWidthBy(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="route_support">Route support</option>
+                      <option value="sequence_count">Sequence count</option>
+                      <option value="mean_nt_distance">Mean NT distance</option>
+                      <option value="same_lineage_count">Same-lineage count</option>
+                      <option value="equal">Equal width</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Arrow color by</label>
+                    <select value={arrowColorBy} onChange={(e) => setArrowColorBy(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="dominant_genotype">Dominant genotype</option>
+                      <option value="dominant_lineage">Dominant lineage</option>
+                      <option value="source_country">Source country</option>
+                      <option value="sink_country">Sink country</option>
+                      <option value="route_support">Route support</option>
+                      <option value="single_color">Single color</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Line curve</label>
+                    <select value={lineCurveStyle} onChange={(e) => setLineCurveStyle(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                      <option value="great_circle_curve">Great-circle curve</option>
+                      <option value="quadratic_curve">Quadratic curve</option>
+                      <option value="soft_arc">Soft arc</option>
+                      <option value="straight">Straight</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Node color / shape</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={nodeColorBy} onChange={(e) => setNodeColorBy(e.target.value)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                        <option value="dominant_genotype">Genotype</option>
+                        <option value="dominant_lineage">Lineage</option>
+                        <option value="country">Country</option>
+                        <option value="host">Host</option>
+                      </select>
+                      <select value={nodeShapeBy} onChange={(e) => setNodeShapeBy(e.target.value)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                        <option value="dominant_host">Host</option>
+                        <option value="dominant_genotype">Genotype</option>
+                        <option value="sample_source">Sample source</option>
+                        <option value="equal">Equal</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+<details className="rounded-2xl border border-white/10 bg-slate-950 p-4">
+              <summary className="cursor-pointer text-sm font-black text-emerald-200">Bacterial genome analysis options</summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Bacterial mode</label>
+                  <select value={bacterialMode} onChange={(e) => setBacterialMode(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                    <option value="wgs">WGS / assembled genome</option>
+                    <option value="partial_gene">Partial gene</option>
+                    <option value="hybrid">Hybrid WGS + partial</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Genome source</label>
+                  <select value={genomeSource} onChange={(e) => setGenomeSource(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                    <option value="ncbi_assembly">NCBI Assembly</option>
+                    <option value="ncbi_genbank">NCBI GenBank</option>
+                    <option value="refseq">RefSeq</option>
+                    <option value="manual_only">Manual upload only</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Required genomes</label>
+                  <input value={genomeQueryCount} onChange={(e) => setGenomeQueryCount(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Download strategy</label>
+                  <select value={genomeDownloadStrategy} onChange={(e) => setGenomeDownloadStrategy(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                    <option value="ani_mash_balanced">ANI + Mash balanced</option>
+                    <option value="host_balanced">Host-balanced</option>
+                    <option value="country_balanced">Country-balanced</option>
+                    <option value="year_balanced">Year-balanced</option>
+                    <option value="closest_ani">Closest ANI</option>
+                    <option value="diverse_mash">Diverse Mash distance</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">ANI threshold</label>
+                  <input value={aniThreshold} onChange={(e) => setAniThreshold(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mash distance threshold</label>
+                  <input value={mashDistanceThreshold} onChange={(e) => setMashDistanceThreshold(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Per-year limit</label>
+                  <input value={genomePerYear} onChange={(e) => setGenomePerYear(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Country filter</label>
+                  <input value={genomeCountryFilter} onChange={(e) => setGenomeCountryFilter(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Host filter</label>
+                  <textarea value={genomeHostFilter} onChange={(e) => setGenomeHostFilter(e.target.value)} className="h-16 w-full rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Year filter</label>
+                  <textarea value={genomeYearFilter} onChange={(e) => setGenomeYearFilter(e.target.value)} className="h-16 w-full rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" placeholder="auto or 2010-2026 or 2020:5,2021:5" />
+                </div>
+              </div>
+            </details>
+
             <details className="rounded-2xl border border-white/10 bg-slate-950 p-4">
               <summary className="cursor-pointer text-sm font-black text-purple-200">BEAST / tMRCA settings</summary>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -4100,7 +5189,14 @@ function QigenexSection(props: any) {
             <button onClick={() => setResultView("text")} className={`rounded-xl px-4 py-2 text-sm font-black ${resultView === "text" ? "bg-purple-400 text-slate-950" : "bg-slate-900 text-slate-300"}`}>Text data</button>
             <button onClick={() => setResultView("log")} className={`rounded-xl px-4 py-2 text-sm font-black ${resultView === "log" ? "bg-emerald-400 text-slate-950" : "bg-slate-900 text-slate-300"}`}>Log</button>
           </div>
-          <div className="text-sm font-bold text-slate-400">Job: <span className="text-cyan-300">{result?.job_id || "NA"}</span></div>
+          <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-slate-400">
+            <span>Job: <span className="text-cyan-300">{result?.job_id || "NA"}</span></span>
+            {result?.job_id && !["completed", "failed", "cancelled"].includes(String(result?.status || result?.state || "").toLowerCase()) && (
+              <button onClick={() => cancelQigenexJob(result.job_id)} className="rounded-xl bg-red-400 px-3 py-2 text-xs font-black text-slate-950 hover:bg-white">
+                Cancel
+              </button>
+            )}
+          </div>
         </div>
 
         {resultView === "figures" && (

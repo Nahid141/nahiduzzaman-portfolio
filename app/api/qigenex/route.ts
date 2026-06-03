@@ -36,7 +36,18 @@ type AnalysisMode =
   | "geo_spatiotemporal"
   | "animal_host"
   | "visualization"
-  | "report_package";
+  | "report_package"
+  | "bacterial_wgs_phylogeny"
+  | "bacterial_partial_phylogeny"
+  | "bacterial_pangenome"
+  | "bacterial_amr"
+  | "bacterial_virulence"
+  | "bacterial_strain_serovar"
+  | "bacterial_antigen"
+  | "bacterial_mlst"
+  | "bacterial_plasmid"
+  | "bacterial_genome_download"
+  | "bacterial_wgs_analysis";
 
 const ANALYSES: AnalysisMode[] = [
   "complete",
@@ -71,6 +82,17 @@ const ANALYSES: AnalysisMode[] = [
   "geo_spatiotemporal",
   "animal_host",
   "visualization",
+  "bacterial_wgs_phylogeny",
+  "bacterial_partial_phylogeny",
+  "bacterial_pangenome",
+  "bacterial_amr",
+  "bacterial_virulence",
+  "bacterial_strain_serovar",
+  "bacterial_antigen",
+  "bacterial_mlst",
+  "bacterial_plasmid",
+  "bacterial_wgs_analysis",
+  "bacterial_genome_download",
   "report_package",
 ];
 
@@ -160,6 +182,57 @@ const FIGURE_DEFAULTS: Record<string, string[]> = {
     "breakpoint_density_plot",
     "recombination_composite",
   ],
+  bacterial_phylogeny_plot: [
+    "wgs_ani_mash_tree",
+    "core_snp_ml_tree",
+    "core_gene_tree",
+    "partial_gene_tree",
+    "clade_rectangular_tree",
+    "clade_circular_tree",
+    "metadata_annotated_tree",
+    "host_country_lineage_tree",
+    "ani_heatmap_tree",
+    "mash_distance_network",
+    "clade_distribution_bars",
+    "phylogeny_composite_panel",
+  ],
+  bacterial_pangenome_plot: [
+    "pan_core_gene_curve",
+    "gene_presence_absence_heatmap",
+    "accessory_gene_tree",
+    "functional_category_bar",
+    "gene_accumulation_box",
+    "shell_cloud_partition",
+    "pangenome_pca",
+    "roary_panaroo_summary",
+    "pangenome_composite_panel",
+  ],
+  bacterial_amr_plot: [
+    "amr_gene_heatmap",
+    "amr_class_bar",
+    "resistome_tree_annotation",
+    "amr_presence_matrix",
+    "amr_genotype_network",
+    "mar_index_plot",
+    "amr_country_host_panel",
+    "amr_composite_panel",
+  ],
+  bacterial_virulence_plot: [
+    "virulence_gene_heatmap",
+    "pathogenicity_island_map",
+    "toxin_adhesion_invasion_panel",
+    "virulence_tree_annotation",
+    "vfdb_category_bar",
+    "virulence_composite_panel",
+  ],
+  bacterial_typing_plot: [
+    "serovar_summary_bar",
+    "mlst_sequence_type_bar",
+    "antigen_profile_matrix",
+    "strain_cluster_tree",
+    "typing_confidence_plot",
+    "serovar_country_host_panel",
+  ],
   hypothesis_plot: [
     "hypothesis_scorecard",
     "evidence_weight_radar",
@@ -181,7 +254,8 @@ const FIGURE_DEFAULTS: Record<string, string[]> = {
     "missingness_histogram",
   ],
   map_spatiotemporal_plot: [
-    "world_route_map",
+    "rectangular_route_map",
+    "round_projection_map",
     "country_bubble_map",
     "choropleth_map",
     "timeline_map_panel",
@@ -189,6 +263,11 @@ const FIGURE_DEFAULTS: Record<string, string[]> = {
     "spatiotemporal_heatmap",
     "route_animation_frames",
     "source_sink_map",
+    "lineage_route_map",
+    "host_shape_map",
+    "import_export_balance_map",
+    "route_support_map",
+    "map_composite_panel",
   ],
   ml_qml_performance_plot: [
     "confusion_matrix",
@@ -231,6 +310,17 @@ const ANALYSIS_TO_FIGURES: Record<string, string[]> = {
   animal_host: ["map_spatiotemporal_plot", "phylogenetic_tree", "fitness_landscape"],
   ml_qml: ["ml_qml_performance_plot"],
   genomic_intelligence: ["phylogenetic_tree", "transmission_distance", "fitness_landscape", "mutation_plot", "hypothesis_plot"],
+  bacterial_wgs_analysis: ["bacterial_phylogeny_plot", "bacterial_pangenome_plot", "bacterial_amr_plot", "bacterial_virulence_plot", "bacterial_typing_plot"],
+  bacterial_wgs_phylogeny: ["bacterial_phylogeny_plot", "map_spatiotemporal_plot", "bacterial_typing_plot"],
+  bacterial_partial_phylogeny: ["bacterial_phylogeny_plot", "bacterial_typing_plot"],
+  bacterial_pangenome: ["bacterial_pangenome_plot", "bacterial_phylogeny_plot"],
+  bacterial_amr: ["bacterial_amr_plot", "bacterial_phylogeny_plot"],
+  bacterial_virulence: ["bacterial_virulence_plot", "bacterial_phylogeny_plot"],
+  bacterial_strain_serovar: ["bacterial_typing_plot", "bacterial_phylogeny_plot"],
+  bacterial_antigen: ["bacterial_typing_plot"],
+  bacterial_mlst: ["bacterial_typing_plot", "bacterial_phylogeny_plot"],
+  bacterial_plasmid: ["bacterial_amr_plot", "bacterial_phylogeny_plot"],
+  bacterial_genome_download: ["bacterial_phylogeny_plot", "bacterial_pangenome_plot", "bacterial_amr_plot"],
   report_package: ["qc_summary_plot"],
   complete: Object.keys(FIGURE_DEFAULTS),
 };
@@ -314,6 +404,7 @@ function selectedFlags(mode: AnalysisMode, figureType: string, layout: string) {
   const phylogenyModes = ["phylogeny", "evolution", "genomic_intelligence", "antigenic_drift", "antigenic_shift", "beast_tmrca", "transmission", "recombination", "phylodynamics", "outbreak_source", "lineage_replacement", "source_sink", "cross_species_jump"];
   const fitnessModes = ["fitness", "host_adaptation", "immune_escape", "selection_pressure", "within_host_evolution", "forecasting"];
   const geospatialModes = ["geo_spatiotemporal", "animal_host", "transmission", "source_sink", "outbreak_source"];
+  const bacterialModes = ["bacterial_wgs_analysis", "bacterial_wgs_phylogeny", "bacterial_partial_phylogeny", "bacterial_pangenome", "bacterial_amr", "bacterial_virulence", "bacterial_strain_serovar", "bacterial_antigen", "bacterial_mlst", "bacterial_plasmid", "bacterial_genome_download"];
 
   if (mode === "complete") {
     Object.keys(flags).forEach((key) => (flags[key] = "true"));
@@ -333,6 +424,17 @@ function selectedFlags(mode: AnalysisMode, figureType: string, layout: string) {
   }
   if (fitnessModes.includes(mode)) flags.run_fitness = "true";
   if (geospatialModes.includes(mode)) flags.run_geospatial = "true";
+  if (bacterialModes.includes(mode)) {
+    flags.run_qc = "true";
+    flags.run_classification = "true";
+    flags.run_phylogeny = "true";
+    flags.run_visualization = "true";
+    if (mode === "bacterial_pangenome") flags.run_pangenome = "true";
+    if (["bacterial_amr", "bacterial_plasmid"].includes(mode)) flags.run_amr = "true";
+    if (mode === "bacterial_virulence") flags.run_virulence = "true";
+    if (["bacterial_strain_serovar", "bacterial_antigen", "bacterial_mlst"].includes(mode)) flags.run_typing = "true";
+  }
+
   if (mode === "report_package") {
     flags.run_report = "true";
     flags.run_packaging = "true";
@@ -358,6 +460,7 @@ function figureSetFor(mode: AnalysisMode, figureType: string) {
   if (figureType === "map_spatiotemporal_plot") return "geospatial";
   if (figureType === "qc_summary_plot") return "qc";
   if (figureType === "hypothesis_plot") return "hypothesis";
+  if (figureType.startsWith("bacterial_")) return "bacterial";
   return "basic";
 }
 
@@ -424,10 +527,36 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const url = new URL(req.url);
+    const action = url.searchParams.get("action");
+    const cancelJobId = url.searchParams.get("job_id");
+
+    if (action === "cancel") {
+      if (!cancelJobId) {
+        return NextResponse.json({ status: "error", error: "Missing job_id for cancellation." }, { status: 400 });
+      }
+      const response = await fetch(`${backendUrl()}/jobs/${encodeURIComponent(cancelJobId)}/cancel`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const parsed = await parseJson(response);
+      return NextResponse.json(parsed.data, { status: parsed.ok ? response.status : 502 });
+    }
+
     const incoming = await req.formData();
     const selected = normalizeAnalysis(incoming.get("selected_analysis") || incoming.get("analysisMode"));
-    const figureType = normalizeFigureType(clean(incoming.get("figure_type"), ""), selected);
-    const designs = normalizeDesigns(figureType, clean(incoming.get("figure_designs") || incoming.get("phylogeny_tree_designs") || incoming.get("fitness_figure_designs"), ""));
+    const requestedFigure = clean(incoming.get("figure_type"), "");
+    const bacterialFigure = clean(incoming.get("bacterial_wgs_figure_type"), "");
+    const figureType = normalizeFigureType(selected === "bacterial_wgs_analysis" && bacterialFigure ? bacterialFigure : requestedFigure, selected);
+    const designs = normalizeDesigns(
+      figureType,
+      clean(
+        selected === "bacterial_wgs_analysis"
+          ? incoming.get("bacterial_wgs_figure_designs") || incoming.get("figure_designs")
+          : incoming.get("figure_designs") || incoming.get("phylogeny_tree_designs") || incoming.get("fitness_figure_designs"),
+        ""
+      )
+    );
     const layout = clean(incoming.get("figure_layout"), "separate");
     const form = new FormData();
 
@@ -449,6 +578,17 @@ export async function POST(req: NextRequest) {
       form.append("fasta", makeTextFile(alignedText, "pasted_aligned_input.fasta"));
     } else {
       return NextResponse.json({ status: "error", error: "No FASTA input found." }, { status: 400 });
+    }
+
+    const targetGenomeFile = incoming.get("targetGenomeFile");
+    const manualComparableGenomeFile = incoming.get("manualComparableGenomeFile");
+    if (targetGenomeFile instanceof File && targetGenomeFile.size > 0) {
+      form.append("target_genome", targetGenomeFile, targetGenomeFile.name || "target_genome.fasta");
+      form.append("targetGenomeFile", targetGenomeFile, targetGenomeFile.name || "target_genome.fasta");
+    }
+    if (manualComparableGenomeFile instanceof File && manualComparableGenomeFile.size > 0) {
+      form.append("manual_comparable_genomes", manualComparableGenomeFile, manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
+      form.append("manualComparableGenomeFile", manualComparableGenomeFile, manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
     }
 
     const metadata = incoming.get("metadata");
@@ -527,6 +667,78 @@ export async function POST(req: NextRequest) {
     // Keep metadata explicit for newer backend modules.
     form.set("sequence_metadata_hint", "metadata is forwarded from metadata/geoFile/geoRowsText/animalFile/animalRowsText when provided");
     form.set("metadata_required_for", "beast_tmrca,transmission,source_sink,host_adaptation,geo_spatiotemporal,forecasting");
+
+    const advancedForwardFields = [
+      "metadata_schema_preset",
+      "metadata_template_fields",
+      "metadata_required_fields",
+      "auto_enrich_metadata",
+      "auto_geocode_country",
+      "auto_typing",
+      "node_color_by",
+      "node_shape_by",
+      "map_projection",
+      "map_background",
+      "map_extent",
+      "route_level",
+      "aggregate_routes",
+      "arrow_style",
+      "arrow_width_by",
+      "arrow_color_by",
+      "arrowhead_style",
+      "line_curve_style",
+      "max_routes",
+      "route_support_threshold",
+      "bacterial_mode",
+      "genome_query_count",
+      "genome_source",
+      "genome_download_strategy",
+      "genome_host_filter",
+      "genome_country_filter",
+      "genome_year_filter",
+      "genome_per_year",
+      "ani_threshold",
+      "mash_distance_threshold",
+      "use_manual_genomes",
+      "run_pangenome",
+      "run_amr",
+      "run_virulence",
+      "run_serovar",
+      "run_antigen",
+      "run_mlst",
+      "target_genome_required",
+      "target_genome_input_mode",
+      "comparable_genome_mode",
+      "download_taxon_name",
+      "comparable_genome_class",
+      "comparable_host_groups",
+      "comparable_environment_groups",
+      "comparable_state_groups",
+      "comparable_genome_purpose",
+      "download_representative_only",
+      "include_reference_genomes",
+      "bacterial_tree_workflow",
+      "pangenome_workflow",
+      "bacterial_output_package",
+      "bacterial_wgs_task",
+      "bacterial_wgs_figure_type",
+      "bacterial_wgs_figure_designs",
+    ];
+
+    advancedForwardFields.forEach((field) => {
+      const value = incoming.get(field);
+      if (value !== null && value !== undefined) form.set(field, clean(value));
+    });
+
+    form.set("metadata_prebuilt_field_names", clean(incoming.get("metadata_template_fields"), "sample_id,strain,accession,country,latitude,longitude,collection_date,year,host,species,genotype,lineage,serovar,clade,source,isolation_site,study_id"));
+    form.set("metadata_entry_mode", "excel_like_grid");
+    form.set("metadata_grid_enabled", "true");
+    form.set("metadata_grid_version", "v14_fixed_scope");
+    form.set("map_arrow_customization_enabled", "true");
+    form.set("country_route_aggregation", clean(incoming.get("aggregate_routes"), "true"));
+    form.set("bacterial_genome_analysis_enabled", selected.startsWith("bacterial_") ? "true" : "false");
+    form.set("bacterial_comparable_download_ui", "enabled");
+    form.set("target_genome_input_policy", selected.startsWith("bacterial_") ? "manual_required" : "optional");
 
     const response = await fetch(`${backendUrl()}/jobs/analyze`, {
       method: "POST",
