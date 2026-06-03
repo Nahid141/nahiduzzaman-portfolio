@@ -1013,7 +1013,7 @@ export default function Tools() {
 
     const formData = new FormData();
 
-    formData.append("action", action);
+    formData.append("action", "analysis");
     formData.append("analysisMode", qigenexAnalysisMode);
     formData.append("selected_analysis", qigenexAnalysisMode);
     formData.append("sequenceMode", qigenexSequenceMode);
@@ -1031,17 +1031,16 @@ export default function Tools() {
       "geo_spatiotemporal",
     ];
 
-    const selectedBackendMode =
-      action === "figures" || action === "package"
-        ? "standard"
-        : standardModes.includes(qigenexAnalysisMode)
-        ? "standard"
-        : "fast";
-
+    const selectedBackendMode = standardModes.includes(qigenexAnalysisMode) ? "standard" : "fast";
     formData.append("mode", selectedBackendMode);
 
+    /**
+     * Important:
+     * One button now runs ONLY the selected analysis and automatically generates
+     * related text outputs and related figure outputs. It does NOT force complete workflow.
+     */
     const flags: Record<string, string> = {
-      run_visualization: "false",
+      run_visualization: "true",
       run_composite_figures: "false",
       run_packaging: "false",
       run_ml: "false",
@@ -1052,24 +1051,18 @@ export default function Tools() {
       run_phylogeny: "false",
     };
 
-    if (action === "figures") {
-      flags.run_visualization = "true";
-    } else if (action === "package") {
-      flags.run_visualization = "true";
-      flags.run_composite_figures = "true";
-      flags.run_packaging = "true";
-      flags.run_report = "true";
-    } else if (qigenexAnalysisMode === "complete") {
+    if (qigenexAnalysisMode === "complete") {
       Object.keys(flags).forEach((key) => {
         flags[key] = "true";
       });
     } else if (
       qigenexAnalysisMode === "evolution" ||
       qigenexAnalysisMode === "phylogeny" ||
-      qigenexAnalysisMode === "genomic_intelligence" ||
       qigenexAnalysisMode === "antigenic_drift" ||
       qigenexAnalysisMode === "antigenic_shift"
     ) {
+      flags.run_phylogeny = "true";
+    } else if (qigenexAnalysisMode === "genomic_intelligence") {
       flags.run_phylogeny = "true";
     } else if (qigenexAnalysisMode === "ml_qml") {
       flags.run_ml = "true";
@@ -1078,24 +1071,48 @@ export default function Tools() {
       flags.run_fitness = "true";
     } else if (qigenexAnalysisMode === "geo_spatiotemporal") {
       flags.run_geospatial = "true";
-    } else if (qigenexAnalysisMode === "visualization") {
-      flags.run_visualization = "true";
     } else if (qigenexAnalysisMode === "report_package") {
       flags.run_report = "true";
       flags.run_packaging = "true";
+      flags.run_composite_figures = "true";
     }
 
     Object.entries(flags).forEach(([key, value]) => formData.append(key, value));
 
-    formData.append("figure_set", action === "figures" ? "selected" : "none");
-    formData.append("figure_plot_style", figureOptions.figure_plot_style || "auto");
+    const selectedFigureSet =
+      qigenexAnalysisMode === "phylogeny" ||
+      qigenexAnalysisMode === "evolution" ||
+      qigenexAnalysisMode === "antigenic_drift" ||
+      qigenexAnalysisMode === "antigenic_shift"
+        ? "phylogeny"
+        : qigenexAnalysisMode === "mutation" || qigenexAnalysisMode === "vaccine_escape"
+        ? "mutation"
+        : qigenexAnalysisMode === "qc" || qigenexAnalysisMode === "classification"
+        ? "qc"
+        : qigenexAnalysisMode === "ml_qml"
+        ? "ml_qml"
+        : qigenexAnalysisMode === "fitness"
+        ? "fitness"
+        : qigenexAnalysisMode === "complete"
+        ? "full"
+        : "basic";
+
+    const selectedTreeDesign =
+      figureOptions.figure_plot_style && figureOptions.figure_plot_style !== "auto"
+        ? figureOptions.figure_plot_style === "panel"
+          ? "publication_composite"
+          : figureOptions.figure_plot_style
+        : "publication_composite,rectangular_phylogram,circular_phylogram,genotype_colored_tree,genotype_country_heatmap,clustering_scatter";
+
+    formData.append("figure_set", selectedFigureSet);
+    formData.append("figure_plot_style", figureOptions.figure_plot_style || "publication_composite");
     formData.append("figure_styles", figureOptions.figure_styles || "journal_clean");
     formData.append("figure_formats", figureOptions.figure_formats || "png,svg,pdf");
     formData.append("figure_dpi", figureOptions.figure_dpi || "900");
     formData.append("figure_layout", figureOptions.figure_layout || "separate");
     formData.append("panel_mode", figureOptions.figure_layout || "separate");
     formData.append("separate_or_panel", figureOptions.figure_layout || "separate");
-    formData.append("figure_title_mode", figureOptions.figure_title_mode || "none");
+    formData.append("figure_title_mode", figureOptions.figure_title_mode || "full");
     formData.append("figure_title_text", figureOptions.figure_title_text || "");
     formData.append("figure_title_font_size", figureOptions.title_font_size || "16");
     formData.append("x_title_font_size", figureOptions.axis_title_font_size || "13");
@@ -1106,6 +1123,14 @@ export default function Tools() {
     formData.append("x_title_font_weight", figureOptions.font_weight || "bold");
     formData.append("y_title_font_weight", figureOptions.font_weight || "bold");
     formData.append("transparent_background", figureOptions.transparent_background || "false");
+
+    formData.append("phylogeny_tree_designs", selectedTreeDesign);
+    formData.append("phylogeny_title_mode", figureOptions.figure_title_mode || "full");
+    formData.append("phylogeny_font_size", figureOptions.axis_title_font_size || "12");
+    formData.append("phylogeny_font_weight", figureOptions.font_weight || "bold");
+    formData.append("phylogeny_panel_mode", figureOptions.figure_layout || "separate");
+    formData.append("phylogeny_color_by", "auto");
+    formData.append("phylogeny_max_tips", "1200");
 
     if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText);
     if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile);
@@ -1142,12 +1167,12 @@ export default function Tools() {
       }
 
       setQigenexResult(data);
-
       const jobId = data.job_id;
 
       pushLog([
-        `> QI-GeneX-N ${action} request submitted to Oracle backend.`,
+        "> QI-GeneX-N selected analysis submitted to Oracle backend.",
         `> Selected module: ${qigenexAnalysisMode}.`,
+        "> Related text outputs and figures will be generated automatically.",
         `> Backend mode: ${data.mode ?? selectedBackendMode}`,
         `> Job ID: ${jobId}`,
         "> Polling job status...",
@@ -1160,7 +1185,6 @@ export default function Tools() {
       setQigenexLoading(false);
     }
   }
-
 
   function clearQigenexInputs() {
     setQigenexFastaFile(null);
@@ -3639,7 +3663,7 @@ function QigenexSection(props: any) {
           <div>
             <p className="text-lg font-black text-slate-200">No generated figure is available yet.</p>
             <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
-              A treefile can be generated without a viewable PNG/SVG/PDF. Click Generate selected figure after choosing a style.
+              A treefile can be generated without a viewable PNG/SVG/PDF. Click Run analysis after choosing a style.
             </p>
           </div>
         </div>
@@ -3706,7 +3730,7 @@ function QigenexSection(props: any) {
             <p className="text-xs font-black uppercase tracking-[0.28em] text-purple-300">QI-GeneX-N</p>
             <h3 className="mt-2 text-2xl font-black text-white">Simple analysis and result viewer</h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Results are separated into two main views: text data and figures. Figures are generated only when you click the figure button.
+              Run one selected analysis. The related text outputs and related figures are generated automatically.
             </p>
           </div>
 
@@ -3765,15 +3789,7 @@ function QigenexSection(props: any) {
 
         <div className="mt-5 flex flex-wrap gap-3">
           <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("analysis", figureOptions)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white disabled:opacity-50">
-            Run selected analysis
-          </button>
-
-          <button disabled={loading || !hasSequence} onClick={() => { setResultView("figures"); runQigenexAnalysis("figures", figureOptions); }} className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white disabled:opacity-50">
-            Generate selected figure
-          </button>
-
-          <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("package", figureOptions)} className="rounded-2xl bg-emerald-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white disabled:opacity-50">
-            Generate report package
+            Run analysis
           </button>
 
           <button disabled={loading} onClick={clearQigenexInputs} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 transition hover:border-purple-300 hover:text-purple-200 disabled:opacity-50">
@@ -3968,7 +3984,7 @@ function QigenexSection(props: any) {
 
             <div className={`mt-4 rounded-2xl border p-4 text-sm font-bold ${selectedPlot.ok ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
               {selectedPlot.ok
-                ? `Selected figure style: ${selectedPlot.label}. Click Generate selected figure if it has not been generated yet.`
+                ? `Selected figure style: ${selectedPlot.label}. Click Run analysis if it has not been generated yet.`
                 : `Reason this style may not be generated: ${selectedPlot.needs}. Choose another style or run the needed analysis first.`}
             </div>
           </div>
