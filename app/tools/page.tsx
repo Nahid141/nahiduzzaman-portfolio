@@ -4393,6 +4393,26 @@ function QigenexSection(props: any) {
     });
   }
 
+
+  async function cancelQigenexJob(jobId?: string) {
+    const target = jobId || result?.job_id;
+    if (!target) {
+      console.warn("No QI-GeneX-N job ID is available for cancellation.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/qigenex?job_id=${encodeURIComponent(target)}&action=cancel`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => ({}));
+      console.info("QI-GeneX-N cancel response:", data);
+    } catch (error) {
+      console.error("QI-GeneX-N cancel failed:", error);
+    }
+  }
+
   function renderFigure(path: string) {
     if (!path) {
       return <div className="flex min-h-[360px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-slate-950 p-6 text-sm text-slate-400">No figure yet.</div>;
@@ -5240,7 +5260,7 @@ function QigenexSection(props: any) {
           <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-slate-400">
             <span>Job: <span className="text-cyan-300">{result?.job_id || "NA"}</span></span>
             {result?.job_id && !["completed", "failed", "cancelled"].includes(String(result?.status || result?.state || "").toLowerCase()) && (
-              <button onClick={() => cancelQigenexJob(result.job_id)} className="rounded-xl bg-red-400 px-3 py-2 text-xs font-black text-slate-950 hover:bg-white">
+              <button onClick={() => cancelQigenexJob(String(result.job_id))} className="rounded-xl bg-red-400 px-3 py-2 text-xs font-black text-slate-950 hover:bg-white">
                 Cancel
               </button>
             )}
