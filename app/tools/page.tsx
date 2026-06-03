@@ -58,11 +58,25 @@ type QigenexAnalysisMode =
   | "fitness"
   | "evolution"
   | "phylogeny"
+  | "beast_tmrca"
+  | "transmission"
   | "genomic_intelligence"
   | "ml_qml"
   | "antigenic_drift"
   | "antigenic_shift"
   | "vaccine_escape"
+  | "vaccine_matching"
+  | "host_adaptation"
+  | "immune_escape"
+  | "recombination"
+  | "phylodynamics"
+  | "selection_pressure"
+  | "outbreak_source"
+  | "lineage_replacement"
+  | "source_sink"
+  | "within_host_evolution"
+  | "cross_species_jump"
+  | "forecasting"
   | "geo_spatiotemporal"
   | "animal_host"
   | "visualization"
@@ -71,7 +85,9 @@ type QigenexAnalysisMode =
 type QigenexAction = "analysis" | "figures" | "package";
 
 type QigenexFigureOptions = {
+  figure_type?: string;
   figure_plot_style?: string;
+  figure_designs?: string;
   figure_styles?: string;
   figure_formats?: string;
   figure_dpi?: string;
@@ -83,6 +99,15 @@ type QigenexFigureOptions = {
   tick_label_font_size?: string;
   font_weight?: string;
   transparent_background?: string;
+  tree_inference_method?: string;
+  beast_tmrca?: string;
+  beast_clock_model?: string;
+  beast_chain_length?: string;
+  tmrca_substitution_rate?: string;
+  transmission_mode?: string;
+  nt_distance_threshold?: string;
+  fitness_figure_designs?: string;
+  novel_hypothesis?: string;
 };
 
 function today() {
@@ -1005,107 +1030,108 @@ export default function Tools() {
       qigenexAlignedFile;
 
     if (!hasSequence) {
-      pushLog([
-        "> ERROR: QI-GeneX-N requires FASTA text, FASTA file, aligned text, or aligned FASTA file.",
-      ]);
+      pushLog(["> ERROR: FASTA input is required."]);
       return;
     }
 
     const formData = new FormData();
 
-    formData.append("action", "analysis");
+    const standardModes = [
+      "complete",
+      "phylogeny",
+      "evolution",
+      "genomic_intelligence",
+      "fitness",
+      "geo_spatiotemporal",
+      "ml_qml",
+      "beast_tmrca",
+      "transmission",
+    ];
+
+    const selectedBackendMode = standardModes.includes(qigenexAnalysisMode) ? "standard" : "fast";
+    const figureType = figureOptions.figure_type || "auto";
+    const figureDesigns = figureOptions.figure_designs || "";
+    const figureSet =
+      figureType.includes("fitness") || qigenexAnalysisMode === "fitness"
+        ? "fitness"
+        : figureType.includes("transmission") || qigenexAnalysisMode === "transmission"
+        ? "geospatial"
+        : figureType.includes("beast") || figureType.includes("phylogenetic") || qigenexAnalysisMode === "phylogeny"
+        ? "phylogeny"
+        : qigenexAnalysisMode === "mutation" || qigenexAnalysisMode === "vaccine_escape"
+        ? "mutation"
+        : qigenexAnalysisMode === "ml_qml"
+        ? "ml_qml"
+        : qigenexAnalysisMode === "geo_spatiotemporal"
+        ? "geospatial"
+        : qigenexAnalysisMode === "complete"
+        ? "full"
+        : "qc";
+
+    formData.append("action", action || "analysis");
     formData.append("analysisMode", qigenexAnalysisMode);
     formData.append("selected_analysis", qigenexAnalysisMode);
     formData.append("sequenceMode", qigenexSequenceMode);
     formData.append("tool", "QI-GeneX-N");
-
-    const standardModes = [
-      "complete",
-      "evolution",
-      "phylogeny",
-      "genomic_intelligence",
-      "ml_qml",
-      "antigenic_drift",
-      "antigenic_shift",
-      "fitness",
-      "geo_spatiotemporal",
-    ];
-
-    const selectedBackendMode = standardModes.includes(qigenexAnalysisMode) ? "standard" : "fast";
     formData.append("mode", selectedBackendMode);
+    formData.append("run_only_selected", qigenexAnalysisMode === "complete" ? "false" : "true");
+    formData.append("module_scope", qigenexAnalysisMode);
 
-    /**
-     * Important:
-     * One button now runs ONLY the selected analysis and automatically generates
-     * related text outputs and related figure outputs. It does NOT force complete workflow.
-     */
     const flags: Record<string, string> = {
-      run_visualization: "true",
-      run_composite_figures: "false",
-      run_packaging: "false",
+      run_alignment: "false",
+      run_qc: "false",
+      run_classification: "false",
+      run_gene_orf: "false",
+      run_gp5: "false",
+      run_mutation: "false",
+      run_phylogeny: "false",
       run_ml: "false",
       run_qml: "false",
       run_fitness: "false",
       run_geospatial: "false",
       run_report: "false",
-      run_phylogeny: "false",
+      run_visualization: "true",
+      run_composite_figures: figureOptions.figure_layout === "panel" ? "true" : "false",
+      run_packaging: "false",
     };
 
     if (qigenexAnalysisMode === "complete") {
       Object.keys(flags).forEach((key) => {
         flags[key] = "true";
       });
-    } else if (
-      qigenexAnalysisMode === "evolution" ||
-      qigenexAnalysisMode === "phylogeny" ||
-      qigenexAnalysisMode === "antigenic_drift" ||
-      qigenexAnalysisMode === "antigenic_shift"
-    ) {
-      flags.run_phylogeny = "true";
-    } else if (qigenexAnalysisMode === "genomic_intelligence") {
-      flags.run_phylogeny = "true";
-    } else if (qigenexAnalysisMode === "ml_qml") {
-      flags.run_ml = "true";
-      flags.run_qml = "true";
-    } else if (qigenexAnalysisMode === "fitness") {
-      flags.run_fitness = "true";
-    } else if (qigenexAnalysisMode === "geo_spatiotemporal") {
-      flags.run_geospatial = "true";
-    } else if (qigenexAnalysisMode === "report_package") {
-      flags.run_report = "true";
-      flags.run_packaging = "true";
-      flags.run_composite_figures = "true";
+    } else {
+      if (qigenexAnalysisMode === "alignment") flags.run_alignment = "true";
+      if (qigenexAnalysisMode === "qc") flags.run_qc = "true";
+      if (qigenexAnalysisMode === "classification") flags.run_classification = "true";
+      if (qigenexAnalysisMode === "gene_orf") flags.run_gene_orf = "true";
+      if (qigenexAnalysisMode === "gp5") flags.run_gp5 = "true";
+      if (["mutation", "vaccine_escape", "antigenic_drift", "antigenic_shift"].includes(qigenexAnalysisMode)) flags.run_mutation = "true";
+      if (["phylogeny", "evolution", "genomic_intelligence", "antigenic_drift", "antigenic_shift", "beast_tmrca", "transmission"].includes(qigenexAnalysisMode)) flags.run_phylogeny = "true";
+      if (qigenexAnalysisMode === "ml_qml") {
+        flags.run_ml = "true";
+        flags.run_qml = "true";
+      }
+      if (["fitness", "host_adaptation", "immune_escape"].includes(qigenexAnalysisMode)) flags.run_fitness = "true";
+      if (["geo_spatiotemporal", "animal_host", "transmission"].includes(qigenexAnalysisMode)) flags.run_geospatial = "true";
+      if (qigenexAnalysisMode === "report_package") {
+        flags.run_report = "true";
+        flags.run_packaging = "true";
+      }
     }
+
+    if (figureType.includes("beast")) flags.run_phylogeny = "true";
+    if (figureType.includes("transmission")) {
+      flags.run_phylogeny = "true";
+      flags.run_geospatial = "true";
+    }
+    if (figureType.includes("fitness")) flags.run_fitness = "true";
 
     Object.entries(flags).forEach(([key, value]) => formData.append(key, value));
 
-    const selectedFigureSet =
-      qigenexAnalysisMode === "phylogeny" ||
-      qigenexAnalysisMode === "evolution" ||
-      qigenexAnalysisMode === "antigenic_drift" ||
-      qigenexAnalysisMode === "antigenic_shift"
-        ? "phylogeny"
-        : qigenexAnalysisMode === "mutation" || qigenexAnalysisMode === "vaccine_escape"
-        ? "mutation"
-        : qigenexAnalysisMode === "qc" || qigenexAnalysisMode === "classification"
-        ? "qc"
-        : qigenexAnalysisMode === "ml_qml"
-        ? "ml_qml"
-        : qigenexAnalysisMode === "fitness"
-        ? "fitness"
-        : qigenexAnalysisMode === "complete"
-        ? "full"
-        : "basic";
-
-    const selectedTreeDesign =
-      figureOptions.figure_plot_style && figureOptions.figure_plot_style !== "auto"
-        ? figureOptions.figure_plot_style === "panel"
-          ? "publication_composite"
-          : figureOptions.figure_plot_style
-        : "publication_composite,rectangular_phylogram,circular_phylogram,genotype_colored_tree,genotype_country_heatmap,clustering_scatter";
-
-    formData.append("figure_set", selectedFigureSet);
-    formData.append("figure_plot_style", figureOptions.figure_plot_style || "publication_composite");
+    formData.append("figure_set", figureSet);
+    formData.append("figure_type", figureType);
+    formData.append("figure_plot_style", figureOptions.figure_plot_style || figureType);
+    formData.append("figure_designs", figureDesigns);
     formData.append("figure_styles", figureOptions.figure_styles || "journal_clean");
     formData.append("figure_formats", figureOptions.figure_formats || "png,svg,pdf");
     formData.append("figure_dpi", figureOptions.figure_dpi || "900");
@@ -1124,29 +1150,34 @@ export default function Tools() {
     formData.append("y_title_font_weight", figureOptions.font_weight || "bold");
     formData.append("transparent_background", figureOptions.transparent_background || "false");
 
-    formData.append("phylogeny_tree_designs", selectedTreeDesign);
+    formData.append("tree_inference_method", figureOptions.tree_inference_method || "maximum_likelihood");
+    formData.append("phylogeny_tree_designs", figureType.includes("phylogenetic") || figureType.includes("beast") || figureType.includes("transmission") ? figureDesigns : "");
     formData.append("phylogeny_title_mode", figureOptions.figure_title_mode || "full");
     formData.append("phylogeny_font_size", figureOptions.axis_title_font_size || "12");
     formData.append("phylogeny_font_weight", figureOptions.font_weight || "bold");
     formData.append("phylogeny_panel_mode", figureOptions.figure_layout || "separate");
     formData.append("phylogeny_color_by", "auto");
-    formData.append("phylogeny_max_tips", "1200");
+    formData.append("phylogeny_max_tips", "2500");
+
+    formData.append("run_beast_tmrca", figureOptions.beast_tmrca || (figureType.includes("beast") ? "true" : "false"));
+    formData.append("beast_tmrca", figureOptions.beast_tmrca || (figureType.includes("beast") ? "true" : "false"));
+    formData.append("beast_clock_model", figureOptions.beast_clock_model || "relaxed_lognormal");
+    formData.append("beast_chain_length", figureOptions.beast_chain_length || "10000000");
+    formData.append("tmrca_substitution_rate", figureOptions.tmrca_substitution_rate || "0.001");
+    formData.append("transmission_mode", figureOptions.transmission_mode || "standard");
+    formData.append("nt_distance_threshold", figureOptions.nt_distance_threshold || "0.015");
+    formData.append("fitness_figure_designs", figureOptions.fitness_figure_designs || (figureType.includes("fitness") ? figureDesigns : ""));
 
     if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText);
     if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile);
-
     if (qigenexAlignedText.trim()) formData.append("alignedText", qigenexAlignedText);
     if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
-
     if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
     if (qigenexVaccineStrainText.trim()) formData.append("vaccineStrainText", qigenexVaccineStrainText);
-
     if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
     if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
-
     if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
     if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText);
-
     if (qigenexNotes.trim()) formData.append("notes", qigenexNotes);
 
     setQigenexLoading(true);
@@ -1170,12 +1201,11 @@ export default function Tools() {
       const jobId = data.job_id;
 
       pushLog([
-        "> QI-GeneX-N selected analysis submitted to Oracle backend.",
-        `> Selected module: ${qigenexAnalysisMode}.`,
-        "> Related text outputs and figures will be generated automatically.",
-        `> Backend mode: ${data.mode ?? selectedBackendMode}`,
+        "> QI-GeneX-N submitted.",
+        `> Module: ${qigenexAnalysisMode}.`,
+        `> Figure: ${figureType}.`,
         `> Job ID: ${jobId}`,
-        "> Polling job status...",
+        "> Polling status.",
       ]);
 
       if (jobId) await pollQigenexJob(jobId);
@@ -1554,7 +1584,7 @@ export default function Tools() {
                   QI-GeneX-N
                 </h2>
                 <p className="text-sm text-slate-400">
-                  Selected analysis • text-data viewer • live figure viewer
+                  Selected analysis
                 </p>
               </div>
 
@@ -3547,6 +3577,7 @@ function NetworkSection(props: any) {
 }
 
 
+
 function QigenexSection(props: any) {
   const {
     sequenceMode,
@@ -3587,33 +3618,257 @@ function QigenexSection(props: any) {
     log,
   } = props;
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [resultView, setResultView] = useState<"text" | "figures">("text");
-  const [selectedFigure, setSelectedFigure] = useState("");
-  const [selectedText, setSelectedText] = useState("");
-  const [figurePlotStyle, setFigurePlotStyle] = useState("auto");
-  const [figureStyle, setFigureStyle] = useState("journal_clean");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [resultView, setResultView] = useState<"text" | "figures" | "log">("figures");
+  const [figureType, setFigureType] = useState("phylogenetic_tree");
+  const [selectedDesigns, setSelectedDesigns] = useState<string[]>(["rectangular_phylogram", "circular_phylogram", "publication_composite_tree"]);
   const [figureFormats, setFigureFormats] = useState("png,svg,pdf");
   const [figureDpi, setFigureDpi] = useState("900");
   const [figureLayout, setFigureLayout] = useState("separate");
-  const [figureTitleMode, setFigureTitleMode] = useState("none");
-  const [figureTitleText, setFigureTitleText] = useState("");
-  const [axisFontSize, setAxisFontSize] = useState("13");
-  const [labelFontSize, setLabelFontSize] = useState("11");
-  const [fontWeight, setFontWeight] = useState("bold");
-  const [transparentBackground, setTransparentBackground] = useState(false);
+  const [titleMode, setTitleMode] = useState("full");
+  const [treeMethod, setTreeMethod] = useState("maximum_likelihood");
+  const [beastClock, setBeastClock] = useState("relaxed_lognormal");
+  const [beastChain, setBeastChain] = useState("10000000");
+  const [tmrcaRate, setTmrcaRate] = useState("0.001");
+  const [transmissionMode, setTransmissionMode] = useState("standard");
+  const [ntThreshold, setNtThreshold] = useState("0.015");
+  const [hypothesis, setHypothesis] = useState("auto");
+  const [selectedFigure, setSelectedFigure] = useState("");
+  const [selectedText, setSelectedText] = useState("");
 
   const hasSequence = Boolean(fastaText.trim() || fastaFileName || alignedText.trim() || alignedFileName);
-  const outputs = result?.outputs && typeof result.outputs === "object" ? result.outputs : {};
 
+  const analysisList = [
+    { id: "qc", label: "QC" },
+    { id: "classification", label: "Classification" },
+    { id: "gene_orf", label: "Gene / ORF" },
+    { id: "gp5", label: "GP5" },
+    { id: "mutation", label: "Mutation" },
+    { id: "vaccine_escape", label: "Vaccine escape" },
+    { id: "vaccine_matching", label: "Vaccine matching" },
+    { id: "phylogeny", label: "Phylogeny" },
+    { id: "beast_tmrca", label: "BEAST / tMRCA" },
+    { id: "transmission", label: "Transmission" },
+    { id: "recombination", label: "Recombination" },
+    { id: "phylodynamics", label: "Phylodynamics" },
+    { id: "outbreak_source", label: "Outbreak source" },
+    { id: "source_sink", label: "Source–sink" },
+    { id: "lineage_replacement", label: "Lineage replacement" },
+    { id: "fitness", label: "Fitness landscape" },
+    { id: "selection_pressure", label: "Selection pressure" },
+    { id: "host_adaptation", label: "Host adaptation" },
+    { id: "immune_escape", label: "Immune escape" },
+    { id: "within_host_evolution", label: "Within-host evolution" },
+    { id: "cross_species_jump", label: "Cross-species jump" },
+    { id: "forecasting", label: "Forecasting" },
+    { id: "antigenic_drift", label: "Antigenic drift" },
+    { id: "antigenic_shift", label: "Antigenic shift" },
+    { id: "geo_spatiotemporal", label: "Geo-temporal" },
+    { id: "animal_host", label: "Animal / host" },
+    { id: "ml_qml", label: "ML/QML" },
+    { id: "genomic_intelligence", label: "Genomic intelligence" },
+    { id: "report_package", label: "Report" },
+    { id: "complete", label: "Complete" },
+  ];
+
+  const figureCatalog: Record<string, { label: string; designs: string[] }> = {
+    phylogenetic_tree: {
+      label: "Phylogenetic tree",
+      designs: [
+        "rectangular_phylogram",
+        "rectangular_cladogram",
+        "circular_phylogram",
+        "circular_cladogram",
+        "fan_tree",
+        "unrooted_equal_angle",
+        "time_scaled_tree",
+        "genotype_colored_tree",
+        "country_colored_tree",
+        "host_colored_tree",
+        "metadata_annotated_tree",
+        "density_collapsed_tree",
+        "root_to_tip_regression_tree",
+        "mutation_annotated_tree",
+        "publication_composite_tree",
+      ],
+    },
+    beast_tmrca: {
+      label: "BEAST / tMRCA",
+      designs: [
+        "beast_mcc_tree",
+        "beast_timeline_tmrca",
+        "beast_skyline_plot",
+        "beast_hpd_bars",
+        "beast_lineage_through_time",
+        "beast_location_transition",
+        "beast_clade_age_heatmap",
+        "beast_tree_density_cloud",
+        "beast_temporal_scatter",
+        "beast_clock_rate_panel",
+        "beast_trait_summary",
+        "beast_dual_panel",
+      ],
+    },
+    transmission_distance: {
+      label: "Transmission",
+      designs: [
+        "nt_distance_network",
+        "minimum_spanning_network",
+        "phylogeo_importation_map",
+        "country_source_sink_bars",
+        "country_sharing_heatmap",
+        "cluster_enrichment_bars",
+        "lineage_persistence_panel",
+        "annual_transmission_events",
+        "route_support_map",
+        "nt_distance_histogram",
+        "transmission_sankey",
+        "transmission_composite_panel",
+      ],
+    },
+    fitness_landscape: {
+      label: "Fitness landscape",
+      designs: [
+        "mountain_3d_transmission",
+        "ridge_landscape",
+        "contour_surface",
+        "peak_valley_map",
+        "sequence_space_scatter",
+        "fitness_walk_paths",
+        "host_shift_surface",
+        "fitness_heat_raster",
+        "epistasis_network",
+        "fitness_vs_time",
+        "fitness_vs_genotype_box",
+        "fitness_composite_panel",
+      ],
+    },
+    mutation_plot: {
+      label: "Mutation plot",
+      designs: [
+        "mutation_lollipop",
+        "mutation_heatmap",
+        "mutation_spectrum_bar",
+        "mutation_domain_divergence",
+        "hotspot_rank_bar",
+        "temporal_hotspot_line",
+        "co_mutation_network",
+        "protein_landscape_dual",
+      ],
+    },
+    recombination_plot: {
+      label: "Recombination",
+      designs: [
+        "recombination_breakpoint_map",
+        "parental_mosaic_plot",
+        "similarity_scan",
+        "bootscan_panel",
+        "recombination_network",
+        "segment_origin_heatmap",
+        "recombination_hotspot_lollipop",
+        "lineage_mosaic_tree",
+        "breakpoint_density_plot",
+        "recombination_composite",
+      ],
+    },
+    hypothesis_plot: {
+      label: "Hypothesis test",
+      designs: [
+        "hypothesis_scorecard",
+        "evidence_weight_radar",
+        "support_heatmap",
+        "causal_pathway_panel",
+        "model_comparison_panel",
+        "uncertainty_interval_plot",
+        "sensitivity_tornado",
+        "counterfactual_projection",
+        "risk_shift_waterfall",
+        "decision_matrix",
+      ],
+    },
+    qc_summary_plot: {
+      label: "QC plot",
+      designs: ["qc_dashboard", "length_gc_scatter", "ambiguity_heatmap", "coverage_bar", "pass_fail_waterfall", "missingness_histogram"],
+    },
+    map_spatiotemporal_plot: {
+      label: "Map / timeline",
+      designs: ["world_route_map", "country_bubble_map", "choropleth_map", "timeline_map_panel", "flow_network_map", "spatiotemporal_heatmap", "route_animation_frames", "source_sink_map"],
+    },
+    ml_qml_performance_plot: {
+      label: "ML/QML plot",
+      designs: ["confusion_matrix", "roc_pr_curves", "feature_importance_bar", "shap_summary", "embedding_projection", "model_comparison_panel", "uncertainty_calibration", "quantum_kernel_map"],
+    },
+  };
+
+  const figureForAnalysis: Record<string, string[]> = {
+    qc: ["qc_summary_plot"],
+    classification: ["qc_summary_plot", "phylogenetic_tree"],
+    gene_orf: ["mutation_plot", "qc_summary_plot"],
+    gp5: ["mutation_plot", "phylogenetic_tree"],
+    mutation: ["mutation_plot"],
+    vaccine_escape: ["mutation_plot", "fitness_landscape", "hypothesis_plot"],
+    vaccine_matching: ["mutation_plot", "phylogenetic_tree", "hypothesis_plot"],
+    phylogeny: ["phylogenetic_tree", "beast_tmrca", "transmission_distance"],
+    beast_tmrca: ["beast_tmrca", "phylogenetic_tree"],
+    transmission: ["transmission_distance", "phylogenetic_tree", "beast_tmrca"],
+    recombination: ["recombination_plot", "phylogenetic_tree", "mutation_plot"],
+    phylodynamics: ["beast_tmrca", "transmission_distance", "phylogenetic_tree"],
+    outbreak_source: ["transmission_distance", "map_spatiotemporal_plot", "phylogenetic_tree"],
+    source_sink: ["transmission_distance", "map_spatiotemporal_plot"],
+    lineage_replacement: ["phylogenetic_tree", "beast_tmrca", "hypothesis_plot"],
+    fitness: ["fitness_landscape", "transmission_distance"],
+    selection_pressure: ["fitness_landscape", "mutation_plot", "hypothesis_plot"],
+    host_adaptation: ["fitness_landscape", "phylogenetic_tree", "hypothesis_plot"],
+    immune_escape: ["fitness_landscape", "mutation_plot", "hypothesis_plot"],
+    within_host_evolution: ["fitness_landscape", "mutation_plot", "beast_tmrca"],
+    cross_species_jump: ["phylogenetic_tree", "fitness_landscape", "hypothesis_plot"],
+    forecasting: ["fitness_landscape", "map_spatiotemporal_plot", "hypothesis_plot"],
+    antigenic_drift: ["phylogenetic_tree", "mutation_plot", "beast_tmrca"],
+    antigenic_shift: ["phylogenetic_tree", "recombination_plot", "transmission_distance"],
+    geo_spatiotemporal: ["map_spatiotemporal_plot", "transmission_distance"],
+    animal_host: ["map_spatiotemporal_plot", "phylogenetic_tree", "fitness_landscape"],
+    ml_qml: ["ml_qml_performance_plot"],
+    genomic_intelligence: ["phylogenetic_tree", "transmission_distance", "fitness_landscape", "mutation_plot", "hypothesis_plot"],
+    report_package: ["qc_summary_plot"],
+    complete: Object.keys(figureCatalog),
+  };
+
+  const hypothesisList = [
+    { id: "auto", label: "Auto" },
+    { id: "vaccine_escape_driven_emergence", label: "Vaccine-escape emergence" },
+    { id: "fitness_peak_shift", label: "Fitness peak shift" },
+    { id: "nt_distance_supported_transmission", label: "NT-distance transmission" },
+    { id: "source_sink_regional_seeding", label: "Source–sink seeding" },
+    { id: "tmrca_recent_introduction", label: "Recent introduction / tMRCA" },
+    { id: "host_adaptation_signature", label: "Host-adaptation signature" },
+    { id: "recombination_generated_lineage", label: "Recombination-generated lineage" },
+    { id: "immune_pressure_selection", label: "Immune-pressure selection" },
+    { id: "lineage_replacement_event", label: "Lineage replacement event" },
+  ];
+
+  const availableFigureTypes = figureForAnalysis[analysisMode] || ["phylogenetic_tree"];
+  const currentFigureType = availableFigureTypes.includes(figureType) ? figureType : availableFigureTypes[0];
+  const currentDesigns = figureCatalog[currentFigureType]?.designs || [];
+
+  useEffect(() => {
+    const firstType = (figureForAnalysis[analysisMode] || ["phylogenetic_tree"])[0];
+    setFigureType(firstType);
+    setSelectedDesigns((figureCatalog[firstType]?.designs || []).slice(0, 3));
+  }, [analysisMode]);
+
+  useEffect(() => {
+    const firstThree = (figureCatalog[currentFigureType]?.designs || []).slice(0, 3);
+    setSelectedDesigns(firstThree);
+  }, [currentFigureType]);
+
+  const outputs = result?.outputs && typeof result.outputs === "object" ? result.outputs : {};
   const outputItems = Object.entries(outputs)
     .filter(([, value]) => typeof value === "string")
     .map(([key, value]) => ({ key, path: String(value), filename: qigenexDownloadName(String(value)) }));
 
   const textItems = outputItems.filter((item) =>
-    /\.(csv|tsv|txt|json|xlsx|xls|fasta|fa|fas|fna|treefile|nwk|newick|log|md|html)$/i.test(item.path)
+    /\.(csv|tsv|txt|json|xlsx|xls|fasta|fa|fas|fna|treefile|nwk|newick|log|md|html|xml)$/i.test(item.path)
   );
-
   const figureItems = outputItems.filter((item) =>
     /\.(png|jpg|jpeg|svg|pdf|webp)$/i.test(item.path)
   );
@@ -3621,142 +3876,63 @@ function QigenexSection(props: any) {
   const selectedFigurePath = selectedFigure || figureItems[0]?.path || "";
   const selectedTextPath = selectedText || textItems[0]?.path || "";
 
-  const availableText = JSON.stringify(result || {}).toLowerCase();
+  function toggleDesign(id: string) {
+    setSelectedDesigns((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id]);
+  }
 
-  const plotStyles = [
-    { id: "auto", label: "Auto best figure", needs: "Any completed result", ok: Boolean(result?.status === "completed") },
-    { id: "phylogeny", label: "Phylogenetic tree", needs: "Treefile/Newick/alignment output", ok: availableText.includes("tree") || availableText.includes("phylo") || analysisMode === "phylogeny" },
-    { id: "heatmap", label: "Heatmap", needs: "Matrix, genotype-country table, mutation matrix, or abundance matrix", ok: availableText.includes("heatmap") || availableText.includes("matrix") || availableText.includes("genotype") },
-    { id: "boxplot", label: "Boxplot", needs: "Grouped numeric values", ok: availableText.includes("group") || availableText.includes("genotype") || availableText.includes("distance") || availableText.includes("score") },
-    { id: "pca", label: "PCA plot", needs: "Alignment distance matrix or numeric feature matrix", ok: availableText.includes("pca") || availableText.includes("distance") || availableText.includes("alignment") },
-    { id: "bar", label: "Bar plot", needs: "Counts, categories, classifications, or summary table", ok: availableText.includes("count") || availableText.includes("summary") || availableText.includes("classified") },
-    { id: "line", label: "Line plot", needs: "Year/date/time-series values", ok: availableText.includes("year") || availableText.includes("date") || availableText.includes("temporal") },
-    { id: "map", label: "Geospatial map", needs: "Country or latitude/longitude metadata", ok: availableText.includes("country") || availableText.includes("latitude") || availableText.includes("longitude") || analysisMode === "geo_spatiotemporal" },
-    { id: "network", label: "Network plot", needs: "Pairwise links, edges, country-sharing, or transmission network", ok: availableText.includes("network") || availableText.includes("edge") || availableText.includes("link") },
-    { id: "volcano", label: "Volcano plot", needs: "Effect size and p-value table", ok: availableText.includes("p_value") || availableText.includes("p-value") || availableText.includes("effect") },
-    { id: "lollipop", label: "Mutation lollipop", needs: "Mutation position/frequency table", ok: availableText.includes("mutation") || availableText.includes("position") || analysisMode === "mutation" },
-    { id: "density", label: "Density/ridge plot", needs: "Continuous numeric distributions", ok: availableText.includes("distribution") || availableText.includes("distance") || availableText.includes("score") },
-    { id: "panel", label: "Multi-panel composite", needs: "At least two generated figures", ok: figureItems.length >= 2 },
-  ];
-
-  const selectedPlot = plotStyles.find((item) => item.id === figurePlotStyle) || plotStyles[0];
-
-  const figureOptions = {
-    figure_plot_style: figurePlotStyle,
-    figure_styles: figureStyle,
-    figure_formats: figureFormats,
-    figure_dpi: figureDpi,
-    figure_layout: figureLayout,
-    figure_title_mode: figureTitleMode,
-    figure_title_text: figureTitleText,
-    axis_title_font_size: axisFontSize,
-    tick_label_font_size: labelFontSize,
-    title_font_size: "16",
-    font_weight: fontWeight,
-    transparent_background: transparentBackground ? "true" : "false",
-  };
+  function runNow() {
+    runQigenexAnalysis("analysis", {
+      figure_type: currentFigureType,
+      figure_plot_style: currentFigureType,
+      figure_designs: selectedDesigns.join(","),
+      figure_styles: "journal_clean",
+      figure_formats: figureFormats,
+      figure_dpi: figureDpi,
+      figure_layout: figureLayout,
+      figure_title_mode: titleMode,
+      title_font_size: "16",
+      axis_title_font_size: "13",
+      tick_label_font_size: "11",
+      font_weight: "bold",
+      transparent_background: "false",
+      tree_inference_method: treeMethod,
+      beast_tmrca: currentFigureType === "beast_tmrca" ? "true" : "false",
+      beast_clock_model: beastClock,
+      beast_chain_length: beastChain,
+      tmrca_substitution_rate: tmrcaRate,
+      transmission_mode: transmissionMode,
+      nt_distance_threshold: ntThreshold,
+      fitness_figure_designs: currentFigureType === "fitness_landscape" ? selectedDesigns.join(",") : "",
+      novel_hypothesis: hypothesis,
+    });
+  }
 
   function renderFigure(path: string) {
     if (!path) {
-      return (
-        <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-8 text-center">
-          <div>
-            <p className="text-lg font-black text-slate-200">No generated figure is available yet.</p>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
-              A treefile can be generated without a viewable PNG/SVG/PDF. Click Run analysis after choosing a style.
-            </p>
-          </div>
-        </div>
-      );
+      return <div className="flex min-h-[360px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-slate-950 p-6 text-sm text-slate-400">No figure yet.</div>;
     }
 
     const url = qigenexResultUrl(path);
-
     if (/\.pdf$/i.test(path)) {
-      return <iframe title="QI-GeneX-N figure preview" src={url} className="h-[640px] w-full rounded-2xl border border-white/10 bg-white" />;
+      return <iframe title="QI-GeneX-N figure preview" src={url} className="h-[760px] w-full rounded-2xl border border-white/10 bg-white" />;
     }
 
     return (
       <div className="rounded-2xl border border-white/10 bg-white p-3">
-        <img src={url} alt="QI-GeneX-N generated figure" className="max-h-[760px] w-full rounded-xl object-contain" />
+        <img src={url} alt="QI-GeneX-N figure" className="max-h-[760px] w-full rounded-xl object-contain" />
       </div>
     );
   }
 
-  function downloadAllTextFiles() {
-    textItems.forEach((item, index) => {
-      setTimeout(() => {
-        const a = document.createElement("a");
-        a.href = qigenexResultUrl(item.path);
-        a.download = item.filename;
-        a.click();
-      }, index * 250);
-    });
-  }
-
-  function downloadAllFigures() {
-    figureItems.forEach((item, index) => {
-      setTimeout(() => {
-        const a = document.createElement("a");
-        a.href = qigenexResultUrl(item.path);
-        a.download = item.filename;
-        a.click();
-      }, index * 250);
-    });
-  }
-
-  const analysisOptions = [
-    ["qc", "QC only"],
-    ["classification", "Classification only"],
-    ["gene_orf", "Gene/ORF extraction"],
-    ["gp5", "GP5 analysis"],
-    ["mutation", "Mutation profiling"],
-    ["vaccine_escape", "Vaccine mismatch"],
-    ["phylogeny", "Phylogeny"],
-    ["genomic_intelligence", "Genomic intelligence"],
-    ["ml_qml", "ML/QML"],
-    ["fitness", "Fitness landscape"],
-    ["geo_spatiotemporal", "Geo-spatiotemporal"],
-    ["visualization", "Figures only"],
-    ["report_package", "Report/package"],
-    ["complete", "Complete workflow"],
-  ];
-
   return (
     <section className="space-y-5">
-      <div className="rounded-[2rem] border border-purple-300/15 bg-white/[0.04] p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="rounded-[1.6rem] border border-white/10 bg-slate-950/80 p-5">
+        <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr_auto]">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-purple-300">QI-GeneX-N</p>
-            <h3 className="mt-2 text-2xl font-black text-white">Simple analysis and result viewer</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Run one selected analysis. The related text outputs and related figures are generated automatically.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-black text-slate-200">
-            {loading ? "Running..." : result?.status || "Ready"}
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="space-y-3">
-            <label className="block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Analysis module</label>
-            <select value={analysisMode} onChange={(e) => setAnalysisMode(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-purple-300">
-              {analysisOptions.map(([id, label]) => (
-                <option key={id} value={id}>{label}</option>
-              ))}
-            </select>
-
-            <label className="block pt-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400">Sequence input</label>
-            <select value={sequenceMode} onChange={(e) => setSequenceMode(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-purple-300">
-              <option value="unaligned">Unaligned FASTA</option>
-              <option value="aligned">Aligned FASTA</option>
-            </select>
-
+            <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Input</label>
             <input
               type="file"
-              accept=".fa,.fasta,.fas,.aln,.txt"
+              accept=".fasta,.fa,.fas,.fna,.txt,.aln"
               onChange={(e) => {
                 const file = e.target.files?.[0] || null;
                 if (sequenceMode === "aligned") {
@@ -3767,237 +3943,207 @@ function QigenexSection(props: any) {
                   setFastaFileName(file?.name || "");
                 }
               }}
-              className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300"
+              className="block w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 text-sm text-slate-300 file:mr-3 file:rounded-xl file:border-0 file:bg-purple-400 file:px-3 file:py-2 file:font-black file:text-slate-950"
             />
-
-            <p className="text-xs font-bold text-purple-200">
-              Loaded: {sequenceMode === "aligned" ? alignedFileName || "none" : fastaFileName || "none"}
-            </p>
+            <p className="mt-2 truncate text-xs text-slate-500">{fastaFileName || alignedFileName || "FASTA required"}</p>
           </div>
 
           <div>
-            <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Paste FASTA instead of file</label>
-            <textarea
-              rows={9}
-              value={sequenceMode === "aligned" ? alignedText : fastaText}
-              onChange={(e) => sequenceMode === "aligned" ? setAlignedText(e.target.value) : setFastaText(e.target.value)}
-              placeholder={">sample_1\\nATGC..."}
-              className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:border-purple-300"
-            />
+            <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Analysis</label>
+            <select value={analysisMode} onChange={(e) => setAnalysisMode(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none">
+              {analysisList.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Figure</label>
+            <select value={currentFigureType} onChange={(e) => setFigureType(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none">
+              {availableFigureTypes.map((type) => <option key={type} value={type}>{figureCatalog[type]?.label || type}</option>)}
+            </select>
+          </div>
+
+          <div className="flex items-end gap-3">
+            <button onClick={runNow} disabled={loading || !hasSequence || selectedDesigns.length === 0} className="rounded-2xl bg-purple-400 px-6 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">
+              {loading ? "Running" : "Run"}
+            </button>
+            <button onClick={() => setMoreOpen(!moreOpen)} className="rounded-2xl border border-white/10 bg-slate-900 px-5 py-3 text-sm font-black text-white hover:border-purple-300">
+              {moreOpen ? "Less" : "More"}
+            </button>
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("analysis", figureOptions)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white disabled:opacity-50">
-            Run analysis
-          </button>
+        {moreOpen && (
+          <div className="mt-5 space-y-5 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-black text-white">Designs</p>
+                <button onClick={() => setSelectedDesigns(currentDesigns)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-300 hover:border-purple-300">Select all</button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {currentDesigns.map((id) => (
+                  <button key={id} type="button" onClick={() => toggleDesign(id)} className={`rounded-xl border px-3 py-2 text-left text-xs font-bold ${selectedDesigns.includes(id) ? "border-purple-300 bg-purple-400/15 text-purple-100" : "border-white/10 bg-slate-950 text-slate-300"}`}>
+                    {id.replace(/_/g, " ")}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <button disabled={loading} onClick={clearQigenexInputs} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 transition hover:border-purple-300 hover:text-purple-200 disabled:opacity-50">
-            Clear
-          </button>
-
-          <button onClick={() => setShowAdvanced(!showAdvanced)} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 transition hover:border-cyan-300 hover:text-cyan-200">
-            {showAdvanced ? "Hide options" : "Figure/data options"}
-          </button>
-        </div>
-      </div>
-
-      {showAdvanced && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-cyan-300/15 bg-white/[0.04] p-5">
-            <h4 className="text-xl font-black text-cyan-200">Figure selection and style</h4>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">Figure type</label>
-                <select value={figurePlotStyle} onChange={(e) => setFigurePlotStyle(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                  {plotStyles.map((style) => (
-                    <option key={style.id} value={style.id}>
-                      {style.ok ? "✓" : "!"} {style.label}
-                    </option>
-                  ))}
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Sequence mode</label>
+                <select value={sequenceMode} onChange={(e) => setSequenceMode(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                  <option value="unaligned">Unaligned</option>
+                  <option value="aligned">Aligned</option>
                 </select>
               </div>
-
-              <select value={figureStyle} onChange={(e) => setFigureStyle(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                <option value="journal_clean">Journal clean</option>
-                <option value="journal_colorblind">Colorblind journal</option>
-                <option value="journal_mono">Monochrome journal</option>
-                <option value="presentation_dark">Presentation dark</option>
-              </select>
-
-              <input value={figureFormats} onChange={(e) => setFigureFormats(e.target.value)} placeholder="png,svg,pdf" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-
-              <select value={figureDpi} onChange={(e) => setFigureDpi(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                <option value="300">300 DPI</option>
-                <option value="600">600 DPI</option>
-                <option value="900">900 DPI</option>
-                <option value="1200">1200 DPI</option>
-              </select>
-
-              <select value={figureLayout} onChange={(e) => setFigureLayout(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                <option value="separate">Separate figure</option>
-                <option value="panel">Panel/composite</option>
-              </select>
-
-              <select value={figureTitleMode} onChange={(e) => setFigureTitleMode(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                <option value="none">No upper title</option>
-                <option value="auto">Auto title</option>
-                <option value="custom">Custom title</option>
-              </select>
-
-              <input value={figureTitleText} onChange={(e) => setFigureTitleText(e.target.value)} placeholder="Custom title" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <input value={axisFontSize} onChange={(e) => setAxisFontSize(e.target.value)} placeholder="Axis title font size" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <input value={labelFontSize} onChange={(e) => setLabelFontSize(e.target.value)} placeholder="Label font size" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-
-              <select value={fontWeight} onChange={(e) => setFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                <option value="normal">Normal text</option>
-                <option value="bold">Bold text</option>
-                <option value="black">Black/heavy text</option>
-              </select>
-
-              <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-200">
-                <input type="checkbox" checked={transparentBackground} onChange={(e) => setTransparentBackground(e.target.checked)} />
-                Transparent background
-              </label>
-            </div>
-
-            <div className={`mt-4 rounded-2xl border p-4 text-sm font-bold ${selectedPlot.ok ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
-              {selectedPlot.ok ? `Available or likely available: ${selectedPlot.label}` : `Not enough data for ${selectedPlot.label}. Required: ${selectedPlot.needs}. Choose another style or run the required analysis first.`}
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-            <h4 className="text-xl font-black text-purple-200">Optional metadata</h4>
-            <div className="mt-4 grid gap-3">
-              <textarea rows={3} value={referenceText} onChange={(e) => setReferenceText(e.target.value)} placeholder="Optional reference sequence text" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <textarea rows={3} value={vaccineStrainText} onChange={(e) => setVaccineStrainText(e.target.value)} placeholder="Optional vaccine strain text" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <textarea rows={3} value={geoRowsText} onChange={(e) => setGeoRowsText(e.target.value)} placeholder="Optional geospatial metadata rows" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <textarea rows={3} value={animalRowsText} onChange={(e) => setAnimalRowsText(e.target.value)} placeholder="Optional animal metadata rows" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <div className="grid gap-3 md:grid-cols-2">
-                <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setGeoFile(file); setGeoFileName(file?.name || ""); }} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-300" />
-                <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setAnimalFile(file); setAnimalFileName(file?.name || ""); }} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-300" />
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Formats</label>
+                <input value={figureFormats} onChange={(e) => setFigureFormats(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
               </div>
-              <p className="text-xs text-slate-500">Geo file: {geoFileName || "none"} | Animal file: {animalFileName || "none"}</p>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">DPI</label>
+                <input value={figureDpi} onChange={(e) => setFigureDpi(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Layout</label>
+                <select value={figureLayout} onChange={(e) => setFigureLayout(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                  <option value="separate">Separate</option>
+                  <option value="panel">Panel</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Title</label>
+                <select value={titleMode} onChange={(e) => setTitleMode(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                  <option value="full">Full</option>
+                  <option value="short">Short</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Tree method</label>
+                <select value={treeMethod} onChange={(e) => setTreeMethod(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                  <option value="maximum_likelihood">ML</option>
+                  <option value="neighbor_joining">NJ</option>
+                  <option value="bayesian">Bayesian</option>
+                  <option value="parsimony">Parsimony</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Transmission</label>
+                <select value={transmissionMode} onChange={(e) => setTransmissionMode(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                  <option value="standard">Standard</option>
+                  <option value="nt_distance">NT distance</option>
+                  <option value="phylogenetic">Phylogenetic</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">NT threshold</label>
+                <input value={ntThreshold} onChange={(e) => setNtThreshold(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              </div>
             </div>
+
+            <details className="rounded-2xl border border-white/10 bg-slate-950 p-4">
+              <summary className="cursor-pointer text-sm font-black text-purple-200">BEAST / tMRCA settings</summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Clock</label>
+                  <select value={beastClock} onChange={(e) => setBeastClock(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
+                    <option value="strict">Strict</option>
+                    <option value="relaxed_lognormal">Relaxed lognormal</option>
+                    <option value="relaxed_exponential">Relaxed exponential</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Chain</label>
+                  <input value={beastChain} onChange={(e) => setBeastChain(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Substitution rate</label>
+                  <input value={tmrcaRate} onChange={(e) => setTmrcaRate(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+                </div>
+              </div>
+            </details>
+
+            <details className="rounded-2xl border border-white/10 bg-slate-950 p-4">
+              <summary className="cursor-pointer text-sm font-black text-slate-200">Input fields</summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <textarea value={fastaText} onChange={(e) => setFastaText(e.target.value)} placeholder="Paste FASTA" className="h-28 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                <textarea value={alignedText} onChange={(e) => setAlignedText(e.target.value)} placeholder="Paste aligned FASTA" className="h-28 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                <textarea value={referenceText} onChange={(e) => setReferenceText(e.target.value)} placeholder="Reference FASTA / strain" className="h-24 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                <textarea value={vaccineStrainText} onChange={(e) => setVaccineStrainText(e.target.value)} placeholder="Vaccine strain FASTA / IDs" className="h-24 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+
+                <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
+                  <div className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-purple-200">Sequence metadata</div>
+                  <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setGeoFile(file); setGeoFileName(file?.name || ""); }} className="block w-full text-sm text-slate-300" />
+                  <div className="mt-2 truncate text-xs text-slate-400">{geoFileName || "sample_id, country, year, genotype, host, latitude, longitude"}</div>
+                  <textarea value={geoRowsText} onChange={(e) => setGeoRowsText(e.target.value)} placeholder="sample_id,country,year,genotype,host,latitude,longitude" className="mt-3 h-24 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" />
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
+                  <div className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Animal / host metadata</div>
+                  <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setAnimalFile(file); setAnimalFileName(file?.name || ""); }} className="block w-full text-sm text-slate-300" />
+                  <div className="mt-2 truncate text-xs text-slate-400">{animalFileName || "animal_id, sample_id, species, age, sex, disease_state"}</div>
+                  <textarea value={animalRowsText} onChange={(e) => setAnimalRowsText(e.target.value)} placeholder="animal_id,sample_id,species,age,sex,disease_state" className="mt-3 h-24 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" />
+                </div>
+
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes / logic for analysis" className="h-20 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white md:col-span-2" />
+              </div>
+            </details>
           </div>
+        )}
+      </div>
+
+      <div className="rounded-[1.6rem] border border-white/10 bg-slate-950/80 p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-2">
+            <button onClick={() => setResultView("figures")} className={`rounded-xl px-4 py-2 text-sm font-black ${resultView === "figures" ? "bg-cyan-400 text-slate-950" : "bg-slate-900 text-slate-300"}`}>Figures</button>
+            <button onClick={() => setResultView("text")} className={`rounded-xl px-4 py-2 text-sm font-black ${resultView === "text" ? "bg-purple-400 text-slate-950" : "bg-slate-900 text-slate-300"}`}>Text data</button>
+            <button onClick={() => setResultView("log")} className={`rounded-xl px-4 py-2 text-sm font-black ${resultView === "log" ? "bg-emerald-400 text-slate-950" : "bg-slate-900 text-slate-300"}`}>Log</button>
+          </div>
+          <div className="text-sm font-bold text-slate-400">Job: <span className="text-cyan-300">{result?.job_id || "NA"}</span></div>
         </div>
-      )}
 
-      <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h3 className="text-2xl font-black text-purple-200">Results</h3>
-            <p className={`mt-1 text-sm font-black ${qigenexStatusColor(result?.status)}`}>Status: {result?.status || "not submitted"}</p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => setResultView("text")} className={`rounded-2xl px-5 py-3 text-sm font-black ${resultView === "text" ? "bg-purple-400 text-slate-950" : "border border-white/10 bg-white/5 text-slate-200"}`}>
-              View text data
-            </button>
-            <button onClick={() => setResultView("figures")} className={`rounded-2xl px-5 py-3 text-sm font-black ${resultView === "figures" ? "bg-cyan-400 text-slate-950" : "border border-white/10 bg-white/5 text-slate-200"}`}>
-              View figures
-            </button>
-            {result && (
-              <button onClick={() => downloadJSON(result, "qigenex_job_status.json")} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 hover:border-purple-300">
-                Download status JSON
-              </button>
-            )}
-          </div>
-        </div>
-
-        {result && (
-          <div className="mb-5 grid gap-3 md:grid-cols-4">
-            <ResultCard title="Job ID" value={result.job_id || "NA"} />
-            <ResultCard title="Message" value={result.message || result.error || "NA"} />
-            <ResultCard title="Text files" value={String(textItems.length)} />
-            <ResultCard title="Figures" value={String(figureItems.length)} />
+        {resultView === "figures" && (
+          <div className="grid gap-4 xl:grid-cols-[0.35fr_0.65fr]">
+            <div className="space-y-2">
+              {figureItems.length === 0 ? (
+                <div className="rounded-xl bg-slate-900 p-4 text-sm text-slate-400">No figures yet.</div>
+              ) : figureItems.map((item) => (
+                <button key={item.path} onClick={() => setSelectedFigure(item.path)} className={`w-full rounded-xl border p-3 text-left text-xs font-bold ${selectedFigurePath === item.path ? "border-cyan-300 bg-cyan-400/10 text-cyan-100" : "border-white/10 bg-slate-900 text-slate-300"}`}>
+                  {item.filename}
+                </button>
+              ))}
+            </div>
+            <div>{renderFigure(selectedFigurePath)}</div>
           </div>
         )}
 
         {resultView === "text" && (
-          <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-xl font-black text-purple-200">Text result files</h4>
-              <button disabled={textItems.length === 0} onClick={downloadAllTextFiles} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:opacity-50">
-                Download all text results
-              </button>
-            </div>
-
-            {textItems.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900 p-6 text-sm font-bold text-slate-400">
-                No text result files are available yet.
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {textItems.map((item) => (
-                  <button key={`${item.key}-${item.path}`} onClick={() => setSelectedText(item.path)} className={`rounded-2xl border p-4 text-left transition ${selectedTextPath === item.path ? "border-purple-300 bg-purple-400/10" : "border-white/10 bg-slate-900 hover:border-purple-300/50"}`}>
-                    <p className="text-sm font-black text-purple-100">{item.key.replace(/_/g, " ")}</p>
-                    <p className="mt-1 truncate text-xs font-bold text-slate-500">{item.filename}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {selectedTextPath && (
-              <div className="mt-5 flex flex-wrap gap-3">
-                <a href={qigenexResultUrl(selectedTextPath)} download={qigenexDownloadName(selectedTextPath)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white">
-                  Download selected text result
-                </a>
-                <a href={qigenexResultUrl(selectedTextPath)} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 hover:border-purple-300">
-                  Open selected result
-                </a>
-              </div>
-            )}
-          </div>
-        )}
-
-        {resultView === "figures" && (
-          <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-xl font-black text-cyan-200">Figure viewer</h4>
-              <div className="flex flex-wrap gap-3">
-                <button disabled={figureItems.length === 0} onClick={downloadAllFigures} className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:opacity-50">
-                  Download all figures
+          <div className="grid gap-4 xl:grid-cols-[0.35fr_0.65fr]">
+            <div className="space-y-2">
+              {textItems.length === 0 ? (
+                <div className="rounded-xl bg-slate-900 p-4 text-sm text-slate-400">No text outputs yet.</div>
+              ) : textItems.map((item) => (
+                <button key={item.path} onClick={() => setSelectedText(item.path)} className={`w-full rounded-xl border p-3 text-left text-xs font-bold ${selectedTextPath === item.path ? "border-purple-300 bg-purple-400/10 text-purple-100" : "border-white/10 bg-slate-900 text-slate-300"}`}>
+                  {item.filename}
                 </button>
-                {selectedFigurePath && (
-                  <a href={qigenexResultUrl(selectedFigurePath)} download={qigenexDownloadName(selectedFigurePath)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white">
-                    Download selected figure
-                  </a>
-                )}
-              </div>
+              ))}
             </div>
-
-            {figureItems.length > 0 && (
-              <div className="mb-4 flex gap-3 overflow-x-auto pb-2">
-                {figureItems.map((file) => (
-                  <button key={`${file.key}-${file.path}`} onClick={() => setSelectedFigure(file.path)} className={`min-w-[190px] rounded-2xl border p-3 text-left text-xs font-black transition ${selectedFigurePath === file.path ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-white/10 bg-slate-900 text-slate-300 hover:border-cyan-300/50"}`}>
-                    {file.key.replace(/_/g, " ")}
-                    <span className="mt-1 block truncate text-[10px] text-slate-500">{file.filename}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {renderFigure(selectedFigurePath)}
-
-            <div className={`mt-4 rounded-2xl border p-4 text-sm font-bold ${selectedPlot.ok ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
-              {selectedPlot.ok
-                ? `Selected figure style: ${selectedPlot.label}. Click Run analysis if it has not been generated yet.`
-                : `Reason this style may not be generated: ${selectedPlot.needs}. Choose another style or run the needed analysis first.`}
+            <div className="rounded-2xl border border-white/10 bg-slate-900 p-5 text-sm text-slate-300">
+              {selectedTextPath ? (
+                <a href={qigenexResultUrl(selectedTextPath)} download={qigenexDownloadName(selectedTextPath)} className="rounded-xl bg-purple-400 px-4 py-3 font-black text-slate-950">
+                  Download selected text file
+                </a>
+              ) : "No file selected."}
             </div>
           </div>
         )}
-      </div>
 
-      <div className="rounded-[2rem] border border-white/10 bg-black/30 p-5">
-        <h3 className="mb-3 text-xl font-black text-purple-200">Console</h3>
-        <div className="max-h-72 overflow-auto rounded-2xl border border-white/10 bg-black/40 p-4 font-mono text-xs leading-6 text-emerald-200">
-          {log.map((line: string, index: number) => (
-            <div key={`${line}-${index}`}>{line}</div>
-          ))}
-        </div>
+        {resultView === "log" && (
+          <div className="max-h-80 overflow-auto rounded-2xl bg-black/40 p-4 font-mono text-xs leading-6 text-emerald-200">
+            {log.map((line: string, idx: number) => <div key={`${idx}-${line}`}>{line}</div>)}
+          </div>
+        )}
       </div>
     </section>
   );
