@@ -172,6 +172,9 @@ type QigenexFigureOptions = {
   bacterial_tree_workflow?: string;
   pangenome_workflow?: string;
   bacterial_output_package?: string;
+  metadataFile?: File | null;
+  metadataText?: string;
+  metadata_preset?: string;
 };
 
 
@@ -1436,9 +1439,11 @@ export default function Tools() {
     if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
     if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
     if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText);
-    if (metadataRows.length > 0 && metadataColumns.length > 0) {
-      formData.append("metadata", metadataRowsToFile(metadataColumns, metadataRows, `qigenex_${metadataPreset}_metadata.csv`));
-      formData.append("metadataText", metadataRowsToCsv(metadataColumns, metadataRows));
+    if (figureOptions.metadataFile) {
+      formData.append("metadata", figureOptions.metadataFile, figureOptions.metadataFile.name || "qigenex_metadata.csv");
+    }
+    if (figureOptions.metadataText?.trim()) {
+      formData.append("metadataText", figureOptions.metadataText);
     }
     if (qigenexNotes.trim()) formData.append("notes", qigenexNotes);
 
@@ -4344,6 +4349,9 @@ function QigenexSection(props: any) {
       targetGenomeFile: targetGenomeFile,
       manualComparableGenomeFile: manualComparableGenomeFile,
       novel_hypothesis: hypothesis,
+      metadataFile: metadataRowsToFile(metadataColumns, metadataRows, `qigenex_${metadataPreset}_metadata.csv`),
+      metadataText: metadataRowsToCsv(metadataColumns, metadataRows),
+      metadata_preset: metadataPreset,
       metadata_schema_preset: metadataPreset,
       metadata_template_fields: metadataFields,
       metadata_required_fields: requiredMetadataFields,

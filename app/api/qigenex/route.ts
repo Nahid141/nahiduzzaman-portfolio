@@ -672,6 +672,7 @@ export async function POST(req: NextRequest) {
       "metadata_schema_preset",
       "metadata_template_fields",
       "metadata_required_fields",
+      "metadata_preset",
       "auto_enrich_metadata",
       "auto_geocode_country",
       "auto_typing",
