@@ -1530,7 +1530,7 @@ export default function Tools() {
                   QI-GeneX-N
                 </h2>
                 <p className="text-sm text-slate-400">
-                  Sequence analysis • mutation profile • reports
+                  Selected analysis • text-data viewer • live figure viewer
                 </p>
               </div>
 
@@ -3522,6 +3522,7 @@ function NetworkSection(props: any) {
   );
 }
 
+
 function QigenexSection(props: any) {
   const {
     sequenceMode,
@@ -3563,6 +3564,9 @@ function QigenexSection(props: any) {
   } = props;
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [resultView, setResultView] = useState<"text" | "figures">("text");
+  const [selectedFigure, setSelectedFigure] = useState("");
+  const [selectedText, setSelectedText] = useState("");
   const [figurePlotStyle, setFigurePlotStyle] = useState("auto");
   const [figureStyle, setFigureStyle] = useState("journal_clean");
   const [figureFormats, setFigureFormats] = useState("png,svg,pdf");
@@ -3570,41 +3574,49 @@ function QigenexSection(props: any) {
   const [figureLayout, setFigureLayout] = useState("separate");
   const [figureTitleMode, setFigureTitleMode] = useState("none");
   const [figureTitleText, setFigureTitleText] = useState("");
-  const [titleFontSize, setTitleFontSize] = useState("16");
-  const [axisTitleFontSize, setAxisTitleFontSize] = useState("13");
-  const [tickLabelFontSize, setTickLabelFontSize] = useState("11");
+  const [axisFontSize, setAxisFontSize] = useState("13");
+  const [labelFontSize, setLabelFontSize] = useState("11");
   const [fontWeight, setFontWeight] = useState("bold");
   const [transparentBackground, setTransparentBackground] = useState(false);
-  const [selectedFigure, setSelectedFigure] = useState<string>("");
 
   const hasSequence = Boolean(fastaText.trim() || fastaFileName || alignedText.trim() || alignedFileName);
   const outputs = result?.outputs && typeof result.outputs === "object" ? result.outputs : {};
 
-  const figureFiles = Object.entries(outputs)
+  const outputItems = Object.entries(outputs)
     .filter(([, value]) => typeof value === "string")
-    .map(([key, value]) => ({ key, path: String(value) }))
-    .filter((item) => /\.(png|jpg|jpeg|svg|pdf)$/i.test(item.path));
+    .map(([key, value]) => ({ key, path: String(value), filename: qigenexDownloadName(String(value)) }));
 
-  const selectedFigurePath = selectedFigure || figureFiles[0]?.path || "";
+  const textItems = outputItems.filter((item) =>
+    /\.(csv|tsv|txt|json|xlsx|xls|fasta|fa|fas|fna|treefile|nwk|newick|log|md|html)$/i.test(item.path)
+  );
+
+  const figureItems = outputItems.filter((item) =>
+    /\.(png|jpg|jpeg|svg|pdf|webp)$/i.test(item.path)
+  );
+
+  const selectedFigurePath = selectedFigure || figureItems[0]?.path || "";
+  const selectedTextPath = selectedText || textItems[0]?.path || "";
 
   const availableText = JSON.stringify(result || {}).toLowerCase();
+
   const plotStyles = [
-    { id: "auto", label: "Auto best figure", needs: "Any result output", ok: true },
-    { id: "phylogeny", label: "Phylogenetic tree", needs: "Tree/Newick/phylogeny output", ok: availableText.includes("tree") || availableText.includes("phylo") || analysisMode === "phylogeny" },
-    { id: "heatmap", label: "Heatmap", needs: "Matrix/table/genotype-country data", ok: availableText.includes("heatmap") || availableText.includes("matrix") || availableText.includes("genotype") },
-    { id: "boxplot", label: "Boxplot", needs: "Grouped numeric values", ok: availableText.includes("group") || availableText.includes("genotype") || availableText.includes("distance") },
-    { id: "pca", label: "PCA plot", needs: "Numeric feature matrix or alignment distance", ok: availableText.includes("pca") || availableText.includes("distance") || availableText.includes("alignment") },
-    { id: "bar", label: "Bar plot", needs: "Counts or categorical summaries", ok: availableText.includes("count") || availableText.includes("summary") || availableText.includes("classified") },
-    { id: "line", label: "Line plot", needs: "Date/year/time-series values", ok: availableText.includes("year") || availableText.includes("date") || availableText.includes("temporal") },
-    { id: "map", label: "Geospatial map", needs: "Latitude/longitude or country metadata", ok: availableText.includes("latitude") || availableText.includes("longitude") || availableText.includes("country") || analysisMode === "geo_spatiotemporal" },
-    { id: "network", label: "Network plot", needs: "Pairwise links or transmission/importation edges", ok: availableText.includes("network") || availableText.includes("edge") || availableText.includes("link") },
+    { id: "auto", label: "Auto best figure", needs: "Any completed result", ok: Boolean(result?.status === "completed") },
+    { id: "phylogeny", label: "Phylogenetic tree", needs: "Treefile/Newick/alignment output", ok: availableText.includes("tree") || availableText.includes("phylo") || analysisMode === "phylogeny" },
+    { id: "heatmap", label: "Heatmap", needs: "Matrix, genotype-country table, mutation matrix, or abundance matrix", ok: availableText.includes("heatmap") || availableText.includes("matrix") || availableText.includes("genotype") },
+    { id: "boxplot", label: "Boxplot", needs: "Grouped numeric values", ok: availableText.includes("group") || availableText.includes("genotype") || availableText.includes("distance") || availableText.includes("score") },
+    { id: "pca", label: "PCA plot", needs: "Alignment distance matrix or numeric feature matrix", ok: availableText.includes("pca") || availableText.includes("distance") || availableText.includes("alignment") },
+    { id: "bar", label: "Bar plot", needs: "Counts, categories, classifications, or summary table", ok: availableText.includes("count") || availableText.includes("summary") || availableText.includes("classified") },
+    { id: "line", label: "Line plot", needs: "Year/date/time-series values", ok: availableText.includes("year") || availableText.includes("date") || availableText.includes("temporal") },
+    { id: "map", label: "Geospatial map", needs: "Country or latitude/longitude metadata", ok: availableText.includes("country") || availableText.includes("latitude") || availableText.includes("longitude") || analysisMode === "geo_spatiotemporal" },
+    { id: "network", label: "Network plot", needs: "Pairwise links, edges, country-sharing, or transmission network", ok: availableText.includes("network") || availableText.includes("edge") || availableText.includes("link") },
     { id: "volcano", label: "Volcano plot", needs: "Effect size and p-value table", ok: availableText.includes("p_value") || availableText.includes("p-value") || availableText.includes("effect") },
     { id: "lollipop", label: "Mutation lollipop", needs: "Mutation position/frequency table", ok: availableText.includes("mutation") || availableText.includes("position") || analysisMode === "mutation" },
     { id: "density", label: "Density/ridge plot", needs: "Continuous numeric distributions", ok: availableText.includes("distribution") || availableText.includes("distance") || availableText.includes("score") },
-    { id: "panel", label: "Multi-panel composite", needs: "Two or more available figures", ok: figureFiles.length >= 2 },
+    { id: "panel", label: "Multi-panel composite", needs: "At least two generated figures", ok: figureItems.length >= 2 },
   ];
 
   const selectedPlot = plotStyles.find((item) => item.id === figurePlotStyle) || plotStyles[0];
+
   const figureOptions = {
     figure_plot_style: figurePlotStyle,
     figure_styles: figureStyle,
@@ -3613,9 +3625,9 @@ function QigenexSection(props: any) {
     figure_layout: figureLayout,
     figure_title_mode: figureTitleMode,
     figure_title_text: figureTitleText,
-    title_font_size: titleFontSize,
-    axis_title_font_size: axisTitleFontSize,
-    tick_label_font_size: tickLabelFontSize,
+    axis_title_font_size: axisFontSize,
+    tick_label_font_size: labelFontSize,
+    title_font_size: "16",
     font_weight: fontWeight,
     transparent_background: transparentBackground ? "true" : "false",
   };
@@ -3623,8 +3635,13 @@ function QigenexSection(props: any) {
   function renderFigure(path: string) {
     if (!path) {
       return (
-        <div className="flex min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-8 text-center text-sm font-bold text-slate-400">
-          No live figure is available yet. Run analysis or click Generate Figures.
+        <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-8 text-center">
+          <div>
+            <p className="text-lg font-black text-slate-200">No generated figure is available yet.</p>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
+              A treefile can be generated without a viewable PNG/SVG/PDF. Click Generate selected figure after choosing a style.
+            </p>
+          </div>
         </div>
       );
     }
@@ -3632,196 +3649,216 @@ function QigenexSection(props: any) {
     const url = qigenexResultUrl(path);
 
     if (/\.pdf$/i.test(path)) {
-      return <iframe title="QI-GeneX-N figure preview" src={url} className="h-[520px] w-full rounded-2xl border border-white/10 bg-white" />;
+      return <iframe title="QI-GeneX-N figure preview" src={url} className="h-[640px] w-full rounded-2xl border border-white/10 bg-white" />;
     }
 
     return (
       <div className="rounded-2xl border border-white/10 bg-white p-3">
-        <img src={url} alt="QI-GeneX-N generated figure" className="max-h-[620px] w-full rounded-xl object-contain" />
+        <img src={url} alt="QI-GeneX-N generated figure" className="max-h-[760px] w-full rounded-xl object-contain" />
       </div>
     );
   }
 
+  function downloadAllTextFiles() {
+    textItems.forEach((item, index) => {
+      setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = qigenexResultUrl(item.path);
+        a.download = item.filename;
+        a.click();
+      }, index * 250);
+    });
+  }
+
+  function downloadAllFigures() {
+    figureItems.forEach((item, index) => {
+      setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = qigenexResultUrl(item.path);
+        a.download = item.filename;
+        a.click();
+      }, index * 250);
+    });
+  }
+
+  const analysisOptions = [
+    ["qc", "QC only"],
+    ["classification", "Classification only"],
+    ["gene_orf", "Gene/ORF extraction"],
+    ["gp5", "GP5 analysis"],
+    ["mutation", "Mutation profiling"],
+    ["vaccine_escape", "Vaccine mismatch"],
+    ["phylogeny", "Phylogeny"],
+    ["genomic_intelligence", "Genomic intelligence"],
+    ["ml_qml", "ML/QML"],
+    ["fitness", "Fitness landscape"],
+    ["geo_spatiotemporal", "Geo-spatiotemporal"],
+    ["visualization", "Figures only"],
+    ["report_package", "Report/package"],
+    ["complete", "Complete workflow"],
+  ];
+
   return (
-    <section className="space-y-6">
+    <section className="space-y-5">
       <div className="rounded-[2rem] border border-purple-300/15 bg-white/[0.04] p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.28em] text-purple-300">QI-GeneX-N</p>
-            <h3 className="mt-2 text-2xl font-black text-white">Simple robust analysis panel</h3>
+            <h3 className="mt-2 text-2xl font-black text-white">Simple analysis and result viewer</h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Select one module, run it, then generate figures only when needed. Downloads and previews are proxied through Vercel to avoid broken raw backend links.
+              Results are separated into two main views: text data and figures. Figures are generated only when you click the figure button.
             </p>
           </div>
+
           <div className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-black text-slate-200">
-            {loading ? "Running" : result?.status || "Ready"}
+            {loading ? "Running..." : result?.status || "Ready"}
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Analysis module</label>
-              <select value={analysisMode} onChange={(e) => setAnalysisMode(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-purple-300">
-                <option value="qc">QC only</option>
-                <option value="classification">Classification only</option>
-                <option value="gene_orf">Gene/ORF extraction</option>
-                <option value="gp5">GP5 analysis</option>
-                <option value="mutation">Mutation profiling</option>
-                <option value="vaccine_escape">Vaccine mismatch</option>
-                <option value="phylogeny">Phylogeny</option>
-                <option value="genomic_intelligence">Genomic intelligence</option>
-                <option value="ml_qml">ML/QML</option>
-                <option value="fitness">Fitness landscape</option>
-                <option value="geo_spatiotemporal">Geo-spatiotemporal</option>
-                <option value="visualization">Figures only</option>
-                <option value="report_package">Report/package</option>
-                <option value="complete">Complete workflow</option>
-              </select>
-            </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-3">
+            <label className="block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Analysis module</label>
+            <select value={analysisMode} onChange={(e) => setAnalysisMode(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-purple-300">
+              {analysisOptions.map(([id, label]) => (
+                <option key={id} value={id}>{label}</option>
+              ))}
+            </select>
 
-            <div>
-              <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Sequence mode</label>
-              <select value={sequenceMode} onChange={(e) => setSequenceMode(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-purple-300">
-                <option value="unaligned">Unaligned FASTA</option>
-                <option value="aligned">Aligned FASTA</option>
-              </select>
-            </div>
+            <label className="block pt-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400">Sequence input</label>
+            <select value={sequenceMode} onChange={(e) => setSequenceMode(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-purple-300">
+              <option value="unaligned">Unaligned FASTA</option>
+              <option value="aligned">Aligned FASTA</option>
+            </select>
 
-            <div>
-              <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Upload FASTA</label>
-              <input
-                type="file"
-                accept=".fa,.fasta,.fas,.aln,.txt"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  if (sequenceMode === "aligned") {
-                    setAlignedFile(file);
-                    setAlignedFileName(file?.name || "");
-                  } else {
-                    setFastaFile(file);
-                    setFastaFileName(file?.name || "");
-                  }
-                }}
-                className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300"
-              />
-              <p className="mt-2 text-xs font-bold text-purple-200">{sequenceMode === "aligned" ? alignedFileName : fastaFileName}</p>
-            </div>
+            <input
+              type="file"
+              accept=".fa,.fasta,.fas,.aln,.txt"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                if (sequenceMode === "aligned") {
+                  setAlignedFile(file);
+                  setAlignedFileName(file?.name || "");
+                } else {
+                  setFastaFile(file);
+                  setFastaFileName(file?.name || "");
+                }
+              }}
+              className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300"
+            />
+
+            <p className="text-xs font-bold text-purple-200">
+              Loaded: {sequenceMode === "aligned" ? alignedFileName || "none" : fastaFileName || "none"}
+            </p>
           </div>
 
           <div>
-            <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Paste FASTA</label>
+            <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-400">Paste FASTA instead of file</label>
             <textarea
-              rows={10}
+              rows={9}
               value={sequenceMode === "aligned" ? alignedText : fastaText}
-              onChange={(e) => (sequenceMode === "aligned" ? setAlignedText(e.target.value) : setFastaText(e.target.value))}
-              placeholder={">sample_1\nATG..."}
-              className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 font-mono text-sm text-white outline-none focus:border-purple-300"
+              onChange={(e) => sequenceMode === "aligned" ? setAlignedText(e.target.value) : setFastaText(e.target.value)}
+              placeholder={">sample_1\\nATGC..."}
+              className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:border-purple-300"
             />
           </div>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("analysis", figureOptions)} className="rounded-2xl bg-purple-400 px-6 py-3 font-black text-slate-950 shadow-lg shadow-purple-400/20 transition hover:bg-white disabled:opacity-50">
+          <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("analysis", figureOptions)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white disabled:opacity-50">
             Run selected analysis
           </button>
-          <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("figures", figureOptions)} className="rounded-2xl bg-cyan-400 px-6 py-3 font-black text-slate-950 shadow-lg shadow-cyan-400/20 transition hover:bg-white disabled:opacity-50">
-            Generate figures
+
+          <button disabled={loading || !hasSequence} onClick={() => { setResultView("figures"); runQigenexAnalysis("figures", figureOptions); }} className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white disabled:opacity-50">
+            Generate selected figure
           </button>
-          <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("package", figureOptions)} className="rounded-2xl bg-emerald-400 px-6 py-3 font-black text-slate-950 shadow-lg shadow-emerald-400/20 transition hover:bg-white disabled:opacity-50">
-            Report package
+
+          <button disabled={loading || !hasSequence} onClick={() => runQigenexAnalysis("package", figureOptions)} className="rounded-2xl bg-emerald-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white disabled:opacity-50">
+            Generate report package
           </button>
-          <button disabled={loading} onClick={clearQigenexInputs} className="rounded-2xl border border-white/10 px-6 py-3 font-black text-slate-200 hover:border-red-300 hover:text-red-200 disabled:opacity-50">
+
+          <button disabled={loading} onClick={clearQigenexInputs} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 transition hover:border-purple-300 hover:text-purple-200 disabled:opacity-50">
             Clear
           </button>
-          <button onClick={() => setShowAdvanced(!showAdvanced)} className="rounded-2xl border border-white/10 px-6 py-3 font-black text-slate-200 hover:border-purple-300 hover:text-purple-200">
+
+          <button onClick={() => setShowAdvanced(!showAdvanced)} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 transition hover:border-cyan-300 hover:text-cyan-200">
             {showAdvanced ? "Hide options" : "Figure/data options"}
           </button>
-          {result && (
-            <button onClick={() => downloadJSON(result, "qigenex_result.json")} className="rounded-2xl bg-blue-500 px-6 py-3 font-black text-white hover:bg-blue-400">
-              Download JSON
-            </button>
-          )}
         </div>
       </div>
 
       {showAdvanced && (
         <div className="grid gap-5 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-            <h4 className="mb-4 text-xl font-black text-purple-200">Figure style</h4>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">Plot type</label>
+          <div className="rounded-[2rem] border border-cyan-300/15 bg-white/[0.04] p-5">
+            <h4 className="text-xl font-black text-cyan-200">Figure selection and style</h4>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">Figure type</label>
                 <select value={figurePlotStyle} onChange={(e) => setFigurePlotStyle(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
                   {plotStyles.map((style) => (
-                    <option key={style.id} value={style.id}>{style.label}</option>
+                    <option key={style.id} value={style.id}>
+                      {style.ok ? "✓" : "!"} {style.label}
+                    </option>
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">Design</label>
-                <select value={figureStyle} onChange={(e) => setFigureStyle(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                  <option value="journal_clean">Journal clean</option>
-                  <option value="journal_colorblind">Colorblind</option>
-                  <option value="journal_mono">Mono</option>
-                  <option value="presentation_dark">Presentation dark</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">Formats</label>
-                <input value={figureFormats} onChange={(e) => setFigureFormats(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">DPI</label>
-                <select value={figureDpi} onChange={(e) => setFigureDpi(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                  <option value="300">300</option>
-                  <option value="600">600</option>
-                  <option value="900">900</option>
-                  <option value="1200">1200</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">Layout</label>
-                <select value={figureLayout} onChange={(e) => setFigureLayout(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                  <option value="separate">Separate figures</option>
-                  <option value="panel">Panel/composite</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">Title</label>
-                <select value={figureTitleMode} onChange={(e) => setFigureTitleMode(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                  <option value="none">No upper title</option>
-                  <option value="auto">Auto title</option>
-                  <option value="custom">Custom title</option>
-                </select>
-              </div>
-              <input value={figureTitleText} onChange={(e) => setFigureTitleText(e.target.value)} placeholder="Custom title" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white md:col-span-2" />
-              <input value={titleFontSize} onChange={(e) => setTitleFontSize(e.target.value)} placeholder="Title font size" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <input value={axisTitleFontSize} onChange={(e) => setAxisTitleFontSize(e.target.value)} placeholder="Axis title font size" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <input value={tickLabelFontSize} onChange={(e) => setTickLabelFontSize(e.target.value)} placeholder="Tick label font size" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <select value={fontWeight} onChange={(e) => setFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
-                <option value="normal">Normal</option>
-                <option value="bold">Bold</option>
-                <option value="black">Black</option>
+
+              <select value={figureStyle} onChange={(e) => setFigureStyle(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                <option value="journal_clean">Journal clean</option>
+                <option value="journal_colorblind">Colorblind journal</option>
+                <option value="journal_mono">Monochrome journal</option>
+                <option value="presentation_dark">Presentation dark</option>
               </select>
-              <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-200 md:col-span-2">
+
+              <input value={figureFormats} onChange={(e) => setFigureFormats(e.target.value)} placeholder="png,svg,pdf" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+
+              <select value={figureDpi} onChange={(e) => setFigureDpi(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                <option value="300">300 DPI</option>
+                <option value="600">600 DPI</option>
+                <option value="900">900 DPI</option>
+                <option value="1200">1200 DPI</option>
+              </select>
+
+              <select value={figureLayout} onChange={(e) => setFigureLayout(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                <option value="separate">Separate figure</option>
+                <option value="panel">Panel/composite</option>
+              </select>
+
+              <select value={figureTitleMode} onChange={(e) => setFigureTitleMode(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                <option value="none">No upper title</option>
+                <option value="auto">Auto title</option>
+                <option value="custom">Custom title</option>
+              </select>
+
+              <input value={figureTitleText} onChange={(e) => setFigureTitleText(e.target.value)} placeholder="Custom title" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              <input value={axisFontSize} onChange={(e) => setAxisFontSize(e.target.value)} placeholder="Axis title font size" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              <input value={labelFontSize} onChange={(e) => setLabelFontSize(e.target.value)} placeholder="Label font size" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+
+              <select value={fontWeight} onChange={(e) => setFontWeight(e.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                <option value="normal">Normal text</option>
+                <option value="bold">Bold text</option>
+                <option value="black">Black/heavy text</option>
+              </select>
+
+              <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-200">
                 <input type="checkbox" checked={transparentBackground} onChange={(e) => setTransparentBackground(e.target.checked)} />
                 Transparent background
               </label>
             </div>
+
             <div className={`mt-4 rounded-2xl border p-4 text-sm font-bold ${selectedPlot.ok ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
-              {selectedPlot.ok ? `Available: ${selectedPlot.label}` : `Not enough data for ${selectedPlot.label}. Required: ${selectedPlot.needs}. Choose another style or run the required analysis first.`}
+              {selectedPlot.ok ? `Available or likely available: ${selectedPlot.label}` : `Not enough data for ${selectedPlot.label}. Required: ${selectedPlot.needs}. Choose another style or run the required analysis first.`}
             </div>
           </div>
 
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-            <h4 className="mb-4 text-xl font-black text-purple-200">Optional metadata</h4>
-            <div className="grid gap-3">
+            <h4 className="text-xl font-black text-purple-200">Optional metadata</h4>
+            <div className="mt-4 grid gap-3">
               <textarea rows={3} value={referenceText} onChange={(e) => setReferenceText(e.target.value)} placeholder="Optional reference sequence text" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
               <textarea rows={3} value={vaccineStrainText} onChange={(e) => setVaccineStrainText(e.target.value)} placeholder="Optional vaccine strain text" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <textarea rows={4} value={geoRowsText} onChange={(e) => setGeoRowsText(e.target.value)} placeholder="Optional geospatial metadata rows" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <textarea rows={4} value={animalRowsText} onChange={(e) => setAnimalRowsText(e.target.value)} placeholder="Optional animal metadata rows" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
-              <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              <textarea rows={3} value={geoRowsText} onChange={(e) => setGeoRowsText(e.target.value)} placeholder="Optional geospatial metadata rows" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              <textarea rows={3} value={animalRowsText} onChange={(e) => setAnimalRowsText(e.target.value)} placeholder="Optional animal metadata rows" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
               <div className="grid gap-3 md:grid-cols-2">
                 <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setGeoFile(file); setGeoFileName(file?.name || ""); }} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-300" />
                 <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setAnimalFile(file); setAnimalFileName(file?.name || ""); }} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-300" />
@@ -3833,51 +3870,107 @@ function QigenexSection(props: any) {
       )}
 
       <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h3 className="text-2xl font-black text-purple-200">Results and live figure viewer</h3>
+            <h3 className="text-2xl font-black text-purple-200">Results</h3>
             <p className={`mt-1 text-sm font-black ${qigenexStatusColor(result?.status)}`}>Status: {result?.status || "not submitted"}</p>
           </div>
-          {selectedFigurePath && (
-            <a href={qigenexResultUrl(selectedFigurePath)} download={qigenexDownloadName(selectedFigurePath)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white">
-              Download selected figure
-            </a>
-          )}
+
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => setResultView("text")} className={`rounded-2xl px-5 py-3 text-sm font-black ${resultView === "text" ? "bg-purple-400 text-slate-950" : "border border-white/10 bg-white/5 text-slate-200"}`}>
+              View text data
+            </button>
+            <button onClick={() => setResultView("figures")} className={`rounded-2xl px-5 py-3 text-sm font-black ${resultView === "figures" ? "bg-cyan-400 text-slate-950" : "border border-white/10 bg-white/5 text-slate-200"}`}>
+              View figures
+            </button>
+            {result && (
+              <button onClick={() => downloadJSON(result, "qigenex_job_status.json")} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 hover:border-purple-300">
+                Download status JSON
+              </button>
+            )}
+          </div>
         </div>
 
         {result && (
           <div className="mb-5 grid gap-3 md:grid-cols-4">
             <ResultCard title="Job ID" value={result.job_id || "NA"} />
             <ResultCard title="Message" value={result.message || result.error || "NA"} />
-            <ResultCard title="Total sequences" value={String(result.qc_summary?.total_sequences ?? result.summary?.total_sequences ?? "NA")} />
-            <ResultCard title="Selected analysis" value={result.selected_analysis || analysisMode} />
+            <ResultCard title="Text files" value={String(textItems.length)} />
+            <ResultCard title="Figures" value={String(figureItems.length)} />
           </div>
         )}
 
-        {figureFiles.length > 0 && (
-          <div className="mb-4 flex gap-3 overflow-x-auto pb-2">
-            {figureFiles.map((file) => (
-              <button key={`${file.key}-${file.path}`} onClick={() => setSelectedFigure(file.path)} className={`min-w-[180px] rounded-2xl border p-3 text-left text-xs font-black transition ${selectedFigurePath === file.path ? "border-purple-300 bg-purple-400/20 text-purple-100" : "border-white/10 bg-slate-900 text-slate-300 hover:border-purple-300/50"}`}>
-                {file.key.replace(/_/g, " ")}
-                <span className="mt-1 block truncate text-[10px] text-slate-500">{qigenexDownloadName(file.path)}</span>
+        {resultView === "text" && (
+          <div>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h4 className="text-xl font-black text-purple-200">Text result files</h4>
+              <button disabled={textItems.length === 0} onClick={downloadAllTextFiles} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:opacity-50">
+                Download all text results
               </button>
-            ))}
+            </div>
+
+            {textItems.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900 p-6 text-sm font-bold text-slate-400">
+                No text result files are available yet.
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {textItems.map((item) => (
+                  <button key={`${item.key}-${item.path}`} onClick={() => setSelectedText(item.path)} className={`rounded-2xl border p-4 text-left transition ${selectedTextPath === item.path ? "border-purple-300 bg-purple-400/10" : "border-white/10 bg-slate-900 hover:border-purple-300/50"}`}>
+                    <p className="text-sm font-black text-purple-100">{item.key.replace(/_/g, " ")}</p>
+                    <p className="mt-1 truncate text-xs font-bold text-slate-500">{item.filename}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedTextPath && (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <a href={qigenexResultUrl(selectedTextPath)} download={qigenexDownloadName(selectedTextPath)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white">
+                  Download selected text result
+                </a>
+                <a href={qigenexResultUrl(selectedTextPath)} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-slate-200 hover:border-purple-300">
+                  Open selected result
+                </a>
+              </div>
+            )}
           </div>
         )}
 
-        {renderFigure(selectedFigurePath)}
+        {resultView === "figures" && (
+          <div>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h4 className="text-xl font-black text-cyan-200">Figure viewer</h4>
+              <div className="flex flex-wrap gap-3">
+                <button disabled={figureItems.length === 0} onClick={downloadAllFigures} className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:opacity-50">
+                  Download all figures
+                </button>
+                {selectedFigurePath && (
+                  <a href={qigenexResultUrl(selectedFigurePath)} download={qigenexDownloadName(selectedFigurePath)} className="rounded-2xl bg-purple-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-white">
+                    Download selected figure
+                  </a>
+                )}
+              </div>
+            </div>
 
-        {result?.outputs && (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(result.outputs).map(([key, value]) => {
-              if (typeof value !== "string") return null;
-              return (
-                <a key={key} href={qigenexResultUrl(value)} download={qigenexDownloadName(value)} className="rounded-2xl border border-white/10 bg-slate-900 p-4 text-sm font-bold text-purple-200 hover:border-purple-300">
-                  Download {key.replace(/_/g, " ")}
-                  <span className="mt-1 block truncate text-xs text-slate-500">{qigenexDownloadName(value)}</span>
-                </a>
-              );
-            })}
+            {figureItems.length > 0 && (
+              <div className="mb-4 flex gap-3 overflow-x-auto pb-2">
+                {figureItems.map((file) => (
+                  <button key={`${file.key}-${file.path}`} onClick={() => setSelectedFigure(file.path)} className={`min-w-[190px] rounded-2xl border p-3 text-left text-xs font-black transition ${selectedFigurePath === file.path ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-white/10 bg-slate-900 text-slate-300 hover:border-cyan-300/50"}`}>
+                    {file.key.replace(/_/g, " ")}
+                    <span className="mt-1 block truncate text-[10px] text-slate-500">{file.filename}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {renderFigure(selectedFigurePath)}
+
+            <div className={`mt-4 rounded-2xl border p-4 text-sm font-bold ${selectedPlot.ok ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
+              {selectedPlot.ok
+                ? `Selected figure style: ${selectedPlot.label}. Click Generate selected figure if it has not been generated yet.`
+                : `Reason this style may not be generated: ${selectedPlot.needs}. Choose another style or run the needed analysis first.`}
+            </div>
           </div>
         )}
       </div>
@@ -3895,6 +3988,7 @@ function QigenexSection(props: any) {
 }
 
 function QigenexResultsDashboard() {
+
   return null;
 }
 
