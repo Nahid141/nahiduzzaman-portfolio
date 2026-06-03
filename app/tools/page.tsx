@@ -4514,7 +4514,16 @@ function QigenexSection(props: any) {
   }
 
   function downloadMetadataTemplate() {
-    downloadCSV(metadataRowsToCsv(metadataColumns, metadataRows), `qigenex_${metadataPreset}_metadata_template.csv`);
+    const csv = metadataRowsToCsv(metadataColumns, metadataRows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `qigenex_${metadataPreset}_metadata_template.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }
 
 
