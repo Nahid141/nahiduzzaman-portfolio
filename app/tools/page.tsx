@@ -3851,7 +3851,7 @@ function NetworkSection(props: any) {
 
 
 function QigenexSection(props: any) {
-  // v22_no_pushlog_scope_fix: QigenexSection must not call parent-only pushLog directly.
+  // v22_no_pushlog_scope_fix: QigenexSection must not call parent-only logging directly.
   const {
     sequenceMode,
     setSequenceMode,
@@ -4254,8 +4254,8 @@ function QigenexSection(props: any) {
   ];
 
   const availableFigureTypes = figureForAnalysis[analysisMode] || ["phylogenetic_tree"];
-  const figureType = availableFigureTypes.includes(figureType) ? figureType : availableFigureTypes[0];
-  const currentDesigns = figureCatalog[figureType]?.designs || [];
+  const currentFigureType = availableFigureTypes.includes(figureType) ? figureType : availableFigureTypes[0];
+  const currentDesigns = figureCatalog[currentFigureType]?.designs || [];
 
   useEffect(() => {
     const firstType = (figureForAnalysis[analysisMode] || ["phylogenetic_tree"])[0];
@@ -4311,8 +4311,8 @@ function QigenexSection(props: any) {
 
   function runNow() {
     runQigenexAnalysis("analysis", {
-      figure_type: showBacterialWgsPanel ? bacterialWgsFigureType : figureType,
-      figure_plot_style: figureType,
+      figure_type: showBacterialWgsPanel ? bacterialWgsFigureType : currentFigureType,
+      figure_plot_style: currentFigureType,
       figure_designs: (showBacterialWgsPanel ? bacterialWgsFigureDesigns : selectedDesigns).join(","),
       figure_styles: "journal_clean",
       figure_formats: figureFormats,
@@ -4325,13 +4325,13 @@ function QigenexSection(props: any) {
       font_weight: "bold",
       transparent_background: "false",
       tree_inference_method: treeMethod,
-      beast_tmrca: figureType === "beast_tmrca" ? "true" : "false",
+      beast_tmrca: currentFigureType === "beast_tmrca" ? "true" : "false",
       beast_clock_model: beastClock,
       beast_chain_length: beastChain,
       tmrca_substitution_rate: tmrcaRate,
       transmission_mode: transmissionMode,
       nt_distance_threshold: ntThreshold,
-      fitness_figure_designs: figureType === "fitness_landscape" ? selectedDesigns.join(",") : "",
+      fitness_figure_designs: currentFigureType === "fitness_landscape" ? selectedDesigns.join(",") : "",
       bacterial_wgs_task: bacterialWgsTask,
       bacterial_wgs_figure_type: bacterialWgsFigureType,
       bacterial_wgs_figure_designs: bacterialWgsFigureDesigns.join(","),
@@ -4417,7 +4417,6 @@ function QigenexSection(props: any) {
     setter(selected.includes(value) ? selected.filter((x) => x !== value) : [...selected, value]);
   }
 
-  const showBacterialWgsPanel = analysisMode === "bacterial_wgs_analysis" || String(analysisMode).startsWith("bacterial_");
   const showBacterialWgsPanel = analysisMode === "bacterial_wgs_analysis";
 
   function applyMetadataPreset(preset: QigenexMetadataPreset) {
@@ -4561,7 +4560,7 @@ function QigenexSection(props: any) {
           {!showBacterialWgsPanel && (
             <div>
               <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Figure</label>
-              <select value={figureType} onChange={(e) => setFigureType(e.target.value)} className="w-full rounded-[1.2rem] border border-white/10 bg-slate-900 px-4 py-4 text-sm font-black text-white outline-none focus:border-cyan-300">
+              <select value={currentFigureType} onChange={(e) => setFigureType(e.target.value)} className="w-full rounded-[1.2rem] border border-white/10 bg-slate-900 px-4 py-4 text-sm font-black text-white outline-none focus:border-cyan-300">
                 {availableFigureTypes.map((item) => (
                   <option key={item} value={item}>{figureCatalog[item]?.label || item}</option>
                 ))}
