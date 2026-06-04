@@ -273,6 +273,11 @@ function metadataRowsToFile(columns: string[], rows: QigenexMetadataRow[], filen
   return new File([metadataRowsToCsv(columns, rows)], filename, { type: "text/csv;charset=utf-8" });
 }
 
+
+function qigenexTextToFastaFile(text: string, filename = "qigenex_input.fasta") {
+  return new File([text.trim() + "\n"], filename, { type: "text/plain;charset=utf-8" });
+}
+
 function splitFieldNames(value: string) {
   return value.split(",").map((x) => x.trim()).filter(Boolean);
 }
@@ -538,7 +543,7 @@ const QIGENEX_PUBLIC_BACKEND =
 
 const EGSTAT_N_VERSION = "1.6.4";
 const QIGENEX_N_VERSION = "1.6.1";
-// frontend patch: qigenex_frontend_https_cors_fallback_v22_BUILD_FIXED
+// frontend patch: qigenex_frontend_https_fasta_field_fix_v23
 const TOOL_DEVELOPER = "FNU Nahiduzzaman";
 const TOOL_RIGHTS_NOTICE = "These tools are developed by FNU Nahiduzzaman. All rights reserved.";
 const TOOL_WELCOME_MESSAGE =
@@ -1560,14 +1565,39 @@ export default function Tools() {
     formData.append("run_mlst", figureOptions.run_mlst || (qigenexAnalysisMode === "bacterial_mlst" ? "true" : "false"));
     formData.append("fitness_figure_designs", figureOptions.fitness_figure_designs || (figureType.includes("fitness") ? figureDesigns : ""));
 
-    if (qigenexFastaText.trim()) formData.append("fastaText", qigenexFastaText);
-    if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile);
+    // FastAPI /jobs/analyze requires the uploaded genome under the exact field name "fasta".
+    // Keep older aliases too, but always provide "fasta" for direct HTTPS upload.
+    const primaryFastaFile =
+      figureOptions.targetGenomeFile ||
+      qigenexFastaFile ||
+      (qigenexFastaText.trim() ? qigenexTextToFastaFile(qigenexFastaText, "qigenex_input.fasta") : null) ||
+      qigenexAlignedFile ||
+      (qigenexAlignedText.trim() ? qigenexTextToFastaFile(qigenexAlignedText, "qigenex_aligned_input.fasta") : null);
+
+    if (primaryFastaFile) {
+      formData.append("fasta", primaryFastaFile, primaryFastaFile.name || "qigenex_input.fasta");
+      formData.append("input_fasta", primaryFastaFile, primaryFastaFile.name || "qigenex_input.fasta");
+    }
+
+    if (qigenexFastaText.trim()) {
+      formData.append("fastaText", qigenexFastaText);
+      formData.append("fasta_text", qigenexFastaText);
+    }
+    if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile, qigenexFastaFile.name || "qigenex_input.fasta");
     if (qigenexAlignedText.trim()) formData.append("alignedText", qigenexAlignedText);
-    if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile);
+    if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile, qigenexAlignedFile.name || "qigenex_aligned_input.fasta");
     if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
     if (qigenexVaccineStrainText.trim()) formData.append("vaccineStrainText", qigenexVaccineStrainText);
-    if (figureOptions.targetGenomeFile) formData.append("targetGenomeFile", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
-    if (figureOptions.manualComparableGenomeFile) formData.append("manualComparableGenomeFile", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
+    if (figureOptions.targetGenomeFile) {
+      formData.append("targetGenomeFile", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
+      formData.append("target_genome", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
+      formData.append("target_genome_file", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
+    }
+    if (figureOptions.manualComparableGenomeFile) {
+      formData.append("manualComparableGenomeFile", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
+      formData.append("manual_comparable_genomes", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
+      formData.append("comparable_genomes", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
+    }
     if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
     if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
     if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
@@ -1601,6 +1631,7 @@ export default function Tools() {
         `> Figure: ${figureType}.`,
         `> Job ID: ${jobId}`,
         `> Upload transport: ${data.upload_transport || "unknown"}; backend=${data.backend_url || QIGENEX_PUBLIC_BACKEND}.`,
+        "> FASTA field mapping: submitted as required field 'fasta' plus compatibility aliases.",
         ...(data.direct_upload_error ? [`> Direct upload fallback reason: ${data.direct_upload_error}`] : []),
         ...(figureOptions.bacterial_wgs_task ? [
           `> Bacterial workflow: target genome manual upload; comparable genomes=${figureOptions.comparable_genome_mode || "auto_download"}.`,
