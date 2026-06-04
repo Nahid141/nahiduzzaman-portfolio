@@ -538,6 +538,7 @@ const QIGENEX_PUBLIC_BACKEND =
 
 const EGSTAT_N_VERSION = "1.6.4";
 const QIGENEX_N_VERSION = "1.6.1";
+// frontend patch: qigenex_frontend_https_cors_fallback_v22_BUILD_FIXED
 const TOOL_DEVELOPER = "FNU Nahiduzzaman";
 const TOOL_RIGHTS_NOTICE = "These tools are developed by FNU Nahiduzzaman. All rights reserved.";
 const TOOL_WELCOME_MESSAGE =
@@ -1585,9 +1586,9 @@ export default function Tools() {
     try {
       const data = await submitQigenexForm(formData);
 
-      if (!response.ok || data.status === "error") {
+      if (data.status === "error") {
         setQigenexResult(data);
-        pushLog([`> QI-GeneX-N ERROR: ${data.error || data.message || "Oracle analysis failed."}`]);
+        pushLog([`> QI-GeneX-N ERROR: ${backendErrorMessage(data, "QI-GeneX-N analysis failed.")}`]);
         return;
       }
 
