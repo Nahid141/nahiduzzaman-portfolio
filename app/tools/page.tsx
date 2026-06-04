@@ -179,6 +179,7 @@ type QigenexFigureOptions = {
 
 
 type QigenexMetadataPreset =
+  | "viral_fitness_landscape"
   | "public_health_genomics"
   | "transmission_map"
   | "bacterial_wgs"
