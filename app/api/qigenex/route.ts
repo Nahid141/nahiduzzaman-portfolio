@@ -631,77 +631,53 @@ export async function POST(req: NextRequest) {
     const geoRowsText = clean(incoming.get("geoRowsText"));
     const animalRowsText = clean(incoming.get("animalRowsText"));
 
-    if (metadata instanceof File && metadata.size > 0) form.append("metadata", metadata, metadata.name || "metadata.tsv");
-    else if (geoFile instanceof File && geoFile.size > 0) form.append("metadata", geoFile, geoFile.name || "metadata.tsv");
-    else if (animalFile instanceof File && animalFile.size > 0) form.append("metadata", animalFile, animalFile.name || "animal_metadata.tsv");
-    else if (metadataText) form.append("metadata", makeTextFile(metadataText, "metadata.tsv", "text/tab-separated-values"));
-    else if (geoRowsText) form.append("metadata", makeTextFile(geoRowsText, "metadata.csv", "text/csv"));
-    else if (animalRowsText) form.append("metadata", makeTextFile(animalRowsText, "animal_metadata.csv", "text/csv"));
+    // v51: Single combined metadata model.
+    // The frontend sends one Excel-like metadata sheet as `metadata` / `metadataText`.
+    // This route duplicates the same combined sheet into evidence-layer keys so the backend
+    // can use it for sequence, host/animal, phenotype, outbreak, farm and geospatial analyses.
+    if (metadata instanceof File && metadata.size > 0) {
+      form.append("metadata", metadata, metadata.name || "combined_metadata.csv");
+      form.append("sequence_metadata", metadata, metadata.name || "combined_sequence_metadata.csv");
+      form.append("animal_metadata", metadata, metadata.name || "combined_animal_metadata.csv");
+      form.append("host_metadata", metadata, metadata.name || "combined_host_metadata.csv");
+      form.append("phenotype_metadata", metadata, metadata.name || "combined_phenotype_metadata.csv");
+      form.append("outbreak_metadata", metadata, metadata.name || "combined_outbreak_metadata.csv");
+      form.append("geospatial_metadata", metadata, metadata.name || "combined_geospatial_metadata.csv");
+      form.append("farm_metadata", metadata, metadata.name || "combined_farm_metadata.csv");
+    } else if (metadataText) {
+      form.append("metadata", makeTextFile(metadataText, "combined_metadata.csv", "text/csv"));
+      form.append("sequence_metadata", makeTextFile(metadataText, "combined_sequence_metadata.csv", "text/csv"));
+      form.append("animal_metadata", makeTextFile(metadataText, "combined_animal_metadata.csv", "text/csv"));
+      form.append("host_metadata", makeTextFile(metadataText, "combined_host_metadata.csv", "text/csv"));
+      form.append("phenotype_metadata", makeTextFile(metadataText, "combined_phenotype_metadata.csv", "text/csv"));
+      form.append("outbreak_metadata", makeTextFile(metadataText, "combined_outbreak_metadata.csv", "text/csv"));
+      form.append("geospatial_metadata", makeTextFile(metadataText, "combined_geospatial_metadata.csv", "text/csv"));
+      form.append("farm_metadata", makeTextFile(metadataText, "combined_farm_metadata.csv", "text/csv"));
+    } else if (geoFile instanceof File && geoFile.size > 0) {
+      // Backward-compatible fallback for older frontend builds.
+      form.append("metadata", geoFile, geoFile.name || "metadata.csv");
+      form.append("outbreak_metadata", geoFile, geoFile.name || "outbreak_metadata.csv");
+      form.append("geospatial_metadata", geoFile, geoFile.name || "geospatial_metadata.csv");
+    } else if (geoRowsText) {
+      // Backward-compatible fallback for older frontend builds.
+      form.append("metadata", makeTextFile(geoRowsText, "metadata.csv", "text/csv"));
+      form.append("outbreak_metadata", makeTextFile(geoRowsText, "outbreak_metadata.csv", "text/csv"));
+      form.append("geospatial_metadata", makeTextFile(geoRowsText, "geospatial_metadata.csv", "text/csv"));
+    } else if (animalFile instanceof File && animalFile.size > 0) {
+      // Backward-compatible fallback for older frontend builds.
+      form.append("metadata", animalFile, animalFile.name || "animal_metadata.csv");
+      form.append("animal_metadata", animalFile, animalFile.name || "animal_metadata.csv");
+      form.append("host_metadata", animalFile, animalFile.name || "host_metadata.csv");
+      form.append("phenotype_metadata", animalFile, animalFile.name || "phenotype_metadata.csv");
+    } else if (animalRowsText) {
+      // Backward-compatible fallback for older frontend builds.
+      form.append("metadata", makeTextFile(animalRowsText, "animal_metadata.csv", "text/csv"));
+      form.append("animal_metadata", makeTextFile(animalRowsText, "animal_metadata.csv", "text/csv"));
+      form.append("host_metadata", makeTextFile(animalRowsText, "host_metadata.csv", "text/csv"));
+      form.append("phenotype_metadata", makeTextFile(animalRowsText, "phenotype_metadata.csv", "text/csv"));
+    }
 
-    const standardModes = ["complete", "phylogeny", "evolution", "genomic_intelligence", "fitness", "geo_spatiotemporal", "ml_qml", "beast_tmrca", "transmission", "recombination", "phylodynamics", "source_sink", "outbreak_source", "forecasting"];
-    form.set("mode", clean(incoming.get("mode"), standardModes.includes(selected) ? "standard" : "fast"));
-    form.set("selected_analysis", selected);
-    form.set("analysisMode", selected);
-    form.set("action", clean(incoming.get("action"), "analysis"));
-    form.set("tool_version", "1.6.1");
-    form.set("developer", "FNU Nahiduzzaman");
-    form.set("rights_notice", "These tools are developed by FNU Nahiduzzaman. All rights reserved.");
-    form.set("run_only_selected", selected === "complete" ? "false" : "true");
-    form.set("module_scope", selected);
-
-    const flags = selectedFlags(selected, figureType, layout);
-    Object.entries(flags).forEach(([key, value]) => form.set(key, value));
-
-    form.set("figure_set", figureSetFor(selected, figureType));
-    form.set("figure_type", figureType);
-    form.set("figure_plot_style", clean(incoming.get("figure_plot_style"), figureType));
-    form.set("figure_designs", designs.join(","));
-    form.set("figure_styles", clean(incoming.get("figure_styles"), "journal_clean"));
-    form.set("figure_formats", clean(incoming.get("figure_formats"), "png,svg,pdf"));
-    form.set("figure_dpi", clean(incoming.get("figure_dpi"), "900"));
-    form.set("figure_layout", layout);
-    form.set("panel_mode", layout);
-    form.set("separate_or_panel", layout);
-    form.set("figure_title_mode", clean(incoming.get("figure_title_mode"), "full"));
-    form.set("figure_title_text", clean(incoming.get("figure_title_text")));
-    form.set("figure_title_font_size", clean(incoming.get("figure_title_font_size"), "16"));
-    form.set("x_title_font_size", clean(incoming.get("x_title_font_size"), "13"));
-    form.set("y_title_font_size", clean(incoming.get("y_title_font_size"), "13"));
-    form.set("x_label_font_size", clean(incoming.get("x_label_font_size"), "11"));
-    form.set("y_label_font_size", clean(incoming.get("y_label_font_size"), "11"));
-    form.set("figure_title_font_weight", clean(incoming.get("figure_title_font_weight"), "bold"));
-    form.set("x_title_font_weight", clean(incoming.get("x_title_font_weight"), "bold"));
-    form.set("y_title_font_weight", clean(incoming.get("y_title_font_weight"), "bold"));
-    form.set("transparent_background", clean(incoming.get("transparent_background"), "false"));
-    form.set("tree_inference_method", clean(incoming.get("tree_inference_method"), "maximum_likelihood"));
-
-    form.set("phylogeny_tree_designs", ["phylogenetic_tree", "beast_tmrca", "transmission_distance", "recombination_plot"].includes(figureType) ? designs.join(",") : "");
-    form.set("phylogeny_title_mode", clean(incoming.get("phylogeny_title_mode"), "full"));
-    form.set("phylogeny_font_size", clean(incoming.get("phylogeny_font_size") || incoming.get("x_title_font_size"), "12"));
-    form.set("phylogeny_font_weight", clean(incoming.get("phylogeny_font_weight") || incoming.get("x_title_font_weight"), "bold"));
-    form.set("phylogeny_panel_mode", layout);
-    form.set("phylogeny_color_by", clean(incoming.get("phylogeny_color_by"), "auto"));
-    form.set("phylogeny_max_tips", clean(incoming.get("phylogeny_max_tips"), "2500"));
-
-    form.set("run_beast_tmrca", clean(incoming.get("run_beast_tmrca") || incoming.get("beast_tmrca"), figureType === "beast_tmrca" ? "true" : "false"));
-    form.set("beast_tmrca", clean(incoming.get("beast_tmrca"), figureType === "beast_tmrca" ? "true" : "false"));
-    form.set("beast_clock_model", clean(incoming.get("beast_clock_model"), "relaxed_lognormal"));
-    form.set("beast_chain_length", clean(incoming.get("beast_chain_length"), "10000000"));
-    form.set("tmrca_substitution_rate", clean(incoming.get("tmrca_substitution_rate"), "0.001"));
-    form.set("transmission_mode", clean(incoming.get("transmission_mode"), "standard"));
-    form.set("nt_distance_threshold", clean(incoming.get("nt_distance_threshold"), "0.015"));
-    form.set("fitness_figure_designs", figureType === "fitness_landscape" ? designs.join(",") : clean(incoming.get("fitness_figure_designs"), ""));
-    form.set("novel_hypothesis", clean(incoming.get("novel_hypothesis"), "auto"));
-
-    const referenceText = clean(incoming.get("referenceText"));
-    const vaccineStrainText = clean(incoming.get("vaccineStrainText"));
-    const notes = clean(incoming.get("notes"));
-    if (referenceText) form.set("referenceText", referenceText);
-    if (vaccineStrainText) form.set("vaccineStrainText", vaccineStrainText);
-    if (notes) form.set("notes", notes);
-
-    // Keep metadata explicit for newer backend modules.
-    form.set("sequence_metadata_hint", "metadata is forwarded from metadata/geoFile/geoRowsText/animalFile/animalRowsText when provided");
+    form.set("sequence_metadata_hint", "v57 frontend parser extracts PRRSV/NCBI FASTA metadata including country from isolate naming patterns, keeps accession separate from strain, and forwards combined metadata to all evidence-layer metadata keys");
     form.set("metadata_required_for", "beast_tmrca,transmission,source_sink,host_adaptation,geo_spatiotemporal,forecasting");
 
     const advancedForwardFields = [
@@ -767,7 +743,7 @@ export async function POST(req: NextRequest) {
       if (value !== null && value !== undefined) form.set(field, clean(value));
     });
 
-    form.set("metadata_prebuilt_field_names", clean(incoming.get("metadata_template_fields"), "sample_id,strain,accession,country,latitude,longitude,collection_date,year,host,species,genotype,lineage,serovar,clade,source,isolation_site,study_id"));
+    form.set("metadata_prebuilt_field_names", clean(incoming.get("metadata_template_fields"), "sample_id,strain,accession,country,admin_region,latitude,longitude,collection_date,host,species,source,isolation_site,farm_id,animal_id,age,sex,disease_state,vaccination_status,vaccine_type,vaccine_strain,vaccination_date,days_post_vaccination,antibody_titer,neutralization_titer,viral_load,ct_value,virus_titer,replication_titer,serum_pathogen_load,clinical_score,outbreak_size,cases,total_animals,total_at_risk,morbidity_count,mortality_count,secondary_cases,transmission_rate,contact_rate,movement_in,movement_out,co_infections,biosecurity_score,sample_quality,sequencing_platform,coverage_depth,notes"));
     form.set("metadata_entry_mode", "excel_like_grid");
     form.set("metadata_grid_enabled", "true");
     form.set("metadata_grid_version", "v14_fixed_scope");

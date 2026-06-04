@@ -190,6 +190,11 @@ type QigenexMetadataPreset =
 type QigenexMetadataRow = Record<string, string>;
 
 const QIGENEX_METADATA_PRESETS: Record<QigenexMetadataPreset, { label: string; columns: string[]; sampleRows: QigenexMetadataRow[] }> = {
+  viral_fitness_landscape: {
+    label: "Viral fitness landscape metadata",
+    columns: ["sample_id", "strain", "accession", "country", "admin_region", "latitude", "longitude", "collection_date", "host", "species", "source", "isolation_site", "farm_id", "animal_id", "age", "sex", "disease_state", "vaccination_status", "vaccine_type", "vaccine_strain", "vaccination_date", "days_post_vaccination", "antibody_titer", "neutralization_titer", "viral_load", "ct_value", "virus_titer", "replication_titer", "serum_pathogen_load", "clinical_score", "outbreak_size", "cases", "total_animals", "total_at_risk", "morbidity_count", "mortality_count", "secondary_cases", "transmission_rate", "contact_rate", "movement_in", "movement_out", "co_infections", "biosecurity_score", "sample_quality", "sequencing_platform", "coverage_depth", "notes"],
+    sampleRows: []
+  },
   public_health_genomics: {
     label: "Public-health genomic metadata",
     columns: ["sample_id", "strain", "accession", "country", "latitude", "longitude", "collection_date", "year", "host", "species", "genotype", "lineage", "clade", "source", "isolation_site", "study_id"],
@@ -792,12 +797,10 @@ export default function Tools() {
   const [qigenexAnimalFile, setQigenexAnimalFile] = useState<File | null>(null);
   const [qigenexAnimalFileName, setQigenexAnimalFileName] = useState("");
   const [qigenexGeoRowsText, setQigenexGeoRowsText] = useState(
-    "sample_id,farm_id,location,latitude,longitude,collection_date,cases,total_animals\nISO_001,Farm_1,Mymensingh,24.7471,90.4203,2026-01-01,5,100\nISO_002,Farm_2,Gazipur,24.0023,90.4264,2026-01-05,8,120"
-  );
-  const [qigenexAnimalRowsText, setQigenexAnimalRowsText] = useState(
-    "animal_id,sample_id,species,age,sex,disease_state,immunity_score,serum_pathogen_load,vaccine_strain,vaccination_date,antibody_titer,co_infections\nA001,ISO_001,cattle,24,female,infected,42,8.2,Strain_A,2025-12-01,128,none\nA002,ISO_002,goat,18,male,infected,35,7.1,Strain_B,2025-11-20,64,pasteurella"
-  );
-  const [qigenexNotes, setQigenexNotes] = useState("");
+    "sample_id,farm_id,location,admin_region,latitude,longitude,collection_date,cases,total_animals,total_at_risk,outbreak_size,attack_rate,morbidity_count,mortality_count,mortality_rate,secondary_cases,transmission_rate,contact_rate,movement_in,movement_out,biosecurity_score\nISO_001,Farm_1,Mymensingh,Mymensingh,24.7471,90.4203,2026-01-01,5,100,100,35,0.05,5,1,0.01,2,0.18,0.40,2,0,55\nISO_002,Farm_2,Gazipur,Dhaka,24.0023,90.4264,2026-01-07,2,120,120,8,0.017,3,0,0,1,0.10,0.35,0,1,40"
+  );const [qigenexAnimalRowsText, setQigenexAnimalRowsText] = useState(
+    "animal_id,sample_id,species,host,age,sex,disease_state,vaccination_status,vaccine_type,vaccine_strain,vaccination_date,days_post_vaccination,antibody_titer,neutralization_titer,viral_load,ct_value,virus_titer,replication_titer,serum_pathogen_load,clinical_score,co_infections,sample_quality\nA001,ISO_001,swine,swine,24,female,infected,unvaccinated,,,,,128,64,8.2,18.5,6.5,6.2,8.2,4,none,medium\nA002,ISO_002,swine,swine,18,male,infected,vaccinated,MLV,Strain_B,2025-12-01,37,64,32,7.1,21.4,5.8,5.6,7.1,3,none,high"
+  );const [qigenexNotes, setQigenexNotes] = useState("");
   const [qigenexResult, setQigenexResult] = useState<any>(null);
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
@@ -1598,10 +1601,6 @@ export default function Tools() {
       formData.append("manual_comparable_genomes", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
       formData.append("comparable_genomes", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
     }
-    if (qigenexGeoFile) formData.append("geoFile", qigenexGeoFile);
-    if (qigenexGeoRowsText.trim()) formData.append("geoRowsText", qigenexGeoRowsText);
-    if (qigenexAnimalFile) formData.append("animalFile", qigenexAnimalFile);
-    if (qigenexAnimalRowsText.trim()) formData.append("animalRowsText", qigenexAnimalRowsText);
     if (figureOptions.metadataFile) {
       formData.append("metadata", figureOptions.metadataFile, figureOptions.metadataFile.name || "qigenex_metadata.csv");
     }
@@ -4094,10 +4093,10 @@ function QigenexSection(props: any) {
   const [selectedFigure, setSelectedFigure] = useState("");
   const [selectedText, setSelectedText] = useState("");
 
-  const [metadataPreset, setMetadataPreset] = useState<QigenexMetadataPreset>("public_health_genomics");
-  const [metadataColumns, setMetadataColumns] = useState<string[]>(QIGENEX_METADATA_PRESETS.public_health_genomics.columns);
-  const [metadataRows, setMetadataRows] = useState<QigenexMetadataRow[]>(makeMetadataRows(QIGENEX_METADATA_PRESETS.public_health_genomics.columns, QIGENEX_METADATA_PRESETS.public_health_genomics.sampleRows));
-  const [metadataFields, setMetadataFields] = useState(QIGENEX_METADATA_PRESETS.public_health_genomics.columns.join(","));
+  const [metadataPreset, setMetadataPreset] = useState<QigenexMetadataPreset>("viral_fitness_landscape");
+  const [metadataColumns, setMetadataColumns] = useState<string[]>(QIGENEX_METADATA_PRESETS.viral_fitness_landscape.columns);
+  const [metadataRows, setMetadataRows] = useState<QigenexMetadataRow[]>([]);
+  const [metadataFields, setMetadataFields] = useState(QIGENEX_METADATA_PRESETS.viral_fitness_landscape.columns.join(","));
   const [requiredMetadataFields, setRequiredMetadataFields] = useState("sample_id,country,collection_date,host");
   const [autoEnrichMetadata, setAutoEnrichMetadata] = useState("true");
   const [autoGeocodeCountry, setAutoGeocodeCountry] = useState("true");
@@ -4150,6 +4149,682 @@ function QigenexSection(props: any) {
   const [bacterialWgsFigureDesigns, setBacterialWgsFigureDesigns] = useState<string[]>(["wgs_ani_mash_tree", "metadata_annotated_tree", "ani_heatmap_tree"]);
 
   const hasSequence = Boolean(fastaText.trim() || fastaFileName || alignedText.trim() || alignedFileName);
+
+
+
+
+
+  const metadataRequiredFieldSet = useMemo(
+    () => new Set(splitFieldNames(requiredMetadataFields)),
+    [requiredMetadataFields]
+  );
+
+  const countrySynonyms: Record<string, string> = {
+    usa: "USA",
+    us: "USA",
+    u_s_a: "USA",
+    u_s: "USA",
+    united_states: "USA",
+    united_states_of_america: "USA",
+    america: "USA",
+    bangladesh: "Bangladesh",
+    bd: "Bangladesh",
+    india: "India",
+    in: "India",
+    china: "China",
+    cn: "China",
+    chn: "China",
+    pr_china: "China",
+    people_s_republic_of_china: "China",
+    vietnam: "Vietnam",
+    viet_nam: "Vietnam",
+    vn: "Vietnam",
+    vnm: "Vietnam",
+    thailand: "Thailand",
+    th: "Thailand",
+    tha: "Thailand",
+    japan: "Japan",
+    jp: "Japan",
+    jpn: "Japan",
+    south_korea: "South Korea",
+    korea: "South Korea",
+    republic_of_korea: "South Korea",
+    kr: "South Korea",
+    kor: "South Korea",
+    ke: "South Korea",
+    canada: "Canada",
+    ca: "Canada",
+    can: "Canada",
+    brazil: "Brazil",
+    br: "Brazil",
+    bra: "Brazil",
+    mexico: "Mexico",
+    mx: "Mexico",
+    mex: "Mexico",
+    germany: "Germany",
+    de: "Germany",
+    deu: "Germany",
+    ger: "Germany",
+    italy: "Italy",
+    it: "Italy",
+    ita: "Italy",
+    france: "France",
+    fr: "France",
+    fra: "France",
+    spain: "Spain",
+    es: "Spain",
+    esp: "Spain",
+    uk: "United Kingdom",
+    united_kingdom: "United Kingdom",
+    england: "United Kingdom",
+    great_britain: "United Kingdom",
+    gb: "United Kingdom",
+    gbr: "United Kingdom",
+    australia: "Australia",
+    au: "Australia",
+    aus: "Australia",
+    pakistan: "Pakistan",
+    pk: "Pakistan",
+    nepal: "Nepal",
+    sri_lanka: "Sri Lanka",
+    myanmar: "Myanmar",
+    malaysia: "Malaysia",
+    indonesia: "Indonesia",
+    philippines: "Philippines",
+    cambodia: "Cambodia",
+    laos: "Laos",
+    iran: "Iran",
+    turkey: "Turkey",
+    egypt: "Egypt",
+    south_africa: "South Africa",
+    hungary: "Hungary",
+    hu: "Hungary",
+    hun: "Hungary",
+    slovakia: "Slovakia",
+    sk: "Slovakia",
+    svk: "Slovakia",
+    chile: "Chile",
+    cl: "Chile",
+    chl: "Chile",
+    denmark: "Denmark",
+    dk: "Denmark",
+    dnk: "Denmark",
+    netherlands: "Netherlands",
+    nl: "Netherlands",
+    nld: "Netherlands"
+  };
+
+  const chinaProvinceCodes: Record<string, string> = {
+    bj: "Beijing",
+    beijing: "Beijing",
+    sh: "Shanghai",
+    tj: "Tianjin",
+    cq: "Chongqing",
+    gd: "Guangdong",
+    gx: "Guangxi",
+    sc: "Sichuan",
+    yn: "Yunnan",
+    sd: "Shandong",
+    sx: "Shanxi/Shaanxi",
+    sn: "Shaanxi",
+    hb: "Hubei/Hebei",
+    hn: "Henan/Hunan",
+    hen: "Henan",
+    hun: "Hunan",
+    hlj: "Heilongjiang",
+    jl: "Jilin",
+    ln: "Liaoning",
+    xj: "Xinjiang",
+    xz: "Tibet",
+    nm: "Inner Mongolia",
+    nmg: "Inner Mongolia",
+    js: "Jiangsu",
+    zj: "Zhejiang",
+    ah: "Anhui",
+    fj: "Fujian",
+    jx: "Jiangxi",
+    ha: "Henan",
+    gz: "Guizhou",
+    qh: "Qinghai",
+    gs: "Gansu",
+    nx: "Ningxia",
+    hi: "Hainan"
+  };
+
+  const usStateNames: Record<string, string> = {
+    alabama: "Alabama",
+    alaska: "Alaska",
+    arizona: "Arizona",
+    arkansas: "Arkansas",
+    california: "California",
+    ca: "California",
+    colorado: "Colorado",
+    connecticut: "Connecticut",
+    florida: "Florida",
+    georgia: "Georgia",
+    illinois: "Illinois",
+    il: "Illinois",
+    indiana: "Indiana",
+    ia: "Iowa",
+    iowa: "Iowa",
+    kansas: "Kansas",
+    kentucky: "Kentucky",
+    louisiana: "Louisiana",
+    maryland: "Maryland",
+    massachusetts: "Massachusetts",
+    michigan: "Michigan",
+    minnesota: "Minnesota",
+    missouri: "Missouri",
+    nebraska: "Nebraska",
+    ne: "Nebraska",
+    north_carolina: "North Carolina",
+    ohio: "Ohio",
+    oklahoma: "Oklahoma",
+    pennsylvania: "Pennsylvania",
+    south_dakota: "South Dakota",
+    tennessee: "Tennessee",
+    texas: "Texas",
+    wisconsin: "Wisconsin"
+  };
+
+  const hostSynonyms: Record<string, string> = {
+    swine: "swine",
+    pig: "swine",
+    pigs: "swine",
+    hog: "swine",
+    hogs: "swine",
+    porcine: "swine",
+    pork: "swine",
+    wild_boar: "swine",
+    boar: "swine",
+    sus_scrofa: "swine",
+    human: "human",
+    homo_sapiens: "human",
+    man: "human",
+    patient: "human",
+    cattle: "cattle",
+    cow: "cattle",
+    cows: "cattle",
+    bovine: "cattle",
+    calf: "cattle",
+    calves: "cattle",
+    bos_taurus: "cattle",
+    goat: "goat",
+    goats: "goat",
+    caprine: "goat",
+    sheep: "sheep",
+    ovine: "sheep",
+    poultry: "poultry",
+    chicken: "poultry",
+    chickens: "poultry",
+    broiler: "poultry",
+    layer: "poultry",
+    duck: "poultry",
+    ducks: "poultry",
+    avian: "avian",
+    bird: "avian",
+    dog: "dog",
+    dogs: "dog",
+    canine: "dog",
+    cat: "cat",
+    cats: "cat",
+    feline: "cat",
+    water: "environment",
+    wastewater: "environment",
+    environment: "environment",
+    food: "food"
+  };
+
+  const sourceSynonyms: Record<string, string> = {
+    lung: "lung",
+    serum: "serum",
+    blood: "blood",
+    tissue: "tissue",
+    lymph_node: "lymph_node",
+    tonsil: "tonsil",
+    nasal_swab: "nasal_swab",
+    oral_fluid: "oral_fluid",
+    feces: "feces",
+    faeces: "feces",
+    swab: "swab",
+    clinical: "clinical",
+    farm: "farm",
+    outbreak: "outbreak",
+    surveillance: "surveillance"
+  };
+
+  const fastaMetadataKeyAliases: Record<string, string> = {
+    id: "sample_id",
+    sample: "sample_id",
+    sampleid: "sample_id",
+    sample_id: "sample_id",
+    sequence_id: "sample_id",
+    seq_id: "sample_id",
+    isolate: "strain",
+    isolate_name: "strain",
+    strain: "strain",
+    strain_name: "strain",
+    accession: "accession",
+    acc: "accession",
+    genbank: "accession",
+    country: "country",
+    geo_loc_name: "country",
+    geolocation: "country",
+    location: "country",
+    loc: "country",
+    origin: "country",
+    province: "admin_region",
+    state: "admin_region",
+    region: "admin_region",
+    admin_region: "admin_region",
+    district: "admin_region",
+    collection_date: "collection_date",
+    collectiondate: "collection_date",
+    date: "collection_date",
+    year: "collection_date",
+    host: "host",
+    host_species: "host",
+    organism: "species",
+    species: "species",
+    virus: "species",
+    source: "source",
+    isolation_source: "isolation_site",
+    isolation_site: "isolation_site",
+    tissue: "isolation_site",
+    specimen: "source",
+    farm: "farm_id",
+    farm_id: "farm_id",
+    animal: "animal_id",
+    animal_id: "animal_id",
+    age: "age",
+    sex: "sex",
+    disease: "disease_state",
+    disease_state: "disease_state",
+    vaccine: "vaccine_strain",
+    vaccine_strain: "vaccine_strain",
+    vaccination_status: "vaccination_status",
+    viral_load: "viral_load",
+    ct: "ct_value",
+    ct_value: "ct_value",
+    titer: "virus_titer",
+    virus_titer: "virus_titer",
+    clinical_score: "clinical_score"
+  };
+
+  function normalizeToken(value: string) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
+  function cleanMetadataValue(value: string | undefined | null) {
+    const raw = String(value ?? "").trim().replace(/^["']|["']$/g, "").replace(/[;,|]+$/g, "");
+    if (!raw || ["na", "n/a", "nan", "none", "null", "unknown", "unverified", "not_available", "not_applicable", "-", "_", "."].includes(raw.toLowerCase())) return "";
+    return raw;
+  }
+
+  function matchCanonicalFromSynonyms(text: string, dictionary: Record<string, string>) {
+    const clean = cleanMetadataValue(text);
+    if (!clean) return "";
+    const key = normalizeToken(clean);
+    if (dictionary[key]) return dictionary[key];
+
+    const tokens = new Set(clean.split(/[^A-Za-z0-9]+/).map((x) => normalizeToken(x)).filter(Boolean));
+    for (const token of tokens) {
+      if (dictionary[token]) return dictionary[token];
+    }
+
+    const normalized = normalizeToken(clean);
+    for (const [syn, canonical] of Object.entries(dictionary)) {
+      if (new RegExp(`(^|_)${syn}(_|$)`).test(normalized)) return canonical;
+    }
+
+    return "";
+  }
+
+  function normalizeCountry(value: string, allowUnmatched = false) {
+    const matched = matchCanonicalFromSynonyms(value, countrySynonyms);
+    if (matched) return matched;
+    return allowUnmatched ? cleanMetadataValue(value) : "";
+  }
+
+  function normalizeHost(value: string, allowUnmatched = false) {
+    const matched = matchCanonicalFromSynonyms(value, hostSynonyms);
+    if (matched) return matched;
+    return allowUnmatched ? cleanMetadataValue(value) : "";
+  }
+
+  function normalizeSource(value: string, allowUnmatched = false) {
+    const matched = matchCanonicalFromSynonyms(value, sourceSynonyms);
+    if (matched) return matched;
+    return allowUnmatched ? cleanMetadataValue(value) : "";
+  }
+
+  function normalizeMetadataKey(key: string) {
+    const cleanKey = normalizeToken(key);
+    return fastaMetadataKeyAliases[cleanKey] || cleanKey;
+  }
+
+  function inferAccessionFromId(id: string) {
+    const cleanId = String(id || "").trim().replace(/^>/, "").replace(/,$/, "");
+    const accessions = cleanId.match(/\b[A-Z]{1,3}_?\d{5,}(?:\.\d+)?\b|\b[A-Z]{2}\d{6}(?:\.\d+)?\b|\b[A-Z]{4}\d{8,}(?:\.\d+)?\b/i);
+    return accessions ? accessions[0] : "";
+  }
+
+  function looksLikeAccession(value: string) {
+    const clean = cleanMetadataValue(value);
+    return Boolean(clean && inferAccessionFromId(clean) === clean);
+  }
+
+  function setIfColumn(row: QigenexMetadataRow, key: string, value: string, overwrite = false, allowUnmatched = false) {
+    const col = normalizeMetadataKey(key);
+    let cleanValue = cleanMetadataValue(value);
+    if (!cleanValue || !metadataColumns.includes(col)) return;
+
+    if (col === "country") cleanValue = normalizeCountry(cleanValue, allowUnmatched);
+    if (col === "host") cleanValue = normalizeHost(cleanValue, allowUnmatched);
+    if (col === "source" || col === "isolation_site") cleanValue = normalizeSource(cleanValue, allowUnmatched);
+
+    if (!cleanValue) return;
+    if (overwrite || !cleanMetadataValue(row[col])) row[col] = cleanValue;
+  }
+
+  function splitExplicitLocation(value: string) {
+    const cleaned = cleanMetadataValue(value);
+    if (!cleaned) return { country: "", admin_region: "" };
+    const parts = cleaned.split(/[:;,]/).map((x) => x.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      return { country: normalizeCountry(parts[0], true), admin_region: parts.slice(1).join(", ") };
+    }
+    return { country: normalizeCountry(cleaned, true), admin_region: "" };
+  }
+
+  function inferCountryFromFreeText(text: string) {
+    return normalizeCountry(text, false);
+  }
+
+  function inferHostFromFreeText(text: string) {
+    return normalizeHost(text, false);
+  }
+
+  function inferSourceFromFreeText(text: string) {
+    return normalizeSource(text, false);
+  }
+
+  function inferDateFromFreeText(text: string) {
+    const fullDate = text.match(/\b(19|20)\d{2}[-_/\.](0?[1-9]|1[0-2])[-_/\.](0?[1-9]|[12]\d|3[01])\b/);
+    if (fullDate) return fullDate[0].replace(/[\/_\.]/g, "-");
+    const yearOnly = text.match(/\b(19|20)\d{2}\b/);
+    return yearOnly ? yearOnly[0] : "";
+  }
+
+  function inferCountryFromStructuredName(text: string) {
+    const normalized = normalizeToken(text);
+    const rawSegments = text.split(/[\/_|,;:\s-]+/).map((x) => x.trim()).filter(Boolean);
+    const segments = rawSegments.map((x) => normalizeToken(x)).filter(Boolean);
+
+    for (const seg of segments) {
+      if (countrySynonyms[seg]) return { country: countrySynonyms[seg], admin_region: "" };
+    }
+
+    for (const [provinceCode, provinceName] of Object.entries(chinaProvinceCodes)) {
+      if (segments.includes(provinceCode)) return { country: "China", admin_region: provinceName };
+      if (new RegExp(`(^|_)${provinceCode}[a-z0-9]*(_|$)`).test(normalized)) return { country: "China", admin_region: provinceName };
+    }
+
+    for (const [stateCode, stateName] of Object.entries(usStateNames)) {
+      if (segments.includes(stateCode)) return { country: "USA", admin_region: stateName };
+    }
+
+    // PRRSV-style isolate names commonly embed location:
+    // PRRSV2/USA/CB678/2009, USA/IL/24440-GC/2019, PRRSV-China/SCcd2020/2020,
+    // PRRSV2/CN/60648/2019, PRRS/ASP11/Chile/2015, DEU-NLD-DNK/...
+    const explicitCountry = matchCanonicalFromSynonyms(text, countrySynonyms);
+    if (explicitCountry) return { country: explicitCountry, admin_region: "" };
+
+    return { country: "", admin_region: "" };
+  }
+
+  function parseKeyValuePairsFromText(text: string) {
+    const pairs: { key: string; value: string; method: string }[] = [];
+
+    Array.from(text.matchAll(/\[([^\]=:\s]+)\s*[=:]\s*([^\]]+)\]/g)).forEach((m) => {
+      pairs.push({ key: m[1], value: m[2], method: "bracket_modifier" });
+    });
+
+    text.split(/[|;]/).forEach((part) => {
+      const m = part.trim().match(/^([A-Za-z][A-Za-z0-9 _.-]{1,50})\s*[:=]\s*(.+)$/);
+      if (m) pairs.push({ key: m[1], value: m[2], method: "pipe_semicolon_kv" });
+    });
+
+    Array.from(text.matchAll(/\b([A-Za-z][A-Za-z0-9_.-]{1,50})\s*[=:]\s*("[^"]+"|'[^']+'|[^|;\]\s]+)/g)).forEach((m) => {
+      pairs.push({ key: m[1], value: m[2], method: "space_kv" });
+    });
+
+    const labelPatterns: Array<[RegExp, string]> = [
+      [/\bcountry\s+(?:of\s+)?(?:origin\s+)?([A-Za-z][A-Za-z ._-]{2,40})/i, "country"],
+      [/\bhost\s+([A-Za-z][A-Za-z _-]{2,40})/i, "host"],
+      [/\bcollected\s+(?:on\s+)?((?:19|20)\d{2}[-_/\.]\d{1,2}[-_/\.]\d{1,2})/i, "collection_date"],
+      [/\bisolate\s+([A-Za-z0-9_.\/-]{2,100})/i, "strain"],
+      [/\bstrain\s+([A-Za-z0-9_.\/-]{2,100})/i, "strain"],
+    ];
+    labelPatterns.forEach(([pattern, key]) => {
+      const m = text.match(pattern);
+      if (m) pairs.push({ key, value: m[1], method: "label_phrase" });
+    });
+
+    return pairs;
+  }
+
+  function extractBetterStrain(rawHeader: string, firstToken: string, accession: string) {
+    const explicit = parseKeyValuePairsFromText(rawHeader).find((p) => ["strain", "strain_name", "isolate", "isolate_name"].includes(normalizeToken(p.key)));
+    if (explicit) {
+      const val = cleanMetadataValue(explicit.value);
+      if (val && !looksLikeAccession(val)) return val;
+    }
+
+    const isolateMatch = rawHeader.match(/\b(?:isolate|strain)\s+(.+?)(?:\s+(?:glycoprotein|envelope|nucleocapsid|nonstructural|major|proteinase|GP\d|ORF\d|NSP\d?|gene|clone|complete|partial|cds|mRNA)\b|,|;|$)/i);
+    if (isolateMatch) {
+      let val = cleanMetadataValue(isolateMatch[1]);
+      val = val.replace(/\s+(?:glycoprotein|envelope|nucleocapsid|nonstructural|major|proteinase|gene|clone).*$/i, "").trim();
+      if (val && !looksLikeAccession(val) && !/^porcine(?:\s+reproductive|\s+respiratory)?$/i.test(val)) return val;
+    }
+
+    if (accession && firstToken === accession) return "";
+    if (looksLikeAccession(firstToken)) return "";
+    return "";
+  }
+
+  function parseFastaHeaderMetadata(headerLine: string, sequenceIndex: number): QigenexMetadataRow {
+    const rawHeader = headerLine.replace(/^>\s*/, "").trim();
+    const rawParts = rawHeader.split("|").map((x) => x.trim()).filter(Boolean);
+    const firstWhitespaceToken = rawHeader.split(/\s+/)[0] || `Sequence_${sequenceIndex + 1}`;
+    const firstToken = rawParts.find((x) => !/^(gb|ref|emb|dbj|sp|tr)$/i.test(x) && !x.includes(" ")) || firstWhitespaceToken;
+    const row: QigenexMetadataRow = {};
+
+    metadataColumns.forEach((col) => {
+      row[col] = "";
+    });
+
+    const accession = inferAccessionFromId(firstToken) || inferAccessionFromId(rawHeader);
+    row.sample_id = (accession || firstToken || `Sequence_${sequenceIndex + 1}`).replace(/[,;]/g, "_");
+    if (metadataColumns.includes("accession") && accession) row.accession = accession;
+
+    const betterStrain = extractBetterStrain(rawHeader, firstToken, accession);
+    if (betterStrain && metadataColumns.includes("strain")) row.strain = betterStrain;
+
+    parseKeyValuePairsFromText(rawHeader).forEach((pair) => {
+      const col = normalizeMetadataKey(pair.key);
+      const value = cleanMetadataValue(pair.value);
+      if (!value) return;
+
+      if (col === "country") {
+        const loc = splitExplicitLocation(value);
+        setIfColumn(row, "country", loc.country, false, true);
+        setIfColumn(row, "admin_region", loc.admin_region, false, true);
+      } else if (col === "host") {
+        setIfColumn(row, "host", value, false, true);
+      } else if (col === "source" || col === "isolation_site") {
+        setIfColumn(row, col, value, false, true);
+      } else if (col === "strain") {
+        if (!looksLikeAccession(value)) setIfColumn(row, col, value, false, true);
+      } else {
+        setIfColumn(row, col, value, false, true);
+      }
+    });
+
+    if (metadataColumns.includes("collection_date") && !cleanMetadataValue(row.collection_date)) {
+      setIfColumn(row, "collection_date", inferDateFromFreeText(rawHeader));
+    }
+
+    if (metadataColumns.includes("host") && !cleanMetadataValue(row.host)) {
+      const host = inferHostFromFreeText(rawHeader);
+      if (host) setIfColumn(row, "host", host);
+    }
+
+    if (metadataColumns.includes("country") && !cleanMetadataValue(row.country)) {
+      const structured = inferCountryFromStructuredName([row.strain, rawHeader].filter(Boolean).join(" "));
+      if (structured.country) {
+        setIfColumn(row, "country", structured.country, false, true);
+        setIfColumn(row, "admin_region", structured.admin_region, false, true);
+      }
+    }
+
+    if (metadataColumns.includes("source") && !cleanMetadataValue(row.source)) {
+      const source = inferSourceFromFreeText(rawHeader);
+      if (source) setIfColumn(row, "source", source);
+    }
+
+    const lower = rawHeader.toLowerCase();
+    if (metadataColumns.includes("species") && !cleanMetadataValue(row.species)) {
+      if (lower.includes("prrsv") || lower.includes("porcine reproductive") || lower.includes("porcine respiratory") || lower.includes("porcine reproductive and respiratory")) row.species = "PRRSV";
+      else if (lower.includes("sars-cov-2") || lower.includes("covid")) row.species = "SARS-CoV-2";
+      else if (lower.includes("influenza")) row.species = "Influenza virus";
+      else if (lower.includes("newcastle") || lower.includes("avian paramyxovirus")) row.species = "Newcastle disease virus";
+      else if (lower.includes("measles")) row.species = "Measles virus";
+    }
+
+    if (row.country) row.country = normalizeCountry(row.country, true);
+    if (row.host) row.host = normalizeHost(row.host, true);
+    if (row.source) row.source = normalizeSource(row.source, true);
+    if (row.isolation_site) row.isolation_site = normalizeSource(row.isolation_site, true);
+    if (row.strain && looksLikeAccession(row.strain)) row.strain = "";
+
+    return row;
+  }
+
+  function suspiciousExistingMetadataValue(col: string, value: string) {
+    const clean = cleanMetadataValue(value);
+    if (!clean) return false;
+    if ((col === "country" || col === "host") && (clean.includes("|") || /porcine|sequence\s+\d+|glycoprotein|complete cds|partial cds/i.test(clean))) return true;
+    if (col === "strain" && looksLikeAccession(clean)) return true;
+    return false;
+  }
+
+  function parseFastaMetadataRows(text: string): QigenexMetadataRow[] {
+    const headers = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith(">"));
+    return headers.map((header, index) => parseFastaHeaderMetadata(header, index));
+  }
+
+  function mergeSequenceMetadataRows(rows: QigenexMetadataRow[]) {
+    if (!rows.length) return;
+
+    setMetadataRows((old) => {
+      const existingBySample = new Map(old.map((row, index) => [String(row.sample_id || `row_${index}`), { row, index }]));
+      const next = old.map((row) => ({ ...row }));
+
+      rows.forEach((incoming) => {
+        const sampleId = cleanMetadataValue(incoming.sample_id) || `Sequence_${next.length + 1}`;
+        incoming.sample_id = sampleId;
+        const hit = existingBySample.get(sampleId);
+
+        if (hit) {
+          const merged = { ...hit.row };
+          metadataColumns.forEach((col) => {
+            const incomingValue = cleanMetadataValue(incoming[col]);
+            const currentValue = cleanMetadataValue(merged[col]);
+            if (incomingValue && (!currentValue || suspiciousExistingMetadataValue(col, currentValue))) merged[col] = incomingValue;
+          });
+          next[hit.index] = merged;
+        } else {
+          const blank: QigenexMetadataRow = {};
+          metadataColumns.forEach((col) => {
+            blank[col] = cleanMetadataValue(incoming[col]);
+          });
+          blank.sample_id = sampleId;
+          next.push(blank);
+        }
+      });
+
+      return next;
+    });
+  }
+
+  function autoFillMetadataFromFastaText(text: string) {
+    const rows = parseFastaMetadataRows(text);
+    mergeSequenceMetadataRows(rows);
+  }
+
+  async function handlePrimarySequenceFile(file: File | null) {
+    if (sequenceMode === "aligned") {
+      setAlignedFile(file);
+      setAlignedFileName(file?.name || "");
+    } else {
+      setFastaFile(file);
+      setFastaFileName(file?.name || "");
+    }
+
+    if (file) {
+      try {
+        const text = await file.text();
+        autoFillMetadataFromFastaText(text);
+      } catch (error) {
+        console.warn("Could not read FASTA headers for metadata auto-fill", error);
+      }
+    }
+  }
+
+  async function handleTargetGenomeFile(file: File | null) {
+    setTargetGenomeFile(file);
+    setTargetGenomeFileName(file?.name || "");
+    if (file && !fastaFile) {
+      setFastaFile(file);
+      setFastaFileName(file.name);
+    }
+    if (file) {
+      try {
+        const text = await file.text();
+        autoFillMetadataFromFastaText(text);
+      } catch (error) {
+        console.warn("Could not read target genome headers for metadata auto-fill", error);
+      }
+    }
+  }
+
+  function metadataCellClass(row: QigenexMetadataRow, col: string) {
+    const required = metadataRequiredFieldSet.has(col);
+    const empty = !cleanMetadataValue(row[col]);
+    if (required && empty) {
+      return "w-full min-w-[120px] rounded-lg border border-red-400 bg-red-950/60 px-2 py-1.5 text-xs text-red-100 outline-none ring-1 ring-red-500/40 placeholder:text-red-300 focus:border-red-300";
+    }
+    if (empty) {
+      return "w-full min-w-[120px] rounded-lg border border-red-400/70 bg-red-950/30 px-2 py-1.5 text-xs text-red-100 outline-none placeholder:text-red-300 focus:border-red-300";
+    }
+    return "w-full min-w-[120px] rounded-lg border border-white/10 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-300";
+  }
+
+  const missingRequiredMetadataCells = metadataRows.reduce((count, row) => {
+    metadataRequiredFieldSet.forEach((col) => {
+      if (metadataColumns.includes(col) && !cleanMetadataValue(row[col])) count += 1;
+    });
+    return count;
+  }, 0);
 
   const analysisList = [
     { id: "qc", label: "QC" },
@@ -4627,7 +5302,7 @@ function QigenexSection(props: any) {
     const template = QIGENEX_METADATA_PRESETS[preset];
     setMetadataPreset(preset);
     setMetadataColumns(template.columns);
-    setMetadataRows(makeMetadataRows(template.columns, template.sampleRows));
+    setMetadataRows([]);
     setMetadataFields(template.columns.join(","));
     setRequiredMetadataFields(
       preset === "bacterial_wgs"
@@ -4636,7 +5311,7 @@ function QigenexSection(props: any) {
         ? "sample_id,country,collection_date,host,source_country,sink_country"
         : "sample_id,country,collection_date,host"
     );
-    console.info(`Metadata sheet preset loaded: ${template.label}. Columns=${template.columns.length}; rows=${template.sampleRows.length}.`);
+    console.info(`Metadata sheet preset loaded empty: ${template.label}. Columns=${template.columns.length}. Sequence upload/paste will auto-fill rows.`);
   }
 
   function updateMetadataCell(rowIndex: number, column: string, value: string) {
@@ -4740,14 +5415,7 @@ function QigenexSection(props: any) {
               type="file"
               accept=".fasta,.fa,.fas,.fna,.txt,.aln"
               onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                if (sequenceMode === "aligned") {
-                  setAlignedFile(file);
-                  setAlignedFileName(file?.name || "");
-                } else {
-                  setFastaFile(file);
-                  setFastaFileName(file?.name || "");
-                }
+                void handlePrimarySequenceFile(e.target.files?.[0] || null);
               }}
               className="block w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 text-sm text-slate-300 file:mr-3 file:rounded-xl file:border-0 file:bg-purple-400 file:px-3 file:py-2 file:font-black file:text-slate-950"
             />
@@ -4889,13 +5557,7 @@ function QigenexSection(props: any) {
                   type="file"
                   accept=".fasta,.fa,.fna,.ffn,.faa,.fas,.gz,.zip"
                   onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setTargetGenomeFile(file);
-                    setTargetGenomeFileName(file?.name || "");
-                    if (file && !fastaFile) {
-                      setFastaFile(file);
-                      setFastaFileName(file.name);
-                    }
+                    void handleTargetGenomeFile(e.target.files?.[0] || null);
                   }}
                   className="block w-full text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-purple-300 file:px-4 file:py-2 file:font-black file:text-slate-950"
                 />
@@ -5121,8 +5783,8 @@ function QigenexSection(props: any) {
               <div className="mt-4 rounded-2xl border border-cyan-300/10 bg-slate-900/50 p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-black text-white">Excel-like metadata entry sheet</p>
-                    <p className="text-xs font-semibold text-slate-400">Choose a preset, edit cells directly, add rows/columns, then submit. This sheet is sent as a real CSV metadata file.</p>
+                    <p className="text-sm font-black text-white">Single combined Excel-like metadata sheet</p>
+                    <p className="text-xs font-semibold text-slate-400">The sheet starts empty. Upload or paste FASTA and the tool auto-creates rows from NCBI-style headers. It extracts accession, true isolate/strain, host/species, dates, and country from explicit metadata plus PRRSV isolate naming patterns such as PRRSV2/USA/..., PRRSV-China/..., PRRSV2/CN/..., VN, HU, Slovakia, Chile, DK/DNK/DEU/NLD.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={addMetadataRow} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-white">Add row</button>
@@ -5163,6 +5825,10 @@ function QigenexSection(props: any) {
                   </div>
                 </div>
 
+                <div className="mt-3 rounded-2xl border border-red-400/30 bg-red-950/20 p-3 text-xs font-bold text-red-100">
+                  Metadata starts empty and is auto-filled from FASTA headers using strict PRRSV/NCBI extraction. It now infers countries from isolate naming patterns: PRRSV2/USA, PRRSV-China, PRRSV2/CN, VN, HU, Slovakia, Chile, DK/DNK, DEU/NLD and Chinese province prefixes such as YN, SD, SC, BJ, HLJ, JX, XJ, GD, GX. Empty cells are red; required empty cells are stronger red. Missing required cells: {missingRequiredMetadataCells}.
+                </div>
+
                 <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-slate-950">
                   <table className="min-w-[1200px] w-full border-collapse text-left text-xs">
                     <thead className="sticky top-0 z-10 bg-slate-900 text-slate-300">
@@ -5196,7 +5862,8 @@ function QigenexSection(props: any) {
                               <input
                                 value={row[col] ?? ""}
                                 onChange={(e) => updateMetadataCell(rowIndex, col, e.target.value)}
-                                className="w-full min-w-[120px] rounded-lg border border-white/10 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-300"
+                                placeholder={metadataRequiredFieldSet.has(col) ? "required" : "missing"}
+                                className={metadataCellClass(row, col)}
                               />
                             </td>
                           ))}
@@ -5408,23 +6075,16 @@ function QigenexSection(props: any) {
             <details className="rounded-2xl border border-white/10 bg-slate-950 p-4">
               <summary className="cursor-pointer text-sm font-black text-slate-200">Input fields</summary>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <textarea value={fastaText} onChange={(e) => setFastaText(e.target.value)} placeholder="Paste FASTA" className="h-28 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
-                <textarea value={alignedText} onChange={(e) => setAlignedText(e.target.value)} placeholder="Paste aligned FASTA" className="h-28 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                <textarea value={fastaText} onChange={(e) => { const value = e.target.value; setFastaText(value); autoFillMetadataFromFastaText(value); }} placeholder="Paste FASTA" className="h-28 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
+                <textarea value={alignedText} onChange={(e) => { const value = e.target.value; setAlignedText(value); autoFillMetadataFromFastaText(value); }} placeholder="Paste aligned FASTA" className="h-28 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
                 <textarea value={referenceText} onChange={(e) => setReferenceText(e.target.value)} placeholder="Reference FASTA / strain" className="h-24 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
                 <textarea value={vaccineStrainText} onChange={(e) => setVaccineStrainText(e.target.value)} placeholder="Vaccine strain FASTA / IDs" className="h-24 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white" />
 
-                <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
-                  <div className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-purple-200">Sequence metadata</div>
-                  <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setGeoFile(file); setGeoFileName(file?.name || ""); }} className="block w-full text-sm text-slate-300" />
-                  <div className="mt-2 truncate text-xs text-slate-400">{geoFileName || "sample_id, country, year, genotype, host, latitude, longitude"}</div>
-                  <textarea value={geoRowsText} onChange={(e) => setGeoRowsText(e.target.value)} placeholder="sample_id,country,year,genotype,host,latitude,longitude" className="mt-3 h-24 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" />
-                </div>
-
-                <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
-                  <div className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Animal / host metadata</div>
-                  <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={(e) => { const file = e.target.files?.[0] || null; setAnimalFile(file); setAnimalFileName(file?.name || ""); }} className="block w-full text-sm text-slate-300" />
-                  <div className="mt-2 truncate text-xs text-slate-400">{animalFileName || "animal_id, sample_id, species, age, sex, disease_state"}</div>
-                  <textarea value={animalRowsText} onChange={(e) => setAnimalRowsText(e.target.value)} placeholder="animal_id,sample_id,species,age,sex,disease_state" className="mt-3 h-24 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" />
+                <div className="rounded-xl border border-cyan-300/20 bg-slate-900 p-3 md:col-span-2">
+                  <div className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Combined metadata</div>
+                  <p className="text-xs font-semibold leading-6 text-slate-300">
+                    Use the single Excel-like metadata sheet above for external metadata only: sample identifiers, host/animal data, viral load, Ct value, titer, outbreak size, cases, total animals, vaccination and location. Genome-derived variables are calculated automatically from the FASTA/reference.
+                  </p>
                 </div>
 
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes / logic for analysis" className="h-20 rounded-xl border border-white/10 bg-slate-900 p-3 text-sm text-white md:col-span-2" />
