@@ -591,7 +591,9 @@ export async function POST(req: NextRequest) {
       )
     );
     const layout = clean(incoming.get("figure_layout"), "separate");
+    const flags = selectedFlags(selected, figureType, layout);
     const form = new FormData();
+    Object.entries(flags).forEach(([key, value]) => form.set(key, value));
 
     const fastaDirect = incoming.get("fasta");
     const fastaFile = incoming.get("fastaFile");
