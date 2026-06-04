@@ -536,6 +536,14 @@ const QIGENEX_PUBLIC_BACKEND =
   process.env.NEXT_PUBLIC_QIGENEX_BACKEND_PUBLIC_URL?.replace(/\/+$/, "") ||
   "http://140.245.47.234";
 
+const EGSTAT_N_VERSION = "1.6.4";
+const QIGENEX_N_VERSION = "1.6.1";
+const TOOL_DEVELOPER = "FNU Nahiduzzaman";
+const TOOL_RIGHTS_NOTICE = "These tools are developed by FNU Nahiduzzaman. All rights reserved.";
+const TOOL_WELCOME_MESSAGE =
+  "Welcome to the integrated EGStat-N and QI-GeneX-N research workspace. Select a tool, upload your dataset or genome file, run the selected analysis, and download publication-ready outputs.";
+
+
 function qigenexResultUrl(path?: string) {
   if (!path) return "";
 
@@ -564,6 +572,32 @@ function qigenexStatusColor(status?: string) {
   if (status === "failed" || status === "error") return "text-red-300";
   if (status === "queued" || status === "running") return "text-amber-300";
   return "text-slate-300";
+}
+
+
+async function readApiJsonResponse(response: Response) {
+  const text = await response.text();
+
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    const cleaned = text.slice(0, 500).replace(/\s+/g, " ").trim();
+    throw new Error(
+      `Server returned non-JSON response (${response.status} ${response.statusText}): ${cleaned || "empty response"}`
+    );
+  }
+
+  if (!response.ok || data?.status === "error") {
+    throw new Error(data?.detail || data?.error || data?.message || `Request failed: ${response.status}`);
+  }
+
+  return data;
+}
+
+function qigenexApiUrl(path: string) {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${QIGENEX_PUBLIC_BACKEND}${cleanPath}`;
 }
 
 export default function Tools() {
@@ -659,9 +693,10 @@ export default function Tools() {
   const [qigenexLoading, setQigenexLoading] = useState(false);
 
   const [log, setLog] = useState<string[]>([
-    "> Tools page ready.",
-    "> EGStat-N initialized.",
-    "> QI-GeneX-N ready.",
+    `> ${TOOL_WELCOME_MESSAGE}`,
+    `> EGStat-N v${EGSTAT_N_VERSION} initialized.`,
+    `> QI-GeneX-N v${QIGENEX_N_VERSION} ready.`,
+    `> ${TOOL_RIGHTS_NOTICE}`,
   ]);
 
   const [setup, setSetup] = useState({
@@ -1157,12 +1192,12 @@ export default function Tools() {
     let lastPercent = -1;
 
     while (true) {
-      const response = await fetch(`/api/qigenex?job_id=${encodeURIComponent(jobId)}`, {
+      const response = await fetch(qigenexApiUrl(`/jobs/${encodeURIComponent(jobId)}`), {
         method: "GET",
         cache: "no-store",
       });
 
-      const data = await response.json();
+      const data = await readApiJsonResponse(response);
       setQigenexResult(data);
 
       const state = String(data.status || data.state || "").toLowerCase();
@@ -1211,12 +1246,12 @@ export default function Tools() {
       return;
     }
 
-    const response = await fetch(`/api/qigenex?job_id=${encodeURIComponent(target)}&action=cancel`, {
+    const response = await fetch(qigenexApiUrl(`/jobs/${encodeURIComponent(target)}/cancel`), {
       method: "POST",
       cache: "no-store",
     });
 
-    const data = await response.json();
+    const data = await readApiJsonResponse(response);
     setQigenexResult(data);
     pushLog([data.status === "cancelled" ? "> QI-GeneX-N cancellation requested." : `> QI-GeneX-N cancel response: ${data.message || data.error || data.status}`]);
   }
@@ -1276,6 +1311,9 @@ export default function Tools() {
     formData.append("selected_analysis", qigenexAnalysisMode);
     formData.append("sequenceMode", qigenexSequenceMode);
     formData.append("tool", "QI-GeneX-N");
+    formData.append("tool_version", QIGENEX_N_VERSION);
+    formData.append("developer", TOOL_DEVELOPER);
+    formData.append("rights_notice", TOOL_RIGHTS_NOTICE);
     formData.append("mode", selectedBackendMode);
     formData.append("run_only_selected", qigenexAnalysisMode === "complete" ? "false" : "true");
     formData.append("module_scope", qigenexAnalysisMode);
@@ -1451,12 +1489,12 @@ export default function Tools() {
     setQigenexResult(null);
 
     try {
-      const response = await fetch("/api/qigenex", {
+      const response = await fetch(qigenexApiUrl("/jobs/analyze"), {
         method: "POST",
         body: formData,
       });
 
-      const data = await response.json();
+      const data = await readApiJsonResponse(response);
 
       if (!response.ok || data.status === "error") {
         setQigenexResult(data);
@@ -1481,7 +1519,12 @@ export default function Tools() {
 
       if (jobId) await pollQigenexJob(jobId);
     } catch (error) {
-      pushLog([`> QI-GeneX-N connection ERROR: ${String(error)}`]);
+      const message = error instanceof Error ? error.message : String(error);
+      setQigenexResult({ status: "error", error: message });
+      pushLog([
+        `> QI-GeneX-N connection ERROR: ${message}`,
+        "> Upload is sent directly to the FastAPI backend to avoid Next.js/Vercel Request Entity Too Large errors.",
+      ]);
     } finally {
       setQigenexLoading(false);
     }
@@ -1553,7 +1596,24 @@ export default function Tools() {
                 Tools
               </h1>
               <p className="mt-5 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
-                Select a tool, upload or enter data, run analysis, visualize results, and download outputs from one clean dashboard.
+                {TOOL_WELCOME_MESSAGE}
+              </p>
+              <div className="mt-5 grid max-w-4xl gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">EGStat-N</p>
+                  <p className="mt-1 text-2xl font-black text-white">v{EGSTAT_N_VERSION}</p>
+                </div>
+                <div className="rounded-2xl border border-purple-300/20 bg-purple-300/10 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-purple-200">QI-GeneX-N</p>
+                  <p className="mt-1 text-2xl font-black text-white">v{QIGENEX_N_VERSION}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-300">Developer</p>
+                  <p className="mt-1 text-sm font-bold text-white">{TOOL_DEVELOPER}</p>
+                </div>
+              </div>
+              <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                {TOOL_RIGHTS_NOTICE}
               </p>
             </div>
 
@@ -1587,7 +1647,7 @@ export default function Tools() {
                 Launch →
               </span>
             </div>
-            <h2 className="text-4xl font-black text-cyan-200">EGStat-N</h2>
+            <h2 className="text-4xl font-black text-cyan-200">EGStat-N <span className="text-xl text-cyan-100/70">v{EGSTAT_N_VERSION}</span></h2>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {[
                 "SEIR transmission",
@@ -1614,7 +1674,7 @@ export default function Tools() {
                 Launch →
               </span>
             </div>
-            <h2 className="text-4xl font-black text-purple-200">QI-GeneX-N</h2>
+            <h2 className="text-4xl font-black text-purple-200">QI-GeneX-N <span className="text-xl text-purple-100/70">v{QIGENEX_N_VERSION}</span></h2>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {[
                 "FASTA input",
@@ -1643,7 +1703,7 @@ export default function Tools() {
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div>
                 <h2 className="text-2xl font-black text-cyan-300">
-                  EGStat-N
+                  EGStat-N <span className="text-base text-cyan-100/70">v{EGSTAT_N_VERSION}</span>
                 </h2>
                 <p className="text-sm text-slate-400">
                   Transmission • Heatmap • Risk • Statistics • Network
@@ -1852,7 +1912,7 @@ export default function Tools() {
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div>
                 <h2 className="text-2xl font-black text-purple-300">
-                  QI-GeneX-N
+                  QI-GeneX-N <span className="text-base text-purple-100/70">v{QIGENEX_N_VERSION}</span>
                 </h2>
                 <p className="text-sm text-slate-400">
                   Selected analysis

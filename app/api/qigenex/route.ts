@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type AnalysisMode =
   | "complete"
@@ -366,19 +366,29 @@ function safeFilename(path: string) {
 }
 
 async function parseJson(response: Response) {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
+  const text = await response.text();
+  let data: any = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    const details = text.slice(0, 2000);
     return {
       ok: false,
       data: {
         status: "error",
-        error: "Backend did not return JSON.",
+        error:
+          response.status === 413
+            ? "Request Entity Too Large. Upload large FASTA/genome files directly to the FastAPI backend instead of the Next.js proxy route."
+            : "Backend did not return JSON.",
         backendStatus: response.status,
-        details: (await response.text()).slice(0, 2000),
+        backendStatusText: response.statusText,
+        details,
       },
     };
   }
-  return { ok: true, data: await response.json() };
+
+  return { ok: response.ok && data?.status !== "error", data };
 }
 
 function selectedFlags(mode: AnalysisMode, figureType: string, layout: string) {
@@ -501,6 +511,10 @@ export async function GET(req: NextRequest) {
         figureDefaults: FIGURE_DEFAULTS,
         analysisToFigures: ANALYSIS_TO_FIGURES,
         backendUrl: backendUrl(),
+        egstatVersion: "1.6.4",
+        qigenexVersion: "1.6.1",
+        developer: "FNU Nahiduzzaman",
+        rightsNotice: "These tools are developed by FNU Nahiduzzaman. All rights reserved.",
       });
     }
 
@@ -519,7 +533,17 @@ export async function GET(req: NextRequest) {
     }
 
     const health = await fetch(`${backendUrl()}/health`, { cache: "no-store" }).then((r) => r.json()).catch(() => null);
-    return NextResponse.json({ status: "running", route: "/api/qigenex", backendUrl: backendUrl(), backendHealth: health });
+    return NextResponse.json({
+      status: "running",
+      route: "/api/qigenex",
+      backendUrl: backendUrl(),
+      backendHealth: health,
+      egstatVersion: "1.6.4",
+      qigenexVersion: "1.6.1",
+      developer: "FNU Nahiduzzaman",
+      rightsNotice: "These tools are developed by FNU Nahiduzzaman. All rights reserved.",
+      uploadNote: "Large genome uploads should be submitted directly to the FastAPI backend endpoint /jobs/analyze.",
+    });
   } catch (error) {
     return NextResponse.json({ status: "error", error: String(error) }, { status: 500 });
   }
@@ -610,6 +634,9 @@ export async function POST(req: NextRequest) {
     form.set("selected_analysis", selected);
     form.set("analysisMode", selected);
     form.set("action", clean(incoming.get("action"), "analysis"));
+    form.set("tool_version", "1.6.1");
+    form.set("developer", "FNU Nahiduzzaman");
+    form.set("rights_notice", "These tools are developed by FNU Nahiduzzaman. All rights reserved.");
     form.set("run_only_selected", selected === "complete" ? "false" : "true");
     form.set("module_scope", selected);
 
