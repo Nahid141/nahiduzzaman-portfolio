@@ -534,7 +534,7 @@ function csvFromRows(rows: ObsRow[]) {
 
 const QIGENEX_PUBLIC_BACKEND =
   process.env.NEXT_PUBLIC_QIGENEX_BACKEND_PUBLIC_URL?.replace(/\/+$/, "") ||
-  "http://140.245.47.234";
+  "https://api.fnunahiduzzaman.com";
 
 const EGSTAT_N_VERSION = "1.6.4";
 const QIGENEX_N_VERSION = "1.6.1";
@@ -575,6 +575,25 @@ function qigenexStatusColor(status?: string) {
 }
 
 
+
+function safeStringify(value: unknown): string {
+  if (value instanceof Error) return value.message;
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  try {
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+function backendErrorMessage(data: any, fallback: string) {
+  const raw = data?.detail ?? data?.error ?? data?.message ?? data?.reason ?? fallback;
+  const text = safeStringify(raw);
+  return text && text !== "{}" ? text : fallback;
+}
+
 async function readApiJsonResponse(response: Response) {
   const text = await response.text();
 
@@ -582,14 +601,14 @@ async function readApiJsonResponse(response: Response) {
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    const cleaned = text.slice(0, 500).replace(/\s+/g, " ").trim();
+    const cleaned = text.slice(0, 700).replace(/\s+/g, " ").trim();
     throw new Error(
       `Server returned non-JSON response (${response.status} ${response.statusText}): ${cleaned || "empty response"}`
     );
   }
 
   if (!response.ok || data?.status === "error") {
-    throw new Error(data?.detail || data?.error || data?.message || `Request failed: ${response.status}`);
+    throw new Error(backendErrorMessage(data, `Request failed: ${response.status} ${response.statusText}`));
   }
 
   return data;
@@ -599,6 +618,90 @@ function qigenexApiUrl(path: string) {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   return `${QIGENEX_PUBLIC_BACKEND}${cleanPath}`;
 }
+
+function qigenexProxyJobUrl(jobId: string) {
+  return `/api/qigenex?job_id=${encodeURIComponent(jobId)}`;
+}
+
+async function fetchQigenexJobJson(jobId: string) {
+  try {
+    const response = await fetch(qigenexApiUrl(`/jobs/${encodeURIComponent(jobId)}`), {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+    });
+    return await readApiJsonResponse(response);
+  } catch (directError) {
+    const response = await fetch(qigenexProxyJobUrl(jobId), {
+      method: "GET",
+      cache: "no-store",
+    });
+    const data = await readApiJsonResponse(response);
+    return {
+      ...data,
+      transport_note: `Direct API status fetch failed and proxy fallback was used: ${safeStringify(directError)}`,
+    };
+  }
+}
+
+async function cancelQigenexJobRequest(jobId: string) {
+  try {
+    const response = await fetch(qigenexApiUrl(`/jobs/${encodeURIComponent(jobId)}/cancel`), {
+      method: "POST",
+      cache: "no-store",
+      credentials: "omit",
+    });
+    return await readApiJsonResponse(response);
+  } catch (directError) {
+    const response = await fetch(`/api/qigenex?job_id=${encodeURIComponent(jobId)}&action=cancel`, {
+      method: "POST",
+      cache: "no-store",
+    });
+    const data = await readApiJsonResponse(response);
+    return {
+      ...data,
+      transport_note: `Direct API cancel failed and proxy fallback was used: ${safeStringify(directError)}`,
+    };
+  }
+}
+
+async function submitQigenexForm(formData: FormData) {
+  try {
+    const response = await fetch(qigenexApiUrl("/jobs/analyze"), {
+      method: "POST",
+      body: formData,
+      credentials: "omit",
+    });
+    const data = await readApiJsonResponse(response);
+    return {
+      ...data,
+      upload_transport: "direct_https_fastapi",
+      backend_url: QIGENEX_PUBLIC_BACKEND,
+    };
+  } catch (directError) {
+    // Fallback keeps the app usable when a browser/network blocks cross-origin direct upload.
+    // For very large files the proxy can still hit hosting limits, but it will return a readable JSON error.
+    const response = await fetch("/api/qigenex", {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+    });
+    try {
+      const data = await readApiJsonResponse(response);
+      return {
+        ...data,
+        upload_transport: "nextjs_proxy_fallback",
+        backend_url: QIGENEX_PUBLIC_BACKEND,
+        direct_upload_error: safeStringify(directError),
+      };
+    } catch (proxyError) {
+      throw new Error(
+        `Direct HTTPS upload failed: ${safeStringify(directError)}. Proxy fallback failed: ${safeStringify(proxyError)}. Backend URL: ${QIGENEX_PUBLIC_BACKEND}`
+      );
+    }
+  }
+}
+
 
 export default function Tools() {
   const [open, setOpen] = useState(false);
@@ -697,6 +800,7 @@ export default function Tools() {
     `> EGStat-N v${EGSTAT_N_VERSION} initialized.`,
     `> QI-GeneX-N v${QIGENEX_N_VERSION} ready.`,
     `> ${TOOL_RIGHTS_NOTICE}`,
+    `> QI-GeneX-N backend: ${QIGENEX_PUBLIC_BACKEND}`,
   ]);
 
   const [setup, setSetup] = useState({
@@ -1192,12 +1296,7 @@ export default function Tools() {
     let lastPercent = -1;
 
     while (true) {
-      const response = await fetch(qigenexApiUrl(`/jobs/${encodeURIComponent(jobId)}`), {
-        method: "GET",
-        cache: "no-store",
-      });
-
-      const data = await readApiJsonResponse(response);
+      const data = await fetchQigenexJobJson(jobId);
       setQigenexResult(data);
 
       const state = String(data.status || data.state || "").toLowerCase();
@@ -1246,12 +1345,7 @@ export default function Tools() {
       return;
     }
 
-    const response = await fetch(qigenexApiUrl(`/jobs/${encodeURIComponent(target)}/cancel`), {
-      method: "POST",
-      cache: "no-store",
-    });
-
-    const data = await readApiJsonResponse(response);
+    const data = await cancelQigenexJobRequest(target);
     setQigenexResult(data);
     pushLog([data.status === "cancelled" ? "> QI-GeneX-N cancellation requested." : `> QI-GeneX-N cancel response: ${data.message || data.error || data.status}`]);
   }
@@ -1489,12 +1583,7 @@ export default function Tools() {
     setQigenexResult(null);
 
     try {
-      const response = await fetch(qigenexApiUrl("/jobs/analyze"), {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await readApiJsonResponse(response);
+      const data = await submitQigenexForm(formData);
 
       if (!response.ok || data.status === "error") {
         setQigenexResult(data);
@@ -1510,6 +1599,8 @@ export default function Tools() {
         `> Module: ${qigenexAnalysisMode}.`,
         `> Figure: ${figureType}.`,
         `> Job ID: ${jobId}`,
+        `> Upload transport: ${data.upload_transport || "unknown"}; backend=${data.backend_url || QIGENEX_PUBLIC_BACKEND}.`,
+        ...(data.direct_upload_error ? [`> Direct upload fallback reason: ${data.direct_upload_error}`] : []),
         ...(figureOptions.bacterial_wgs_task ? [
           `> Bacterial workflow: target genome manual upload; comparable genomes=${figureOptions.comparable_genome_mode || "auto_download"}.`,
           `> Comparable filters: host=${figureOptions.comparable_host_groups || "none"}; environment=${figureOptions.comparable_environment_groups || "none"}; state=${figureOptions.comparable_state_groups || "none"}.`,
@@ -1519,11 +1610,12 @@ export default function Tools() {
 
       if (jobId) await pollQigenexJob(jobId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = safeStringify(error);
       setQigenexResult({ status: "error", error: message });
       pushLog([
         `> QI-GeneX-N connection ERROR: ${message}`,
-        "> Upload is sent directly to the FastAPI backend to avoid Next.js/Vercel Request Entity Too Large errors.",
+        `> Backend URL: ${QIGENEX_PUBLIC_BACKEND}`,
+        "> The app now tries direct HTTPS upload first and then a Next.js proxy fallback with readable JSON errors.",
       ]);
     } finally {
       setQigenexLoading(false);

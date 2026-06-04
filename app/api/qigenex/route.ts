@@ -325,8 +325,21 @@ const ANALYSIS_TO_FIGURES: Record<string, string[]> = {
   complete: Object.keys(FIGURE_DEFAULTS),
 };
 
+
+function safeStringify(value: unknown): string {
+  if (value instanceof Error) return value.message;
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  try {
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
 function backendUrl() {
-  return (process.env.QIGENEX_BACKEND_URL || "http://140.245.47.234").replace(/\/+$/, "");
+  return (process.env.QIGENEX_BACKEND_URL || "https://api.fnunahiduzzaman.com").replace(/\/+$/, "");
 }
 
 function clean(value: FormDataEntryValue | null | undefined, fallback = "") {
@@ -368,28 +381,24 @@ function safeFilename(path: string) {
 async function parseJson(response: Response) {
   const text = await response.text();
   let data: any = {};
-
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    const details = text.slice(0, 2000);
-    return {
-      ok: false,
-      data: {
-        status: "error",
-        error:
-          response.status === 413
-            ? "Request Entity Too Large. Upload large FASTA/genome files directly to the FastAPI backend instead of the Next.js proxy route."
-            : "Backend did not return JSON.",
-        backendStatus: response.status,
-        backendStatusText: response.statusText,
-        details,
-      },
+    data = {
+      status: "error",
+      error: `Backend returned non-JSON response (${response.status} ${response.statusText}): ${text.slice(0, 700).replace(/\s+/g, " ").trim() || "empty response"}`,
+      raw: text.slice(0, 2000),
     };
   }
 
-  return { ok: response.ok && data?.status !== "error", data };
+  const ok = response.ok && data?.status !== "error";
+  if (!ok && !data?.error && !data?.detail && !data?.message) {
+    data.error = `Backend request failed: ${response.status} ${response.statusText}`;
+  }
+
+  return { ok, data };
 }
+
 
 function selectedFlags(mode: AnalysisMode, figureType: string, layout: string) {
   const flags: Record<string, string> = {
@@ -545,7 +554,7 @@ export async function GET(req: NextRequest) {
       uploadNote: "Large genome uploads should be submitted directly to the FastAPI backend endpoint /jobs/analyze.",
     });
   } catch (error) {
-    return NextResponse.json({ status: "error", error: String(error) }, { status: 500 });
+    return NextResponse.json({ status: "error", error: safeStringify(error) }, { status: 500 });
   }
 }
 
@@ -787,6 +796,6 @@ export async function POST(req: NextRequest) {
       bridge: { route: "/api/qigenex", backendUrl: backendUrl(), backendStatus: response.status },
     }, { status: response.status });
   } catch (error) {
-    return NextResponse.json({ status: "error", error: String(error) }, { status: 500 });
+    return NextResponse.json({ status: "error", error: safeStringify(error) }, { status: 500 });
   }
 }
