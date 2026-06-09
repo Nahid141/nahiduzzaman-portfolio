@@ -5460,7 +5460,7 @@ function QigenexSection(props: any) {
           )}
 
           <div className="flex items-end gap-3">
-            <button onClick={runNow} disabled={loading || !hasSequence || selectedDesigns.length === 0} className="rounded-2xl bg-purple-400 px-6 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">
+            <button onClick={runNow} disabled={loading || !hasSequence || (showBacterialWgsPanel ? bacterialWgsFigureDesigns.length === 0 : selectedDesigns.length === 0)} className="rounded-2xl bg-purple-400 px-6 py-3 text-sm font-black text-slate-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">
               {loading ? "Running" : "Run"}
             </button>
             <button onClick={() => setMoreOpen(!moreOpen)} className="rounded-2xl border border-white/10 bg-slate-900 px-5 py-3 text-sm font-black text-white hover:border-purple-300">
@@ -5728,19 +5728,21 @@ function QigenexSection(props: any) {
 
         {moreOpen && (
           <div className="mt-5 space-y-5 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-black text-white">Designs</p>
-                <button onClick={() => setSelectedDesigns(currentDesigns)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-300 hover:border-purple-300">Select all</button>
+            {!showBacterialWgsPanel && (
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-black text-white">Designs</p>
+                  <button onClick={() => setSelectedDesigns(currentDesigns)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-300 hover:border-purple-300">Select all</button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {currentDesigns.map((id) => (
+                    <button key={id} type="button" onClick={() => toggleDesign(id)} className={`rounded-xl border px-3 py-2 text-left text-xs font-bold ${selectedDesigns.includes(id) ? "border-purple-300 bg-purple-400/15 text-purple-100" : "border-white/10 bg-slate-950 text-slate-300"}`}>
+                      {id.replace(/_/g, " ")}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {currentDesigns.map((id) => (
-                  <button key={id} type="button" onClick={() => toggleDesign(id)} className={`rounded-xl border px-3 py-2 text-left text-xs font-bold ${selectedDesigns.includes(id) ? "border-purple-300 bg-purple-400/15 text-purple-100" : "border-white/10 bg-slate-950 text-slate-300"}`}>
-                    {id.replace(/_/g, " ")}
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div>
