@@ -371,7 +371,7 @@ export default function Publications() {
             <StatCard value={JOURNAL_ARTICLES.length} label="Journal Articles" color="border-indigo-400/20 hover:border-indigo-400/40" />
             <StatCard value={TOTAL_NCBI} label="NCBI Entries" color="border-emerald-400/20 hover:border-emerald-400/40" />
             <StatCard value={WHOLE_GENOME.length} label="Genome Sequences" color="border-blue-400/20 hover:border-blue-400/40" />
-            <StatCard value={4} label="Journal Articles" color="border-purple-400/20 hover:border-purple-400/40" />
+            <StatCard value={11.1} label="Total IF" color="border-purple-400/20 hover:border-purple-400/40" />
           </div>
         </Reveal>
 
