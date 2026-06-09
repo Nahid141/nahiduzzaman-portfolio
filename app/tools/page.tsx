@@ -105,8 +105,11 @@ type QigenexFigureOptions = {
   figure_title_mode?: string;
   figure_title_text?: string;
   title_font_size?: string;
-  axis_title_font_size?: string;
-  tick_label_font_size?: string;
+  x_title_font_size?: string;
+  y_title_font_size?: string;
+  x_label_font_size?: string;
+  y_label_font_size?: string;
+  font_family?: string;
   font_weight?: string;
   transparent_background?: string;
   tree_inference_method?: string;
@@ -1486,10 +1489,13 @@ export default function Tools() {
     formData.append("figure_title_mode", figureOptions.figure_title_mode || "full");
     formData.append("figure_title_text", figureOptions.figure_title_text || "");
     formData.append("figure_title_font_size", figureOptions.title_font_size || "16");
-    formData.append("x_title_font_size", figureOptions.axis_title_font_size || "13");
-    formData.append("y_title_font_size", figureOptions.axis_title_font_size || "13");
-    formData.append("x_label_font_size", figureOptions.tick_label_font_size || "11");
-    formData.append("y_label_font_size", figureOptions.tick_label_font_size || "11");
+    formData.append("x_title_font_size", figureOptions.x_title_font_size || "13");
+    formData.append("y_title_font_size", figureOptions.y_title_font_size || "13");
+    formData.append("x_label_font_size", figureOptions.x_label_font_size || "10");
+    formData.append("y_label_font_size", figureOptions.y_label_font_size || "10");
+    formData.append("font_family", figureOptions.font_family || "DejaVu Sans");
+    formData.append("font_type", figureOptions.font_family || "DejaVu Sans");
+    formData.append("font_weight", figureOptions.font_weight || "bold");
     formData.append("figure_title_font_weight", figureOptions.font_weight || "bold");
     formData.append("x_title_font_weight", figureOptions.font_weight || "bold");
     formData.append("y_title_font_weight", figureOptions.font_weight || "bold");
@@ -1498,7 +1504,7 @@ export default function Tools() {
     formData.append("tree_inference_method", figureOptions.tree_inference_method || "maximum_likelihood");
     formData.append("phylogeny_tree_designs", figureType.includes("phylogenetic") || figureType.includes("beast") || figureType.includes("transmission") ? figureDesigns : "");
     formData.append("phylogeny_title_mode", figureOptions.figure_title_mode || "full");
-    formData.append("phylogeny_font_size", figureOptions.axis_title_font_size || "12");
+    formData.append("phylogeny_font_size", figureOptions.x_title_font_size || "12");
     formData.append("phylogeny_font_weight", figureOptions.font_weight || "bold");
     formData.append("phylogeny_panel_mode", figureOptions.figure_layout || "separate");
     formData.append("phylogeny_color_by", "auto");
@@ -4085,6 +4091,15 @@ function QigenexSection(props: any) {
   const [figureLayout, setFigureLayout] = useState("separate");
   const [titleMode, setTitleMode] = useState("full");
   const [treeMethod, setTreeMethod] = useState("maximum_likelihood");
+  // Figure typography — applies to axis titles, tick labels, font type and weight
+  // of every figure in every analysis.
+  const [xTitleFontSize, setXTitleFontSize] = useState("13");
+  const [yTitleFontSize, setYTitleFontSize] = useState("13");
+  const [xLabelFontSize, setXLabelFontSize] = useState("10");
+  const [yLabelFontSize, setYLabelFontSize] = useState("10");
+  const [fontFamily, setFontFamily] = useState("DejaVu Sans");
+  const [fontWeight, setFontWeight] = useState("bold");
+  const [transparentBackground, setTransparentBackground] = useState("false");
   const [beastClock, setBeastClock] = useState("relaxed_lognormal");
   const [beastChain, setBeastChain] = useState("10000000");
   const [tmrcaRate, setTmrcaRate] = useState("0.001");
@@ -5180,10 +5195,13 @@ function QigenexSection(props: any) {
       figure_layout: figureLayout,
       figure_title_mode: titleMode,
       title_font_size: "16",
-      axis_title_font_size: "13",
-      tick_label_font_size: "11",
-      font_weight: "bold",
-      transparent_background: "false",
+      x_title_font_size: xTitleFontSize,
+      y_title_font_size: yTitleFontSize,
+      x_label_font_size: xLabelFontSize,
+      y_label_font_size: yLabelFontSize,
+      font_family: fontFamily,
+      font_weight: fontWeight,
+      transparent_background: transparentBackground,
       tree_inference_method: treeMethod,
       beast_tmrca: currentFigureType === "beast_tmrca" ? "true" : "false",
       beast_clock_model: beastClock,
@@ -5775,6 +5793,58 @@ function QigenexSection(props: any) {
               <div>
                 <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">NT threshold</label>
                 <input value={ntThreshold} onChange={(e) => setNtThreshold(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-purple-300/20 bg-slate-950 p-4">
+              <p className="text-sm font-black text-purple-200">Figure typography</p>
+              <p className="mb-3 text-xs font-semibold text-slate-400">Applies to the X/Y axis titles, X/Y tick labels, font type and weight of every figure in every analysis.</p>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">X axis title size</label>
+                  <input type="number" min={6} max={48} value={xTitleFontSize} onChange={(e) => setXTitleFontSize(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Y axis title size</label>
+                  <input type="number" min={6} max={48} value={yTitleFontSize} onChange={(e) => setYTitleFontSize(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Font type</label>
+                  <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                    <option value="DejaVu Sans">Sans-serif (DejaVu Sans)</option>
+                    <option value="DejaVu Serif">Serif (DejaVu Serif)</option>
+                    <option value="Times New Roman">Serif · Times-like (STIX)</option>
+                    <option value="DejaVu Sans Mono">Monospace (DejaVu Sans Mono)</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Courier New">Courier New</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">X label (tick) size</label>
+                  <input type="number" min={6} max={40} value={xLabelFontSize} onChange={(e) => setXLabelFontSize(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Y label (tick) size</label>
+                  <input type="number" min={6} max={40} value={yLabelFontSize} onChange={(e) => setYLabelFontSize(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Font weight</label>
+                  <select value={fontWeight} onChange={(e) => setFontWeight(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                    <option value="normal">Normal</option>
+                    <option value="bold">Bold</option>
+                    <option value="light">Light</option>
+                    <option value="heavy">Heavy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Background</label>
+                  <select value={transparentBackground} onChange={(e) => setTransparentBackground(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                    <option value="false">Opaque (white)</option>
+                    <option value="true">Transparent</option>
+                  </select>
+                </div>
               </div>
             </div>
 

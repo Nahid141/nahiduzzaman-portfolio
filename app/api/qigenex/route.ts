@@ -683,6 +683,34 @@ export async function POST(req: NextRequest) {
     form.set("metadata_required_for", "beast_tmrca,transmission,source_sink,host_adaptation,geo_spatiotemporal,forecasting");
 
     const advancedForwardFields = [
+      // Core figure + analysis selection — keeps the proxy-fallback path at parity
+      // with the direct-to-backend upload (these were previously dropped).
+      "selected_analysis",
+      "analysisMode",
+      "figure_set",
+      "figure_type",
+      "figure_designs",
+      "figure_formats",
+      "figure_dpi",
+      "figure_layout",
+      "figure_title_mode",
+      "figure_title_text",
+      "tree_inference_method",
+      "phylogeny_tree_designs",
+      // Figure typography — font size of X/Y axis titles, X/Y tick labels,
+      // figure title, plus font type (family) and font weight, for every analysis.
+      "figure_title_font_size",
+      "x_title_font_size",
+      "y_title_font_size",
+      "x_label_font_size",
+      "y_label_font_size",
+      "font_family",
+      "font_type",
+      "font_weight",
+      "figure_title_font_weight",
+      "x_title_font_weight",
+      "y_title_font_weight",
+      "transparent_background",
       "metadata_schema_preset",
       "metadata_template_fields",
       "metadata_required_fields",
