@@ -5132,15 +5132,20 @@ function QigenexSection(props: any) {
   const currentFigureType = availableFigureTypes.includes(figureType) ? figureType : availableFigureTypes[0];
   const currentDesigns = figureCatalog[currentFigureType]?.designs || [];
 
+  // BEAST/tMRCA renders 6-7 distinct phylodynamic figures by default (time-scaled
+  // tree, skyline, lineages-through-time, HPD bars, clock-rate, root-to-tip, etc.);
+  // other modules pre-select the first three designs.
+  const defaultDesignCount = (t: string) => (t === "beast_tmrca" ? 7 : 3);
+
   useEffect(() => {
     const firstType = (figureForAnalysis[analysisMode] || ["phylogenetic_tree"])[0];
     setFigureType(firstType);
-    setSelectedDesigns((figureCatalog[firstType]?.designs || []).slice(0, 3));
+    setSelectedDesigns((figureCatalog[firstType]?.designs || []).slice(0, defaultDesignCount(firstType)));
   }, [analysisMode]);
 
   useEffect(() => {
-    const firstThree = (figureCatalog[figureType]?.designs || []).slice(0, 3);
-    setSelectedDesigns(firstThree);
+    const defaults = (figureCatalog[figureType]?.designs || []).slice(0, defaultDesignCount(figureType));
+    setSelectedDesigns(defaults);
   }, [figureType]);
 
   const outputs = result?.outputs && typeof result.outputs === "object" ? result.outputs : {};
