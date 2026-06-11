@@ -4852,11 +4852,9 @@ function QigenexSection(props: any) {
     { id: "vaccine_matching", label: "Vaccine matching" },
     { id: "phylogeny", label: "Phylogeny" },
     { id: "beast_tmrca", label: "BEAST / tMRCA" },
-    { id: "transmission", label: "Transmission" },
     { id: "recombination", label: "Recombination" },
     { id: "phylodynamics", label: "Phylodynamics" },
     { id: "outbreak_source", label: "Outbreak source" },
-    { id: "source_sink", label: "Source–sink" },
     { id: "lineage_replacement", label: "Lineage replacement" },
     { id: "fitness", label: "Fitness landscape" },
     { id: "selection_pressure", label: "Selection pressure" },
@@ -4867,7 +4865,7 @@ function QigenexSection(props: any) {
     { id: "forecasting", label: "Forecasting" },
     { id: "antigenic_drift", label: "Antigenic drift" },
     { id: "antigenic_shift", label: "Antigenic shift" },
-    { id: "geo_spatiotemporal", label: "Geo-temporal" },
+    { id: "geo_spatiotemporal", label: "Geo-temporal + Transmission" },
     { id: "animal_host", label: "Animal / host" },
     { id: "ml_qml", label: "ML/QML" },
     { id: "genomic_intelligence", label: "Genomic intelligence" },
@@ -5135,7 +5133,7 @@ function QigenexSection(props: any) {
   // BEAST/tMRCA renders 6-7 distinct phylodynamic figures by default (time-scaled
   // tree, skyline, lineages-through-time, HPD bars, clock-rate, root-to-tip, etc.);
   // other modules pre-select the first three designs.
-  const defaultDesignCount = (t: string) => (t === "beast_tmrca" ? 7 : 3);
+  const defaultDesignCount = (t: string) => (t === "beast_tmrca" ? 7 : t === "map_spatiotemporal_plot" ? 6 : t === "recombination_plot" ? 5 : 3);
 
   useEffect(() => {
     const firstType = (figureForAnalysis[analysisMode] || ["phylogenetic_tree"])[0];
@@ -6050,9 +6048,11 @@ function QigenexSection(props: any) {
                     <div className="grid grid-cols-2 gap-2">
                       <select value={nodeColorBy} onChange={(e) => setNodeColorBy(e.target.value)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
                         <option value="dominant_genotype">Genotype</option>
+                        <option value="dominant_serovar">Serovar / serotype</option>
                         <option value="dominant_lineage">Lineage</option>
-                        <option value="country">Country</option>
                         <option value="host">Host</option>
+                        <option value="time">Time (year)</option>
+                        <option value="country">Country</option>
                       </select>
                       <select value={nodeShapeBy} onChange={(e) => setNodeShapeBy(e.target.value)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white">
                         <option value="dominant_host">Host</option>
