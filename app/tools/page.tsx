@@ -4482,19 +4482,25 @@ function QigenexSection(props: any) {
     return raw;
   }
 
-  function matchCanonicalFromSynonyms(text: string, dictionary: Record<string, string>) {
+  function matchCanonicalFromSynonyms(
+    text: string,
+    dictionary: Record<string, string>,
+    minimumAliasLength = 1
+  ) {
     const clean = cleanMetadataValue(text);
     if (!clean) return "";
     const key = normalizeToken(clean);
-    if (dictionary[key]) return dictionary[key];
+    const aliasLength = (alias: string) => normalizeToken(alias).replace(/_/g, "").length;
+    if (dictionary[key] && aliasLength(key) >= minimumAliasLength) return dictionary[key];
 
     const tokens = new Set(clean.split(/[^A-Za-z0-9]+/).map((x) => normalizeToken(x)).filter(Boolean));
     for (const token of tokens) {
-      if (dictionary[token]) return dictionary[token];
+      if (dictionary[token] && aliasLength(token) >= minimumAliasLength) return dictionary[token];
     }
 
     const normalized = normalizeToken(clean);
     for (const [syn, canonical] of Object.entries(dictionary)) {
+      if (aliasLength(syn) < minimumAliasLength) continue;
       if (new RegExp(`(^|_)${syn}(_|$)`).test(normalized)) return canonical;
     }
 
@@ -4559,7 +4565,9 @@ function QigenexSection(props: any) {
   }
 
   function inferCountryFromFreeText(text: string) {
-    return normalizeCountry(text, false);
+    // Two-letter codes are too ambiguous in isolate names (for example BD.R1
+    // is a Vietnamese isolate, not evidence for Bangladesh).
+    return matchCanonicalFromSynonyms(text, countrySynonyms, 3);
   }
 
   function inferHostFromFreeText(text: string) {
@@ -4598,7 +4606,7 @@ function QigenexSection(props: any) {
     // PRRSV-style isolate names commonly embed location:
     // PRRSV2/USA/CB678/2009, USA/IL/24440-GC/2019, PRRSV-China/SCcd2020/2020,
     // PRRSV2/CN/60648/2019, PRRS/ASP11/Chile/2015, DEU-NLD-DNK/...
-    const explicitCountry = matchCanonicalFromSynonyms(text, countrySynonyms);
+    const explicitCountry = matchCanonicalFromSynonyms(text, countrySynonyms, 3);
     if (explicitCountry) return { country: explicitCountry, admin_region: "" };
 
     return { country: "", admin_region: "" };
