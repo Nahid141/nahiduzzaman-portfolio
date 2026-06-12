@@ -1576,7 +1576,8 @@ export default function Tools() {
     formData.append("fitness_figure_designs", figureOptions.fitness_figure_designs || (figureType.includes("fitness") ? figureDesigns : ""));
 
     // FastAPI /jobs/analyze requires the uploaded genome under the exact field name "fasta".
-    // Keep older aliases too, but always provide "fasta" for direct HTTPS upload.
+    // Send each large file only under fields the live API consumes so the Vercel fallback
+    // does not exceed its request-body limit through duplicate multipart parts.
     const primaryFastaFile =
       figureOptions.targetGenomeFile ||
       qigenexFastaFile ||
@@ -1586,27 +1587,14 @@ export default function Tools() {
 
     if (primaryFastaFile) {
       formData.append("fasta", primaryFastaFile, primaryFastaFile.name || "qigenex_input.fasta");
-      formData.append("input_fasta", primaryFastaFile, primaryFastaFile.name || "qigenex_input.fasta");
     }
-
-    if (qigenexFastaText.trim()) {
-      formData.append("fastaText", qigenexFastaText);
-      formData.append("fasta_text", qigenexFastaText);
-    }
-    if (qigenexFastaFile) formData.append("fastaFile", qigenexFastaFile, qigenexFastaFile.name || "qigenex_input.fasta");
-    if (qigenexAlignedText.trim()) formData.append("alignedText", qigenexAlignedText);
-    if (qigenexAlignedFile) formData.append("alignedFile", qigenexAlignedFile, qigenexAlignedFile.name || "qigenex_aligned_input.fasta");
     if (qigenexReferenceText.trim()) formData.append("referenceText", qigenexReferenceText);
     if (qigenexVaccineStrainText.trim()) formData.append("vaccineStrainText", qigenexVaccineStrainText);
     if (figureOptions.targetGenomeFile) {
       formData.append("targetGenomeFile", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
-      formData.append("target_genome", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
-      formData.append("target_genome_file", figureOptions.targetGenomeFile, figureOptions.targetGenomeFile.name || "target_genome.fasta");
     }
     if (figureOptions.manualComparableGenomeFile) {
       formData.append("manualComparableGenomeFile", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
-      formData.append("manual_comparable_genomes", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
-      formData.append("comparable_genomes", figureOptions.manualComparableGenomeFile, figureOptions.manualComparableGenomeFile.name || "manual_comparable_genomes.fasta");
     }
     if (figureOptions.metadataFile) {
       formData.append("metadata", figureOptions.metadataFile, figureOptions.metadataFile.name || "qigenex_metadata.csv");
@@ -1637,7 +1625,7 @@ export default function Tools() {
         `> Figure: ${figureType}.`,
         `> Job ID: ${jobId}`,
         `> Upload transport: ${data.upload_transport || "unknown"}; backend=${data.backend_url || QIGENEX_PUBLIC_BACKEND}.`,
-        "> FASTA field mapping: submitted as required field 'fasta' plus compatibility aliases.",
+        "> FASTA field mapping: submitted once as required field 'fasta'.",
         ...(data.direct_upload_error ? [`> Direct upload fallback reason: ${data.direct_upload_error}`] : []),
         ...(figureOptions.bacterial_wgs_task ? [
           `> Bacterial workflow: target genome manual upload; comparable genomes=${figureOptions.comparable_genome_mode || "auto_download"}.`,
