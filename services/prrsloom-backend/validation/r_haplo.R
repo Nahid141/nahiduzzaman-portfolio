@@ -1,0 +1,10 @@
+# pegas reference: Rscript r_haplo.R aligned.fasta out_prefix
+args <- commandArgs(TRUE)
+suppressMessages({library(ape); library(pegas)})
+x <- read.dna(args[1], format = "fasta")
+h <- suppressWarnings(haplotype(x))
+idx <- attr(h, "index")
+writeLines(vapply(idx, function(v) paste(v, collapse = ","), ""), paste0(args[2], "_members.txt"))
+net <- haploNet(h)
+m <- as.matrix(net)
+write.csv(data.frame(r = m[, 1], c = m[, 2], step = m[, 3]), paste0(args[2], "_links.csv"), row.names = FALSE)

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Idempotent install/upgrade of the PRRSLooM backend on the Oracle host (Ubuntu).
+# Usage (from the uploaded source dir):  sudo bash deploy/install.sh
+set -euo pipefail
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP=/opt/prrsloom/backups/$STAMP
+API_HOST=api.fnunahiduzzaman.com
+
+apt-get install -y -qq clustalw mafft python3-venv >/dev/null
+id prrsloom >/dev/null 2>&1 || useradd --system --home /srv/prrsloom --shell /usr/sbin/nologin prrsloom
+install -d -o prrsloom -g prrsloom -m 750 /srv/prrsloom /srv/prrsloom/jobs
+install -d -m 755 /opt/prrsloom /opt/prrsloom/backups /etc/prrsloom
+mkdir -p "$BACKUP"
+
+# 1. code (previous version kept for rollback)
+[ -d /opt/prrsloom/app ] && cp -a /opt/prrsloom/app "$BACKUP/app"
+rm -rf /opt/prrsloom/app.new && mkdir -p /opt/prrsloom/app.new
+cp -a "$SRC/prrsloom" "$SRC/requirements.txt" /opt/prrsloom/app.new/
+rm -rf /opt/prrsloom/app && mv /opt/prrsloom/app.new /opt/prrsloom/app
+
+# 2. venv
+[ -x /opt/prrsloom/venv/bin/python ] || python3 -m venv /opt/prrsloom/venv
+/opt/prrsloom/venv/bin/pip install -q --upgrade pip
+/opt/prrsloom/venv/bin/pip install -q -r /opt/prrsloom/app/requirements.txt
+
+# 3. env + unit
+[ -f /etc/prrsloom/prrsloom.env ] || install -m 640 -g prrsloom "$SRC/deploy/prrsloom.env.example" /etc/prrsloom/prrsloom.env
+[ -f /etc/systemd/system/prrsloom.service ] && cp -a /etc/systemd/system/prrsloom.service "$BACKUP/"
+install -m 644 "$SRC/deploy/prrsloom.service" /etc/systemd/system/prrsloom.service
+systemctl daemon-reload
+systemctl enable --now prrsloom.service
+systemctl restart prrsloom.service
+
+# 4. nginx: add /prrsloom/ to the API server block (backup first, auto-restore on failure)
+CONF="$(grep -rl "server_name[^;]*$API_HOST" /etc/nginx/sites-enabled/ 2>/dev/null | head -1 || true)"
+if [ -n "$CONF" ]; then
+  REAL="$(readlink -f "$CONF")"
+  cp -a "$REAL" "$BACKUP/nginx-site.conf"
+  install -m 644 "$SRC/deploy/nginx-prrsloom.conf" /etc/nginx/snippets/prrsloom.conf
+  if ! grep -q "snippets/prrsloom.conf" "$REAL"; then
+    # insert after the first server_name line of the block that listens on 443
+    python3 - "$REAL" "$API_HOST" <<'PY'
+import re, sys
+path, host = sys.argv[1], sys.argv[2]
+text = open(path).read()
+blocks = [m for m in re.finditer(r"server_name[^;]*" + re.escape(host) + r"[^;]*;", text)]
+target = None
+for m in blocks:
+    start = text.rfind("server", 0, m.start())
+    block = text[start:m.end() + 2000]
+    if "443" in block:
+        target = m; break
+target = target or blocks[0]
+text = text[:target.end()] + "\n    include snippets/prrsloom.conf;" + text[target.end():]
+open(path, "w").write(text)
+PY
+  fi
+  if nginx -t; then systemctl reload nginx; else cp -a "$BACKUP/nginx-site.conf" "$REAL"; nginx -t && systemctl reload nginx; echo "nginx change reverted" >&2; exit 1; fi
+else
+  echo "No nginx site for $API_HOST found; add deploy/nginx-prrsloom.conf to the reverse proxy manually." >&2
+fi
+
+# 5. warm resources + health
+sleep 2
+sudo -u prrsloom env $(grep -v '^#' /etc/prrsloom/prrsloom.env | xargs) /opt/prrsloom/venv/bin/python -c \
+  "from prrsloom import resources; resources.ensure_all(); resources.load_model('model'); resources.load_model('lineage_model'); print('resources ok')"
+curl -fsS http://127.0.0.1:8010/prrsloom/health && echo
+echo "Backup of previous state: $BACKUP"

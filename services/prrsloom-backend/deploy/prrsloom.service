@@ -1,0 +1,27 @@
+[Unit]
+Description=PRRSLooM analysis API (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=prrsloom
+Group=prrsloom
+WorkingDirectory=/opt/prrsloom/app
+EnvironmentFile=/etc/prrsloom/prrsloom.env
+ExecStart=/opt/prrsloom/venv/bin/uvicorn prrsloom.api:app --host 127.0.0.1 --port 8010 --workers 1 --proxy-headers
+Restart=on-failure
+RestartSec=5
+# isolation from the QI-GeneX-N service and the rest of the host
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/prrsloom
+MemoryMax=4G
+CPUQuota=150%
+TasksMax=256
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
