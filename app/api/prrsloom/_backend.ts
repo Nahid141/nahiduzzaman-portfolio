@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 // Server-side only. PRRSLOOM_BACKEND_URL / PRRSLOOM_API_KEY are never exposed to the browser.
 export function backendUrl() {
-  return (process.env.PRRSLOOM_BACKEND_URL || "https://api.fnunahiduzzaman.com").replace(/\/+$/, "");
+  return (process.env.PRRSLOOM_BACKEND_URL || "https://prrsloom-api.fnunahiduzzaman.com").replace(/\/+$/, "");
 }
 
 export function backendHeaders(extra: Record<string, string> = {}): Record<string, string> {

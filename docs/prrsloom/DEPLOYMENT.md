@@ -11,7 +11,28 @@
 QI-GeneX-N (`qigenex.service`, port 8000) is not modified: separate unit, port, user, venv and data
 directory; the nginx change only adds a `/prrsloom/` location.
 
-## Oracle install / upgrade
+## Current production host: Google Cloud VM
+
+| | |
+|---|---|
+| Project / VM | `formal-loop-514706-c9` / `instance-20261114-064217` (us-central1-f, n4-standard-4, Debian 13) |
+| Address | `34.135.141.165` (ephemeral unless reserved), DNS `prrsloom-api.fnunahiduzzaman.com` (A record) |
+| Firewall | rule `allow-prrsloom-web` (tcp 80/443, target tag `prrsloom-web`) |
+| nginx | dedicated site `/etc/nginx/sites-available/prrsloom-api`; HTTPS via certbot |
+
+Install / upgrade from this machine:
+
+```bash
+git archive --format=tar.gz -o prrsloom-backend.tar.gz HEAD services/prrsloom-backend
+gcloud compute scp prrsloom-backend.tar.gz instance-20261114-064217:/tmp/ --zone us-central1-f --project formal-loop-514706-c9
+gcloud compute ssh instance-20261114-064217 --zone us-central1-f --project formal-loop-514706-c9 --command   'rm -rf /tmp/prrsloom-src && mkdir -p /tmp/prrsloom-src && tar xzf /tmp/prrsloom-backend.tar.gz -C /tmp/prrsloom-src --strip-components=2    && sudo PRRSLOOM_HOST=prrsloom-api.fnunahiduzzaman.com bash /tmp/prrsloom-src/deploy/install.sh'
+# after the DNS record resolves:
+sudo certbot --nginx -d prrsloom-api.fnunahiduzzaman.com --redirect -m <email> --agree-tos
+```
+
+The Oracle host and `api.fnunahiduzzaman.com` (QI-GeneX-N) are not used by PRRSLooM.
+
+## Oracle install / upgrade (alternative host)
 
 ```bash
 # from this machine

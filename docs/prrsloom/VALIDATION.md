@@ -26,8 +26,10 @@ dataset are in `validation/fixtures/`. Upstream classifier files: `kvanderwaal/p
   build breaks exact distance ties. The 2010 Windows ClustalW binary ordered the 62-sequence example
   differently from `msa`'s embedded ClustalW; aligned rows were identical, but NJ tie-breaking then
   produced an alternative, equally supported resolution (root-to-tip differences ≤ 6e-6). Feeding R's
-  order reproduces R's tree exactly. The Oracle deployment uses Ubuntu's gcc-built ClustalW 2.1; the
-  fixture `nj_example_r_clustalw_order.txt` is used to check its order after deployment.
+  order reproduces R's tree exactly. On the production VM (Debian 13, `clustalw 2.1+lgpl-7`) the full
+  NJ example run through the live service matched R: classification identical (including order),
+  rooted clades identical, max root-to-tip difference 7.9e-12 (Newick rounding). The backend test
+  suite also passes there (35/35).
 * **Random-forest ties**: R breaks equal vote counts at random (unseeded); Python uses a fixed seed
   and reports the affected sequences. No ties occurred in the 147-sequence validation set.
 * **Stochastic elements**: none other than the tie-break above (NJ, haplotypes, TIMER are deterministic).
