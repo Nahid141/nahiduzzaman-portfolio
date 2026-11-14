@@ -180,6 +180,17 @@ class Dispatcher:
             env = dict(os.environ)
             env.setdefault("NUMBA_CACHE_DIR", str(settings.data_dir / "numba_cache"))
             env["MPLCONFIGDIR"] = str(settings.data_dir / "mplconfig")
+            # the worker must see the dispatcher's effective settings, not just the process environment
+            env.update({
+                "PRRSLOOM_DATA_DIR": str(settings.data_dir),
+                "PRRSLOOM_CLUSTALW": settings.clustalw_bin,
+                "PRRSLOOM_MAFFT": settings.mafft_bin,
+                "PRRSLOOM_TIE_SEED": str(settings.tie_seed),
+                "PRRSLOOM_RESOURCE_TTL_HOURS": str(settings.resource_ttl_hours),
+                "PRRSLOOM_MAX_TIMER_SEQUENCES": str(settings.max_timer_sequences),
+                "PRRSLOOM_MAX_SEQUENCES": str(settings.max_sequences),
+                "PRRSLOOM_MAX_TREE_TIPS": str(settings.max_tree_tips),
+            })
             pkg_root = str(Path(__file__).resolve().parents[1])  # worker runs with cwd = job dir
             env["PYTHONPATH"] = pkg_root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
             log_fh = open(d / "worker.log", "ab")

@@ -75,7 +75,7 @@ fi
 
 # 5. warm resources + health
 sleep 2
-sudo -u prrsloom env $(grep -v '^#' /etc/prrsloom/prrsloom.env | xargs) /opt/prrsloom/venv/bin/python -c \
+cd /opt/prrsloom/app && sudo -u prrsloom env PYTHONPATH=/opt/prrsloom/app $(grep -v '^#' /etc/prrsloom/prrsloom.env | xargs) /opt/prrsloom/venv/bin/python -c \
   "from prrsloom import resources; resources.ensure_all(); resources.load_model('model'); resources.load_model('lineage_model'); print('resources ok')"
 curl -fsS http://127.0.0.1:8010/prrsloom/health && echo
 echo "Backup of previous state: $BACKUP"
