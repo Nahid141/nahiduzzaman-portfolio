@@ -5,9 +5,9 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP=/opt/prrsloom/backups/$STAMP
-API_HOST=api.fnunahiduzzaman.com
+API_HOST="${PRRSLOOM_HOST:-api.fnunahiduzzaman.com}"   # e.g. PRRSLOOM_HOST=prrsloom-api.fnunahiduzzaman.com
 
-apt-get install -y -qq clustalw mafft python3-venv >/dev/null
+apt-get install -y -qq clustalw mafft python3-venv nginx curl >/dev/null
 id prrsloom >/dev/null 2>&1 || useradd --system --home /srv/prrsloom --shell /usr/sbin/nologin prrsloom
 install -d -o prrsloom -g prrsloom -m 750 /srv/prrsloom /srv/prrsloom/jobs
 install -d -m 755 /opt/prrsloom /opt/prrsloom/backups /etc/prrsloom
@@ -58,7 +58,19 @@ PY
   fi
   if nginx -t; then systemctl reload nginx; else cp -a "$BACKUP/nginx-site.conf" "$REAL"; nginx -t && systemctl reload nginx; echo "nginx change reverted" >&2; exit 1; fi
 else
-  echo "No nginx site for $API_HOST found; add deploy/nginx-prrsloom.conf to the reverse proxy manually." >&2
+  # dedicated host (e.g. a new VM): own site file, HTTP first; HTTPS is added by certbot once DNS points here
+  install -m 644 "$SRC/deploy/nginx-prrsloom.conf" /etc/nginx/snippets/prrsloom.conf
+  cat > /etc/nginx/sites-available/prrsloom-api <<NGX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $API_HOST;
+    location = / { return 204; }
+    include snippets/prrsloom.conf;
+}
+NGX
+  ln -sf /etc/nginx/sites-available/prrsloom-api /etc/nginx/sites-enabled/prrsloom-api
+  nginx -t && systemctl reload nginx
 fi
 
 # 5. warm resources + health
