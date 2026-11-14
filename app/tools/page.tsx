@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type ObsRow = {
@@ -1748,6 +1749,12 @@ export default function Tools() {
               >
                 Open QI-GeneX-N
               </button>
+              <Link
+                href="/tools/prrsloom"
+                className="rounded-2xl bg-gradient-to-r from-cyan-300 to-purple-300 px-6 py-4 font-black text-slate-950 shadow-lg shadow-purple-400/20 transition hover:-translate-y-1 hover:from-white hover:to-white"
+              >
+                Open PRRSLooM
+              </Link>
             </div>
           </div>
         </div>
@@ -1806,6 +1813,31 @@ export default function Tools() {
               ))}
             </div>
           </button>
+
+          <Link
+            href="/tools/prrsloom"
+            className="group rounded-[2rem] border border-cyan-300/20 bg-gradient-to-br from-cyan-400/15 via-purple-500/15 to-slate-950 p-7 text-left shadow-2xl backdrop-blur-xl transition hover:-translate-y-2 hover:border-purple-300/60 lg:col-span-2"
+          >
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div className="rounded-2xl bg-gradient-to-r from-cyan-300 to-purple-300 px-4 py-2 text-sm font-black text-slate-950">
+                PRRSV-2 genomics
+              </div>
+              <span className="rounded-full border border-purple-300/30 px-4 py-2 text-sm font-black text-purple-100 group-hover:bg-purple-300 group-hover:text-slate-950">
+                Launch →
+              </span>
+            </div>
+            <h2 className="text-4xl font-black text-white">PRRSLooM</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
+              Variant-classified NJ trees, tree labeling, TIMER pairwise molecular-clock audits and haplotype networks for PRRSV-2 ORF5 sequences.
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {["NJ Tree Builder", "Tree Labeling", "TIMER clock audit", "Haplotype Network"].map((item) => (
+                <div key={item} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-slate-200">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </Link>
         </div>
       </section>
 

@@ -1,0 +1,10 @@
+# DECIPHER::AlignSeqs + pegas, as in the haplotype app. Usage: Rscript r_decipher_haplo.R in.fasta out_prefix
+args <- commandArgs(TRUE)
+suppressMessages({library(Biostrings); library(DECIPHER); library(ape); library(pegas)})
+seqs <- readDNAStringSet(args[1])
+aln <- DECIPHER::AlignSeqs(seqs, verbose = FALSE)
+writeXStringSet(aln, paste0(args[2], "_aln.fasta"))
+h <- suppressWarnings(haplotype(as.DNAbin(aln)))
+writeLines(vapply(attr(h, "index"), function(v) paste(names(aln)[v], collapse = ","), ""), paste0(args[2], "_members.txt"))
+net <- as.matrix(haploNet(h))
+write.csv(data.frame(r = net[, 1], c = net[, 2], step = net[, 3]), paste0(args[2], "_links.csv"), row.names = FALSE)
