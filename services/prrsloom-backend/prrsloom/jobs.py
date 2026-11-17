@@ -149,6 +149,13 @@ def _limits():  # pragma: no cover - Linux only
     resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     os.nice(5)
+    # If the service's cgroup reaches MemoryMax, the kernel should kill an analysis, not the API
+    # process that holds the queue (raising one's own score needs no privileges).
+    try:
+        with open("/proc/self/oom_score_adj", "w") as fh:
+            fh.write("500")
+    except OSError:
+        pass
 
 
 class Dispatcher:
