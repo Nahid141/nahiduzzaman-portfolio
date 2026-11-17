@@ -24,7 +24,10 @@ rm -rf /opt/prrsloom/app && mv /opt/prrsloom/app.new /opt/prrsloom/app
 /opt/prrsloom/venv/bin/pip install -q --upgrade pip
 /opt/prrsloom/venv/bin/pip install -q -r /opt/prrsloom/app/requirements.txt
 
-# 3. env + unit
+[ -f /etc/nginx/snippets/prrsloom.conf ] && cp -a /etc/nginx/snippets/prrsloom.conf "$BACKUP/nginx-snippet.conf"
+
+# 3. env + unit (an existing env file is kept, and backed up so rollback.sh can restore it)
+[ -f /etc/prrsloom/prrsloom.env ] && cp -a /etc/prrsloom/prrsloom.env "$BACKUP/prrsloom.env"
 [ -f /etc/prrsloom/prrsloom.env ] || install -m 640 -g prrsloom "$SRC/deploy/prrsloom.env.example" /etc/prrsloom/prrsloom.env
 [ -f /etc/systemd/system/prrsloom.service ] && cp -a /etc/systemd/system/prrsloom.service "$BACKUP/"
 install -m 644 "$SRC/deploy/prrsloom.service" /etc/systemd/system/prrsloom.service

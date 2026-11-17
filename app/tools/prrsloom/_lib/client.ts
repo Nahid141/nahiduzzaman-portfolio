@@ -37,6 +37,13 @@ export async function getJob(jobId: string): Promise<JobStatus> {
   return data as JobStatus;
 }
 
+export async function cancelJob(jobId: string): Promise<JobStatus> {
+  const response = await fetch(`/api/prrsloom/jobs/${jobId}?action=cancel`, { method: "POST", cache: "no-store" });
+  const data = await readJson(response);
+  if (!response.ok) throw new Error(errorText(data, `Cancellation failed (HTTP ${response.status}).`));
+  return data as JobStatus;
+}
+
 export async function getResult(jobId: string): Promise<AnyResult> {
   const pointer = await fetch(`/api/prrsloom/jobs/${jobId}?view=result`, { cache: "no-store" }).then(readJson);
   const response = await fetch(pointer.url, { cache: "no-store" });

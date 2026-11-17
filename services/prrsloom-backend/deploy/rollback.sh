@@ -15,6 +15,8 @@ B=/opt/prrsloom/backups/${1:-$(ls -1 /opt/prrsloom/backups | tail -1)}
 [ -d "$B" ] || { echo "no backup $B" >&2; exit 1; }
 [ -d "$B/app" ] && { rm -rf /opt/prrsloom/app; cp -a "$B/app" /opt/prrsloom/app; }
 [ -f "$B/prrsloom.service" ] && cp -a "$B/prrsloom.service" /etc/systemd/system/prrsloom.service
+[ -f "$B/prrsloom.env" ] && cp -a "$B/prrsloom.env" /etc/prrsloom/prrsloom.env
+[ -f "$B/nginx-snippet.conf" ] && cp -a "$B/nginx-snippet.conf" /etc/nginx/snippets/prrsloom.conf
 if [ -f "$B/nginx-site.conf" ]; then
   T="$(readlink -f "$(grep -rl "fnunahiduzzaman" /etc/nginx/sites-enabled/ | head -1)")"
   cp -a "$B/nginx-site.conf" "$T"

@@ -69,17 +69,25 @@ def _fasta_roundtrip_name(name: str) -> str:
     return name.strip() if name is not None else name
 
 
-def normalise_batch(names: list[str], seqs: list[str], skip_545: bool) -> tuple[list[str], list[str], list[str]]:
-    """Returns (names, sequences, dropped) after the 603-nt normalisation block."""
+def normalise_batch(names: list[str], seqs: list[str], skip_545: bool, threads: int = 1) -> tuple[list[str], list[str], list[str]]:
+    """Returns (names, sequences, dropped) after the 603-nt normalisation block.
+
+    Re-alignments are independent; with ``threads > 1`` they run concurrently (the DP releases
+    the GIL) and are collected in input order, so the result does not depend on ``threads``.
+    """
     long_idx = [i for i, s in enumerate(seqs) if len(s) != ORF5_LENGTH]
     if not long_idx:
         return list(names), list(seqs), []
-    realigned_names, realigned_seqs = [], []
-    for i in long_idx:
-        if skip_545 and i + 1 == 545:
-            continue
-        realigned_names.append(_fasta_roundtrip_name(names[i]))
-        realigned_seqs.append(realign_to_reference(seqs[i]).lower())
+    todo = [i for i in long_idx if not (skip_545 and i + 1 == 545)]
+    if threads > 1 and len(todo) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="realign") as pool:
+            aligned = list(pool.map(realign_to_reference, [seqs[i] for i in todo]))
+    else:
+        aligned = [realign_to_reference(seqs[i]) for i in todo]
+    realigned_names = [_fasta_roundtrip_name(names[i]) for i in todo]
+    realigned_seqs = [a.lower() for a in aligned]
     keep_names = [n for n, s in zip(names, seqs) if len(s) == ORF5_LENGTH]
     keep_seqs = [s for s in seqs if len(s) == ORF5_LENGTH]
     # R excludes by *name*: any sequence sharing a name with a non-603 one is excluded too.
@@ -164,9 +172,9 @@ def _ratio(top: float, second: float) -> float:
 
 
 def make_predict(model: ClassifierModel, lineage_model: ClassifierModel, names: list[str],
-                 seqs: list[str], seed: int = 2026) -> Prediction:
+                 seqs: list[str], seed: int = 2026, threads: int = 1) -> Prediction:
     rng = np.random.default_rng(seed)
-    names_n, seqs_n, dropped = normalise_batch(names, seqs, skip_545=True)
+    names_n, seqs_n, dropped = normalise_batch(names, seqs, skip_545=True, threads=threads)
     if not names_n:
         return Prediction(rows=[], dropped=dropped)
     rows, ties = _score(model, names_n, seqs_n, rng)

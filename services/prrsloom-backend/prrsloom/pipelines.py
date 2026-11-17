@@ -8,6 +8,7 @@ files into ``out_dir`` and returns the JSON-serialisable result payload.
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import json
 import math
@@ -94,7 +95,7 @@ def _classify(names: list[str], seqs: list[str], progress: Progress, start: floa
     model = resources.load_model("model")
     lineage = resources.load_model("lineage_model")
     progress(start + 0.1, "Running the variant classifier")
-    return clf.make_predict(model, lineage, names, seqs, seed=settings.tie_seed)
+    return clf.make_predict(model, lineage, names, seqs, seed=settings.tie_seed, threads=settings.job_threads)
 
 
 def _select_references(var_target: set[str]):
@@ -340,7 +341,8 @@ def run_timer(params: dict, inputs: dict, out_dir: Path, progress: Progress) -> 
         progress(0.1, "Aligning sequence pairs")
         results = timer.results_from_sequences(
             names, [s for _, s in records], lookup,
-            progress=lambda d, t: progress(0.1 + 0.8 * d / t, f"Aligned {d} of {t} pairs"))
+            progress=lambda d, t: progress(0.1 + 0.8 * d / t, f"Aligned {d} of {t} pairs"),
+            threads=settings.job_threads)
         columns = AUDIT_COLUMNS + ["gaps_ignored", "ambiguous_sites_ignored", "alignment_length"]
     elif mode == "pairwise":
         header, rows = read_csv_text(inputs.get("pairwise", ""), "pairwise comparison CSV")
@@ -676,6 +678,11 @@ def run(module: str, params: dict, inputs: dict, out_dir: Path, progress: Progre
     out_dir.mkdir(parents=True, exist_ok=True)
     result = RUNNERS[module](params, inputs, out_dir, progress)
     payload = json_safe(result)
-    (out_dir / "result.json").write_text(json.dumps(payload))
+    text = json.dumps(payload)
+    (out_dir / "result.json").write_text(text)
+    # Compressed once here so the API can send it with Content-Encoding: gzip (a 150-sequence
+    # TIMER result is ~16 MB of JSON) without compressing on every request.
+    with gzip.open(out_dir / "result.json.gz", "wb", compresslevel=6) as fh:
+        fh.write(text.encode("utf-8"))
     _ = io
     return payload

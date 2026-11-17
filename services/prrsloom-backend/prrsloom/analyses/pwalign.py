@@ -76,7 +76,7 @@ def _aligned(s: str, a: Aligned) -> str:
     return "".join(out)
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)  # nogil: TIMER aligns independent pairs on several threads
 def _dp(s1, s2, table, gap_open, gap_ext, end_gap1, end_gap2):
     n1 = s1.shape[0]
     n2 = s2.shape[0]

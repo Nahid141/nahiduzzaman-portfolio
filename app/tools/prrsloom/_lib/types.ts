@@ -3,7 +3,7 @@ export type ModuleId = "nj_tree" | "tree_label" | "timer" | "haplotype";
 export type JobStatus = {
   id: string;
   module: ModuleId;
-  status: "queued" | "running" | "succeeded" | "failed" | "expired";
+  status: "queued" | "running" | "succeeded" | "failed" | "expired" | "cancelled";
   progress: number;
   message: string | null;
   error: string | null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useId, useMemo, useState, type ReactNode } from "react";
 import { fileUrl } from "../_lib/client";
 import type { JobStatus, ResultFile } from "../_lib/types";
 
@@ -164,6 +164,7 @@ export function JobProgress({ job, error }: { job: JobStatus | null; error: stri
     ? `Queued${job.queue_position ? ` (position ${job.queue_position})` : ""}`
     : job.status === "failed" ? `Analysis failed: ${job.error ?? "unknown error"}` : job.message ?? job.status;
   if (job.status === "failed") return <Notice tone="error">{text}</Notice>;
+  if (job.status === "cancelled") return <Notice tone="warn">The analysis was cancelled.</Notice>;
   return (
     <div className="space-y-2" aria-live="polite">
       <div className="flex items-center justify-between text-xs font-bold text-slate-300">
@@ -201,10 +202,13 @@ export function DataTable({ rows, columns, pageSize = 15, caption, onRowClick }:
   rows: Record<string, unknown>[]; columns: string[]; pageSize?: number; caption: string; onRowClick?: (r: Record<string, unknown>) => void;
 }) {
   const [query, setQuery] = useState("");
+  // Filtering a large table (e.g. 11,175 TIMER pairs x 28 columns) on every keystroke would block
+  // typing; the deferred value lets the input update first and the rows follow.
+  const deferredQuery = useDeferredValue(query);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<{ col: string; dir: 1 | -1 } | null>(null);
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     let out = q ? rows.filter((r) => columns.some((c) => fmt(r[c]).toLowerCase().includes(q))) : rows;
     if (sort) {
       out = [...out].sort((a, b) => {
@@ -214,7 +218,7 @@ export function DataTable({ rows, columns, pageSize = 15, caption, onRowClick }:
       });
     }
     return out;
-  }, [rows, columns, query, sort]);
+  }, [rows, columns, deferredQuery, sort]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const current = Math.min(page, pages - 1);
   const slice = filtered.slice(current * pageSize, current * pageSize + pageSize);

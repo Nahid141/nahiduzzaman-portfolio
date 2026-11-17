@@ -134,6 +134,61 @@ def test_timeout_kills_job(client, monkeypatch):
     assert job["status"] == "failed" and "time limit" in job["error"]
 
 
+def wait_status(client, job_id, statuses, timeout=60):
+    end = time.time() + timeout
+    while time.time() < end:
+        job = client.get(f"/prrsloom/jobs/{job_id}", headers=KEY).json()
+        if job["status"] in statuses:
+            return job
+        time.sleep(0.25)
+    raise AssertionError(f"job never reached {statuses}")
+
+
+def test_cancel_running_job_kills_worker_and_cleans_tmp(client, monkeypatch):
+    from prrsloom import jobs
+
+    monkeypatch.setenv("PRRSLOOM_TEST_SLEEP_S", "60")
+    job_id = submit_timer_pairs(client).json()["job_id"]
+    wait_status(client, job_id, {"running"})
+    assert client.post(f"/prrsloom/jobs/{job_id}/cancel").status_code == 401
+    r = client.post(f"/prrsloom/jobs/{job_id}/cancel", headers=KEY)
+    assert r.status_code == 200
+    job = wait_status(client, job_id, {"cancelled"}, timeout=20)
+    assert job["message"] == "Cancelled by user"
+    assert not (jobs.job_dir(job_id) / "tmp").exists()
+    # idempotent, and a cancelled job has no result
+    assert client.post(f"/prrsloom/jobs/{job_id}/cancel", headers=KEY).json()["status"] == "cancelled"
+    assert client.get(f"/prrsloom/jobs/{job_id}/result", headers=KEY).status_code == 409
+
+
+def test_cancel_queued_job_never_starts(client, monkeypatch):
+    from prrsloom.config import settings
+
+    monkeypatch.setattr(settings, "max_workers", 0)  # nothing is launched
+    job_id = submit_timer_pairs(client).json()["job_id"]
+    assert client.post(f"/prrsloom/jobs/{job_id}/cancel", headers=KEY).json()["status"] == "cancelled"
+    monkeypatch.setattr(settings, "max_workers", 1)
+    time.sleep(2.5)  # two dispatcher passes
+    assert client.get(f"/prrsloom/jobs/{job_id}", headers=KEY).json()["status"] == "cancelled"
+    assert client.post("/prrsloom/jobs/" + "0" * 32 + "/cancel", headers=KEY).status_code == 404
+
+
+def test_result_is_served_gzip_when_accepted(client):
+    import gzip
+
+    job_id = submit_timer_pairs(client).json()["job_id"]
+    assert wait(client, job_id)["status"] == "succeeded"
+    plain = client.get(f"/prrsloom/jobs/{job_id}/result", headers={**KEY, "Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers
+    raw = client.get(f"/prrsloom/jobs/{job_id}/result", headers={**KEY, "Accept-Encoding": "gzip"})
+    assert raw.headers["content-encoding"] == "gzip"
+    assert raw.json() == plain.json()  # the client decodes transparently
+    from prrsloom import jobs
+    assert gzip.decompress((jobs.job_dir(job_id) / "out" / "result.json.gz").read_bytes()) == \
+        (jobs.job_dir(job_id) / "out" / "result.json").read_bytes()
+    assert client.get(f"/prrsloom/jobs/{job_id}/files/result.json.gz", headers=KEY).status_code == 400
+
+
 def test_queue_limit(client, monkeypatch):
     from prrsloom.config import settings
 
@@ -148,11 +203,17 @@ def test_restart_recovery_and_cleanup(data_dir):
     jobs.init_db()
     a = jobs.create("timer", {}, {"pairwise": PAIRS})
     b = jobs.create("timer", {}, {"pairwise": PAIRS})
+    c = jobs.create("timer", {}, {"pairwise": PAIRS})
     jobs._update(a, status="running", attempts=1)
     jobs._update(b, status="running", attempts=jobs.MAX_ATTEMPTS)
+    jobs._update(c, status="running", attempts=1)
+    (jobs.job_dir(c) / jobs.CANCEL_FLAG).write_text("1")  # cancelled just before the restart
+    (jobs.job_dir(a) / "tmp").mkdir()
+    (jobs.job_dir(a) / "tmp" / "stale.fasta").write_text(">x\nA\n")
     jobs.Dispatcher().recover()
-    assert jobs.get(a)["status"] == "queued"
+    assert jobs.get(a)["status"] == "queued" and not (jobs.job_dir(a) / "tmp").exists()
     assert jobs.get(b)["status"] == "failed" and "restart" in jobs.get(b)["error"]
+    assert jobs.get(c)["status"] == "cancelled"
     jobs._update(b, finished=time.time() - 10 * 86400)
     assert jobs.cleanup() == 1
     assert jobs.get(b)["status"] == "expired" and not jobs.job_dir(b).exists()

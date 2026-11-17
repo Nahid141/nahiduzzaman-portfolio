@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { csvHeader, fetchExampleFasta, getJob, getResult, submitJob } from "../_lib/client";
+import { cancelJob, csvHeader, fetchExampleFasta, getJob, getResult, submitJob } from "../_lib/client";
 import { MODULES, MODULE_BY_ID } from "../_lib/modules";
 import type { AnyResult, JobStatus, ModuleId } from "../_lib/types";
 import { HaplotypeView } from "./HaplotypeView";
@@ -105,7 +105,7 @@ export default function PrrsloomApp() {
           if (token === pollToken.current) setResult(res);
           return;
         }
-        if (status.status === "failed" || status.status === "expired") return;
+        if (status.status === "failed" || status.status === "expired" || status.status === "cancelled") return;
       } catch (e) {
         if (token !== pollToken.current) return;
         setJobError(e instanceof Error ? e.message : String(e));
@@ -129,6 +129,16 @@ export default function PrrsloomApp() {
   }, [poll]);
 
   const resetResults = () => { stopPolling(); setJob(null); setResult(null); setJobError(null); setFormError(null); };
+
+  // Stops the analysis on the server (frees the worker for other users); polling then sees "cancelled".
+  const cancel = async () => {
+    if (!job) return;
+    try {
+      setJob(await cancelJob(job.id));
+    } catch (e) {
+      setJobError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const chooseModule = (id: ModuleId) => {
     if (id === moduleId) return;
@@ -340,7 +350,12 @@ export default function PrrsloomApp() {
             )}
 
             {formError && <Notice tone="error">{formError}</Notice>}
-            <PrimaryButton onClick={run} disabled={running}>{running ? "Running…" : info.runLabel}</PrimaryButton>
+            <div className="flex flex-wrap items-center gap-3">
+              <PrimaryButton onClick={run} disabled={running}>{running ? "Running…" : info.runLabel}</PrimaryButton>
+              {job && (job.status === "queued" || job.status === "running") && (
+                <GhostButton onClick={cancel}>Cancel analysis</GhostButton>
+              )}
+            </div>
             <JobProgress job={job} error={jobError} />
           </Panel>
 

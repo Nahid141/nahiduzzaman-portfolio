@@ -35,6 +35,17 @@ class Settings:
         "PRRSLOOM_CORS_ORIGIN_REGEX",
         r"https://([a-z0-9-]+\.)*fnunahiduzzaman\.com|https://nahiduzzaman-portfolio[a-z0-9-]*\.vercel\.app|http://localhost:3000"))
     tie_seed: int = field(default_factory=lambda: _int("PRRSLOOM_TIE_SEED", 2026))
+    # CPU threads the whole service may use for analyses; each running job gets an equal share.
+    cpu_threads: int = field(default_factory=lambda: _int("PRRSLOOM_CPU_THREADS", min(4, os.cpu_count() or 1)))
+    # Content-addressed cache of ClustalW alignments (deterministic program, identical inputs).
+    alignment_cache_mb: int = field(default_factory=lambda: _int("PRRSLOOM_ALIGNMENT_CACHE_MB", 256))
+
+    @property
+    def job_threads(self) -> int:
+        """Threads one job may use: its share of PRRSLOOM_CPU_THREADS (set per worker by the dispatcher)."""
+        if os.environ.get("PRRSLOOM_JOB_THREADS"):
+            return max(1, _int("PRRSLOOM_JOB_THREADS", 1))
+        return max(1, self.cpu_threads // max(1, self.max_workers))
 
     @property
     def jobs_dir(self) -> Path:
