@@ -8,7 +8,14 @@ export type JobStatus = {
   message: string | null;
   error: string | null;
   queue_position?: number | null;
+  started?: number | null;
+  finished?: number | null;
+  log?: LogEntry[];
+  log_total?: number;
 };
+
+/** One line of the analysis log: t = unix seconds, p = percent done, l = level, m = message. */
+export type LogEntry = { t: number | null; p: number; l: "info" | "warn" | "error"; m: string };
 
 export type ResultFile = { id: string; label: string; kind: string };
 

@@ -16,8 +16,10 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/prrsloom/job
       { headers: { "Cache-Control": "no-store" } },
     );
   }
+  // ?since=N -> only log entries from index N on (the page polls every 2 s)
+  const since = Math.max(0, Math.floor(Number(req.nextUrl.searchParams.get("since") || 0)) || 0);
   try {
-    const r = await fetch(`${backendUrl()}/prrsloom/jobs/${jobId}`, {
+    const r = await fetch(`${backendUrl()}/prrsloom/jobs/${jobId}?since=${since}`, {
       headers: backendHeaders(),
       cache: "no-store",
       signal: AbortSignal.timeout(15000),

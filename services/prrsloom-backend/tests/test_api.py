@@ -234,3 +234,24 @@ def test_sequence_modules_on_upstream_example(client, resources_dir, module, mon
     res = client.get(f"/prrsloom/jobs/{job['id']}/result", headers=KEY).json()
     assert len(res["classification"]) == 7
     _ = shutil
+
+
+def test_status_includes_live_log_with_since(client):
+    job_id = submit_timer_pairs(client).json()["job_id"]
+    assert wait(client, job_id)["status"] == "succeeded"
+    full = client.get(f"/prrsloom/jobs/{job_id}", headers=KEY).json()
+    assert full["log_total"] == len(full["log"]) >= 3
+    assert full["log"][0]["m"].startswith("Starting timer") and full["log"][-1]["m"] == "Completed"
+    assert all({"t", "p", "l", "m"} <= set(e) for e in full["log"])
+    assert [e["p"] for e in full["log"]] == sorted(e["p"] for e in full["log"])   # never goes backwards
+    tail = client.get(f"/prrsloom/jobs/{job_id}?since={full['log_total'] - 1}", headers=KEY).json()
+    assert tail["log"] == full["log"][-1:] and tail["log_total"] == full["log_total"]
+
+
+def test_failed_job_log_ends_with_the_error(client):
+    r = client.post("/prrsloom/jobs", headers=KEY, data={"module": "tree_label", "params": "{}"},
+                    files={"tree": ("tree.txt", "((a,b),c);", "text/plain"),
+                           "metadata": ("m.csv", "SequenceName,assign.final\na,1A.1\n", "text/csv")})
+    job = wait(client, r.json()["job_id"])
+    assert job["status"] == "failed"
+    assert job["log"][-1]["l"] == "error" and "Format not supported" in job["log"][-1]["m"]

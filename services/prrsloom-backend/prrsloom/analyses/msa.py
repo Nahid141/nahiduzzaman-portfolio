@@ -18,10 +18,13 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
+from typing import Callable
 
 from ..config import settings
 from ..fasta import read_fasta_text
@@ -48,8 +51,18 @@ def _which(binary: str) -> str:
     return found
 
 
-CLUSTALW_ARGS = ("-ALIGN", "-TYPE=DNA", "-OUTPUT=FASTA", "-QUIET")
+# ClustalW 2.1 defaults. -QUIET is not used: the verbose stdout reports every pairwise alignment
+# and progressive group, which gives exact progress; the alignment and guide tree are
+# byte-identical with and without -QUIET (checked on ClustalW 2.1).
+CLUSTALW_ARGS = ("-ALIGN", "-TYPE=DNA", "-OUTPUT=FASTA")
 MAFFT_ARGS = ("--auto", "--quiet", "--thread", "1")
+# share of ClustalW's run time spent in the (all-pairs) pairwise stage vs. progressive alignment
+_PAIRWISE_SHARE = 0.85
+_PAIR_LINE = re.compile(r"^Sequences \(\d+:\d+\) Aligned")
+_GROUPS_LINE = re.compile(r"^There are (\d+) groups")
+_GROUP_LINE = re.compile(r"^Group \d+:")
+
+Progress = Callable[[float, str], None]
 
 
 def _run(cmd: list[str], name: str, timeout: int | None, **kwargs) -> subprocess.CompletedProcess:
@@ -61,23 +74,80 @@ def _run(cmd: list[str], name: str, timeout: int | None, **kwargs) -> subprocess
         raise AlignerError(f"{name} did not finish within {timeout // 60} minutes. Try fewer or shorter sequences.") from None
 
 
-def clustalw(records: list[tuple[str, str]], timeout: int | None = None) -> list[tuple[str, str]]:
+def clustalw(records: list[tuple[str, str]], timeout: int | None = None,
+             progress: Progress | None = None) -> list[tuple[str, str]]:
+    """ClustalW 2.1 with default parameters. ``progress(fraction, message)`` receives exact
+    counts from ClustalW's own output (pairwise alignments done / total, then groups)."""
     exe = _which(settings.clustalw_bin)
     seqs = [s for _, s in records]
+    report = progress or (lambda f, m: None)
     aligned = cache_get("clustalw", exe, CLUSTALW_ARGS, seqs)
-    if aligned is None:
+    if aligned is not None:
+        report(1.0, f"ClustalW: identical input aligned before, reused cached alignment ({len(seqs)} sequences)")
+    else:
         with tempfile.TemporaryDirectory(prefix="prrsloom_cw_") as tmp:
             tmp = Path(tmp)
             _write_tokens(records, tmp / "in.fasta")
-            cmd = [exe, f"-INFILE={tmp / 'in.fasta'}", *CLUSTALW_ARGS[:3], f"-OUTFILE={tmp / 'out.fasta'}", *CLUSTALW_ARGS[3:]]
-            proc = _run(cmd, "ClustalW", timeout, cwd=tmp)
+            cmd = [exe, f"-INFILE={tmp / 'in.fasta'}", *CLUSTALW_ARGS, f"-OUTFILE={tmp / 'out.fasta'}"]
+            code, tail = _stream_clustalw(cmd, tmp, len(seqs), timeout or settings.job_timeout_s, report)
             out = tmp / "out.fasta"
-            if proc.returncode != 0 or not out.exists():
-                raise AlignerError(f"ClustalW failed: {(proc.stderr or proc.stdout)[-400:]}")
+            if code != 0 or not out.exists():
+                raise AlignerError(f"ClustalW failed: {tail[-400:]}")
             aligned = read_fasta_text(out.read_text())
         cache_put("clustalw", exe, CLUSTALW_ARGS, seqs, aligned)
     tokens = {f"s{i:06d}": i for i in range(len(records))}
     return [(records[tokens[tok]][0], seq.upper()) for tok, seq in aligned]
+
+
+def _stream_clustalw(cmd: list[str], cwd: Path, n: int, timeout: int, report: Progress) -> tuple[int, str]:
+    """Run ClustalW, turning its per-alignment output lines into progress reports."""
+    pairs_total = max(1, n * (n - 1) // 2)
+    groups_total = max(1, n - 1)
+    pairs = groups = 0
+    last_pct = -1
+    tail: list[str] = []
+    report(0.0, f"ClustalW: pairwise alignment of {n} sequences ({pairs_total:,} pairs), then progressive alignment")
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    timed_out = threading.Event()
+
+    def watchdog():
+        timed_out.set()
+        proc.kill()
+
+    timer = threading.Timer(timeout, watchdog)
+    timer.start()
+    try:
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            tail = (tail + [line])[-20:]
+            if _PAIR_LINE.match(line):
+                pairs += 1
+            elif m := _GROUPS_LINE.match(line):
+                groups_total = max(1, int(m.group(1)))
+                report(_PAIRWISE_SHARE, f"ClustalW: pairwise stage done ({pairs:,} alignments); guide tree built; "
+                                        f"progressive alignment of {groups_total} groups")
+            elif _GROUP_LINE.match(line):
+                groups += 1
+            else:
+                continue
+            frac = (_PAIRWISE_SHARE * pairs / pairs_total) if groups == 0 else \
+                _PAIRWISE_SHARE + (1 - _PAIRWISE_SHARE) * groups / groups_total
+            pct = int(frac * 100)
+            if pct != last_pct:
+                last_pct = pct
+                stage = (f"pairwise alignment {pairs:,} / {pairs_total:,}" if groups == 0
+                         else f"progressive alignment, group {groups} / {groups_total}")
+                report(min(frac, 0.999), f"ClustalW: {stage}")
+        code = proc.wait()
+    finally:
+        timer.cancel()
+    if timed_out.is_set():
+        raise AlignerError(f"ClustalW did not finish within {timeout // 60} minutes. Try fewer or shorter sequences.")
+    if code == 0:
+        report(1.0, f"ClustalW: alignment complete ({n} sequences)")
+    return code, "\n".join(tail)
 
 
 def mafft(records: list[tuple[str, str]], timeout: int | None = None) -> list[tuple[str, str]]:

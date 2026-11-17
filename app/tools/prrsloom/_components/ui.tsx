@@ -1,8 +1,8 @@
 "use client";
 
-import { useDeferredValue, useId, useMemo, useState, type ReactNode } from "react";
-import { fileUrl } from "../_lib/client";
-import type { JobStatus, ResultFile } from "../_lib/types";
+import { useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { downloadText, fileUrl } from "../_lib/client";
+import type { JobStatus, LogEntry, ResultFile } from "../_lib/types";
 
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
@@ -156,25 +156,106 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
   );
 }
 
-export function JobProgress({ job, error }: { job: JobStatus | null; error: string | null }) {
-  if (error) return <Notice tone="error">{error}</Notice>;
-  if (!job) return null;
-  const pct = Math.round((job.status === "succeeded" ? 1 : job.progress || 0) * 100);
-  const text = job.status === "queued"
-    ? `Queued${job.queue_position ? ` (position ${job.queue_position})` : ""}`
-    : job.status === "failed" ? `Analysis failed: ${job.error ?? "unknown error"}` : job.message ?? job.status;
-  if (job.status === "failed") return <Notice tone="error">{text}</Notice>;
-  if (job.status === "cancelled") return <Notice tone="warn">The analysis was cancelled.</Notice>;
+const STATUS_STYLE: Record<JobStatus["status"], { label: string; pill: string; dot: string; bar: string }> = {
+  queued: { label: "Queued", pill: "border-slate-300/30 bg-slate-300/10 text-slate-100", dot: "bg-slate-300", bar: "from-slate-400 to-slate-300" },
+  running: { label: "Running", pill: "border-sky-300/40 bg-sky-400/15 text-sky-100", dot: "bg-sky-300 animate-pulse", bar: "from-sky-400 via-cyan-300 to-indigo-400" },
+  succeeded: { label: "Completed", pill: "border-emerald-300/40 bg-emerald-400/15 text-emerald-100", dot: "bg-emerald-300", bar: "from-emerald-400 to-teal-300" },
+  failed: { label: "Failed", pill: "border-rose-400/50 bg-rose-500/15 text-rose-100", dot: "bg-rose-400", bar: "from-rose-500 to-rose-400" },
+  cancelled: { label: "Cancelled", pill: "border-amber-300/40 bg-amber-300/10 text-amber-100", dot: "bg-amber-300", bar: "from-amber-400 to-amber-300" },
+  expired: { label: "Expired", pill: "border-slate-300/30 bg-slate-300/10 text-slate-200", dot: "bg-slate-400", bar: "from-slate-500 to-slate-400" },
+};
+
+function clock(seconds: number) {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h}h ${String(m).padStart(2, "0")}m ${String(r).padStart(2, "0")}s` : `${m}m ${String(r).padStart(2, "0")}s`;
+}
+
+export function JobProgress({ job, error, log = [] }: { job: JobStatus | null; error: string | null; log?: LogEntry[] }) {
+  const active = job?.status === "running" || job?.status === "queued";
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  if (!job) return error ? <Notice tone="error">{error}</Notice> : null;
+  const style = STATUS_STYLE[job.status] ?? STATUS_STYLE.running;
+  const pct = job.status === "succeeded" ? 100 : Math.min(99.9, Math.max(0, (job.progress || 0) * 100));
+  const step = job.status === "queued"
+    ? `Waiting for a free analysis slot${job.queue_position ? ` (position ${job.queue_position} in the queue)` : ""}`
+    : job.status === "failed" ? job.error ?? "The analysis failed."
+    : job.status === "cancelled" ? "The analysis was cancelled; the server stopped it."
+    : job.message ?? "Working…";
+  const elapsed = job.started ? (job.finished ?? (active ? now : job.started)) - job.started : null;
   return (
-    <div className="space-y-2" aria-live="polite">
-      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-        <span>{text}</span>
-        <span className="font-mono text-cyan-200">{pct}%</span>
+    <div className="space-y-4" aria-live="polite">
+      <div className="overflow-hidden rounded-3xl border border-sky-300/20 bg-gradient-to-br from-sky-950/70 via-slate-950 to-indigo-950/60 p-5 shadow-xl shadow-sky-950/30">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${style.pill}`}>
+              <span className={`h-2 w-2 rounded-full ${style.dot}`} />{style.label}
+            </span>
+            <p className={`text-sm font-semibold leading-6 ${job.status === "failed" ? "text-rose-100" : "text-slate-100"}`}>{step}</p>
+          </div>
+          <div className="text-right">
+            <div className="font-mono text-3xl font-black tabular-nums text-sky-100">{pct.toFixed(pct < 100 ? 1 : 0)}<span className="text-lg text-sky-300">%</span></div>
+            {elapsed !== null && <div className="text-xs font-semibold text-slate-400">elapsed {clock(elapsed)}</div>}
+          </div>
+        </div>
+        <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100}
+          aria-valuenow={Math.round(pct)} aria-label="Analysis progress">
+          <div className={`relative h-full rounded-full bg-gradient-to-r ${style.bar} transition-all duration-700`} style={{ width: `${Math.max(pct, 2)}%` }}>
+            {job.status === "running" && <div className="absolute inset-0 animate-pulse rounded-full bg-white/20" />}
+          </div>
+        </div>
       </div>
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Analysis progress">
-        <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-purple-400 transition-all duration-500" style={{ width: `${Math.max(pct, 3)}%` }} />
-      </div>
+      {error && <Notice tone="error">{error}</Notice>}
+      <LiveLog lines={log} live={active} />
     </div>
+  );
+}
+
+/** Blue console with the analysis steps reported by the server, newest at the bottom. */
+export function LiveLog({ lines, live }: { lines: LogEntry[]; live: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true); // follow new lines unless the reader scrolled up
+  useEffect(() => {
+    const el = box.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
+  if (!lines.length && !live) return null;
+  const fmtTime = (t: number | null) => (t ? new Date(t * 1000).toLocaleTimeString([], { hour12: false }) : "--:--:--");
+  const download = () => downloadText(`prrsloom_analysis_log_${new Date().toISOString().slice(0, 10)}.txt`,
+    lines.map((l) => `${fmtTime(l.t)}  ${l.p.toFixed(1).padStart(5)}%  ${l.l.toUpperCase().padEnd(5)}  ${l.m}`).join("\n"), "text/plain");
+  return (
+    <section className="overflow-hidden rounded-3xl border border-blue-400/30 bg-[#041226] shadow-xl shadow-blue-950/40" aria-label="Live analysis log">
+      <header className="flex items-center justify-between gap-3 border-b border-blue-400/20 bg-blue-950/60 px-4 py-2.5">
+        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-blue-100">
+          <span className={`h-2 w-2 rounded-full ${live ? "animate-pulse bg-sky-300" : "bg-blue-400/60"}`} />
+          Live analysis log
+          {live && <span className="rounded bg-sky-400/20 px-1.5 py-0.5 text-[10px] text-sky-200">LIVE</span>}
+        </div>
+        <div className="flex items-center gap-3 text-[11px] font-semibold text-blue-200/70">
+          <span>{lines.length} {lines.length === 1 ? "entry" : "entries"}</span>
+          {lines.length > 0 && <button type="button" onClick={download} className="rounded-lg border border-blue-300/30 px-2 py-1 text-blue-100 hover:border-sky-300 hover:text-sky-200">Download log</button>}
+        </div>
+      </header>
+      <div ref={box} role="log" aria-live="polite"
+        onScroll={(e) => { const el = e.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24; }}
+        className="max-h-72 overflow-y-auto px-4 py-3 font-mono text-[12px] leading-6">
+        {lines.length === 0 && <div className="text-blue-300/70">Waiting for the server…</div>}
+        {lines.map((l, i) => (
+          <div key={i} className={`grid grid-cols-[4.6rem_3.6rem_1fr] gap-2 ${
+            l.l === "error" ? "font-bold text-rose-300" : l.l === "warn" ? "text-amber-200" : i === lines.length - 1 && live ? "text-white" : "text-sky-200"}`}>
+            <span className="text-blue-400/80">{fmtTime(l.t)}</span>
+            <span className="text-right tabular-nums text-blue-300/80">{l.p.toFixed(1)}%</span>
+            <span className="break-words">{l.l === "error" ? "✖ " : l.l === "warn" ? "⚠ " : ""}{l.m}</span>
+          </div>
+        ))}
+        {live && <div className="mt-1 h-4 w-2 animate-pulse bg-sky-300/80" aria-hidden />}
+      </div>
+    </section>
   );
 }
 

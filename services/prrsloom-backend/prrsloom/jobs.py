@@ -98,11 +98,11 @@ def get(job_id: str) -> dict | None:
     if row is None:
         return None
     job = dict(row)
-    if job["status"] == "running":
-        status = _read_status(job_dir(job_id))
-        if status:
-            job["progress"] = status.get("progress", job["progress"])
-            job["message"] = status.get("message", job["message"])
+    status = _read_status(job_dir(job_id)) if job["status"] in ("running", "succeeded", "failed", "cancelled") else None
+    if job["status"] == "running" and status:
+        job["progress"] = status.get("progress", job["progress"])
+        job["message"] = status.get("message", job["message"])
+    job["log"] = (status or {}).get("log") or []
     if job["status"] == "queued":
         with _connect() as con:
             ahead = con.execute("SELECT COUNT(*) FROM jobs WHERE status='queued' AND created < ?", (job["created"],)).fetchone()[0]

@@ -187,3 +187,84 @@ def test_classifier_realignment_independent_of_threads(threads):
         names.append(f"q{k}")
     expected = classifier.normalise_batch(names, seqs, skip_545=True)
     assert classifier.normalise_batch(names, seqs, skip_545=True, threads=threads) == expected
+
+
+def _orf5_variant(rng, k=6):
+    from prrsloom.analyses import classifier
+
+    s = list(classifier.REFERENCE_603)
+    for _ in range(k):
+        s[rng.randrange(len(s))] = rng.choice("ACGT")
+    return "".join(s)
+
+
+def test_orf5_screening_keeps_pure_orf5_input_unchanged():
+    from prrsloom.pipelines import screen_orf5
+
+    rng = random.Random(7)
+    recs = [(f"s{k}", _orf5_variant(rng)) for k in range(5)]
+    out, info = screen_orf5(recs, lambda f, m: None)
+    assert out == recs and info["applied"] is False and info["excluded"] == 0
+
+
+def test_orf5_screening_trims_genomes_and_excludes_non_orf5():
+    from prrsloom.pipelines import screen_orf5
+
+    rng = random.Random(8)
+    orf5 = _orf5_variant(rng)
+    flank5 = "".join(rng.choice("ACGT") for _ in range(2500))
+    flank3 = "".join(rng.choice("ACGT") for _ in range(900))
+    genome = flank5 + orf5 + flank3
+    other_gene = "".join(rng.choice("ACGT") for _ in range(380))
+    recs = [("a", _orf5_variant(rng)), ("b", _orf5_variant(rng)), ("genome", genome), ("N_gene", other_gene)]
+    progress = []
+    out, info = screen_orf5(recs, lambda f, m: progress.append((f, m)))
+    assert info["applied"] and (info["kept"], info["trimmed"], info["excluded"]) == (2, 1, 1)
+    assert dict(out)["genome"] == orf5               # exactly the embedded ORF5
+    assert "N_gene" not in dict(out) and "N_gene" in info["summary"]
+    assert [r["action"] for r in info["rows"]] == ["kept", "kept", "trimmed", "excluded"]
+    assert progress[-1][0] == 1.0
+
+
+def test_k80_safety_net_removes_only_undefined_sequences():
+    import numpy as np
+
+    from prrsloom.pipelines import _k80_defined
+
+    rng = random.Random(9)
+    base = "".join(rng.choice("ACGT") for _ in range(300))
+    seqs = []
+    for k in range(5):
+        s = list(base)
+        for _ in range(4 + k):
+            s[rng.randrange(300)] = rng.choice("ACGT")
+        seqs.append("".join(s))
+    # a sequence unrelated to the others: K80 saturates (undefined) against all of them
+    seqs.append("".join(rng.choice("ACGT") for _ in range(300)))
+    names = [f"q{k}" for k in range(6)]
+    dist, kept, removed, sites = _k80_defined(names, seqs, lambda f, m: None)
+    assert np.isfinite(dist).all() and sites == 300
+    assert removed == ["q5"] and kept == names[:5]
+
+
+def test_clustalw_progress_is_exact_and_alignment_unchanged(data_dir):
+    import os
+    import shutil
+
+    from prrsloom.analyses import msa
+    from prrsloom.config import settings
+
+    exe = os.environ.get("PRRSLOOM_CLUSTALW", "clustalw")
+    if not shutil.which(exe):
+        pytest.skip("ClustalW not installed")
+    settings.clustalw_bin = exe
+    rng = random.Random(10)
+    recs = [(f"seq {k}", _orf5_variant(rng, 12)) for k in range(6)]
+    seen = []
+    first = msa.clustalw(recs, progress=lambda f, m: seen.append((f, m)))
+    fracs = [f for f, _ in seen]
+    assert fracs == sorted(fracs) and fracs[-1] == 1.0
+    assert any("pairwise alignment 15 / 15" in m for _, m in seen)    # 6 sequences -> 15 pairs
+    again = []
+    assert msa.clustalw(recs, progress=lambda f, m: again.append(m)) == first  # cached, identical
+    assert "cached" in again[-1]

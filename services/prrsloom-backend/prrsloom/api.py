@@ -187,18 +187,29 @@ async def submit(
     return {"job_id": job_id, "status": "queued"}
 
 
-def _public(job: dict) -> dict:
+def _public(job: dict, since: int = 0) -> dict:
     out = {k: job.get(k) for k in ("id", "module", "status", "progress", "message", "error", "created", "started", "finished", "queue_position")}
+    log = list(job.get("log") or [])
+    # outcomes decided by the dispatcher (time limit, killed for memory, cancellation) are not in
+    # the worker's own log; add them so the log always ends with what actually happened
+    last = log[-1]["m"] if log else ""
+    if job.get("status") == "failed" and job.get("error") and job["error"] != last:
+        log.append({"t": job.get("finished"), "p": round((job.get("progress") or 0) * 100, 1), "l": "error", "m": job["error"]})
+    elif job.get("status") == "cancelled" and "cancel" not in last.lower():
+        log.append({"t": job.get("finished"), "p": round((job.get("progress") or 0) * 100, 1), "l": "warn", "m": "Cancelled by user"})
+    out["log_total"] = len(log)
+    out["log"] = log[max(0, since):]
     return out
 
 
 @router.get("/jobs/{job_id}")
-def status(job_id: str, x_prrsloom_key: str | None = Header(default=None)):
+def status(job_id: str, since: int = 0, x_prrsloom_key: str | None = Header(default=None)):
+    """Job status. ``log`` holds entries from index ``since`` on (``log_total`` = all entries)."""
     _check_key(x_prrsloom_key)
     job = jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found. Results are kept for a limited time.")
-    return _public(job)
+    return _public(job, since)
 
 
 @router.post("/jobs/{job_id}/cancel")
