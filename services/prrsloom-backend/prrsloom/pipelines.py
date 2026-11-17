@@ -133,7 +133,7 @@ NJ_DEFAULTS = {
     "reference_mode": "auto",          # none | auto | accession | manual
     "reference_count": 0,              # auto: references per detected variant (0 = all, as the R app)
     "reference_selection": "nearest",  # auto with a count: nearest | recent
-    "alignment": "clustalw",           # clustalw (R app) | mafft
+    "alignment": "clustalw",           # clustalw (R app) | mafft (--auto) | mafft_linsi (L-INS-i)
     "tree_method": "nj",               # nj (R app) | bionj | upgma
     "distance_model": "K80",           # K80 (R app) | JC69 | TN93 | raw | N
     "gap_handling": "global",          # global (R app) | pairwise
@@ -149,7 +149,7 @@ MODEL_LABEL = {"K80": "K80 (Kimura 2-parameter)", "JC69": "JC69 (Jukes-Cantor)",
                "raw": "uncorrected p", "N": "nucleotide-difference (count)", "T92": "T92 (Tamura 1992)"}
 METHOD_LABEL = {"nj": "Neighbor-Joining", "bionj": "BIONJ", "upgma": "UPGMA"}
 NJ_CHOICES = {"reference_mode": ("none", "auto", "accession", "manual"), "reference_selection": ("nearest", "recent"),
-              "alignment": ("clustalw", "mafft"), "tree_method": treebuild.METHODS, "distance_model": treebuild.MODELS,
+              "alignment": ("clustalw", "mafft", "mafft_linsi"), "tree_method": treebuild.METHODS, "distance_model": treebuild.MODELS,
               "gap_handling": treebuild.DELETION, "rooting": treebuild.ROOTING}
 
 
@@ -388,8 +388,13 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
     use_cache = not o["fresh_alignment"]
     if o["alignment"] == "clustalw":
         aligner, run_aligner = "ClustalW", msa.clustalw
-    else:
+    elif o["alignment"] == "mafft":
         aligner, run_aligner = "MAFFT", msa.mafft
+    else:
+        aligner = "MAFFT L-INS-i"
+
+        def run_aligner(recs, progress=None, use_cache=True):
+            return msa.mafft(recs, progress=progress, use_cache=use_cache, accurate=True)
 
     def align(recs, progress):
         def watch(frac, msg):

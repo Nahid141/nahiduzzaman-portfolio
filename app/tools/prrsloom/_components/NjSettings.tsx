@@ -104,7 +104,7 @@ export function NjSettings({ value, onChange, refs, onRefs }: {
         <summary className="cursor-pointer list-none text-sm font-black text-slate-100">
           <span className="mr-2 inline-block transition group-open:rotate-90">▸</span>Phylogenetic method
           <span className="ml-2 text-xs font-semibold text-slate-400">
-            {value.alignment === "mafft" ? "MAFFT" : "ClustalW"} · {value.tree_method.toUpperCase()} · {value.distance_model}{value.gamma ? `+Γ` : ""}{value.bootstrap ? ` · ${value.bootstrap} bootstraps` : ""}
+            {value.alignment === "mafft" ? "MAFFT" : value.alignment === "mafft_linsi" ? "MAFFT L-INS-i" : "ClustalW"} · {value.tree_method.toUpperCase()} · {value.distance_model}{value.gamma ? `+Γ` : ""}{value.bootstrap ? ` · ${value.bootstrap} bootstraps` : ""}
           </span>
         </summary>
         <div className="mt-3 space-y-3">
@@ -143,8 +143,13 @@ export function NjSettings({ value, onChange, refs, onRefs }: {
             </>
           ) : <p className="text-xs text-slate-400">UPGMA trees are rooted by construction (molecular-clock assumption).</p>}
           <Segmented label="Multiple alignment" value={value.alignment}
-            options={[{ value: "clustalw", label: "ClustalW (R app)" }, { value: "mafft", label: "MAFFT (faster)" }]}
+            options={[{ value: "clustalw", label: "ClustalW (R app)" }, { value: "mafft", label: "MAFFT auto (fast)" }, { value: "mafft_linsi", label: "MAFFT L-INS-i (most accurate)" }]}
             onChange={(v) => set("alignment", v)} />
+          <p className="text-xs leading-5 text-slate-400">
+            {value.alignment === "clustalw" && "ClustalW 2.1 with default settings, as the R app. Slowest for large sets (all-pairs alignment): about 3–4 minutes for 300 ORF5 sequences."}
+            {value.alignment === "mafft" && "MAFFT --auto chooses its strategy by data size: L-INS-i for small sets, the fast progressive FFT-NS-i/FFT-NS-2 for hundreds of sequences (≈1–10 s for 500 ORF5 sequences). Fast and real, but less accurate than L-INS-i."}
+            {value.alignment === "mafft_linsi" && "MAFFT L-INS-i: local pairwise alignment with iterative refinement, MAFFT's most accurate mode. Slow for large sets (several minutes for 500 sequences)."}
+          </p>
           <label className="flex items-start gap-3 text-xs text-slate-300">
             <input type="checkbox" checked={value.fresh_alignment} onChange={(e) => set("fresh_alignment", e.target.checked)} className="mt-0.5 h-4 w-4 accent-cyan-400" />
             <span><strong className="text-slate-100">Always re-align from scratch.</strong> By default, an alignment of byte-identical input (same sequences, aligner and settings) that was computed before is reused; it is the identical result, returned in seconds.</span>

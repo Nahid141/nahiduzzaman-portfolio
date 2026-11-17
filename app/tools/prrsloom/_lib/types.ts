@@ -77,7 +77,7 @@ export type NjOptions = {
   reference_mode: "none" | "auto" | "accession" | "manual";
   reference_count: number;
   reference_selection: "nearest" | "recent";
-  alignment: "clustalw" | "mafft";
+  alignment: "clustalw" | "mafft" | "mafft_linsi";
   tree_method: "nj" | "bionj" | "upgma";
   distance_model: "K80" | "JC69" | "T92" | "TN93" | "raw" | "N";
   gap_handling: "global" | "pairwise";
