@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { csvHeader, fetchExampleFasta, getJob, getResult, submitJob } from "../_lib/client";
+import { cancelJob, csvHeader, fetchExampleFasta, getJob, getResult, submitJob } from "../_lib/client";
 import { MODULES, MODULE_BY_ID } from "../_lib/modules";
-import type { AnyResult, JobStatus, ModuleId } from "../_lib/types";
+import type { AnyResult, JobStatus, LogEntry, ModuleId } from "../_lib/types";
 import { HaplotypeView } from "./HaplotypeView";
 import { TimerView } from "./TimerView";
 import { TreeView } from "./TreeView";
@@ -58,6 +58,7 @@ export default function PrrsloomApp() {
   const [formError, setFormError] = useState<string | null>(null);
   const [result, setResult] = useState<AnyResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [logLines, setLogLines] = useState<LogEntry[]>([]);
   const pollToken = useRef(0);
 
   // R-app defaults for column pickers whenever the CSV changes
@@ -92,12 +93,18 @@ export default function PrrsloomApp() {
   const stopPolling = () => { pollToken.current += 1; };
 
   // Poll every 2 s until the job finishes; a newer poll or a reset cancels this loop.
+  // Only new log entries are requested each time (?since=<entries already shown>).
   const poll = useCallback(async (jobId: string) => {
     const token = ++pollToken.current;
+    let seen = 0;
+    setLogLines([]);
     while (token === pollToken.current) {
       try {
-        const status = await getJob(jobId);
+        const status = await getJob(jobId, seen);
         if (token !== pollToken.current) return;
+        const fresh = status.log ?? [];
+        if (fresh.length) setLogLines((old) => [...old, ...fresh]);
+        seen = status.log_total ?? seen + fresh.length;
         setJob(status);
         setJobError(null);
         if (status.status === "succeeded") {
@@ -105,7 +112,7 @@ export default function PrrsloomApp() {
           if (token === pollToken.current) setResult(res);
           return;
         }
-        if (status.status === "failed" || status.status === "expired") return;
+        if (status.status === "failed" || status.status === "expired" || status.status === "cancelled") return;
       } catch (e) {
         if (token !== pollToken.current) return;
         setJobError(e instanceof Error ? e.message : String(e));
@@ -128,7 +135,17 @@ export default function PrrsloomApp() {
     return stopPolling;
   }, [poll]);
 
-  const resetResults = () => { stopPolling(); setJob(null); setResult(null); setJobError(null); setFormError(null); };
+  const resetResults = () => { stopPolling(); setJob(null); setResult(null); setJobError(null); setFormError(null); setLogLines([]); };
+
+  // Stops the analysis on the server (frees the worker for other users); polling then sees "cancelled".
+  const cancel = async () => {
+    if (!job) return;
+    try {
+      setJob(await cancelJob(job.id));
+    } catch (e) {
+      setJobError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const chooseModule = (id: ModuleId) => {
     if (id === moduleId) return;
@@ -340,11 +357,18 @@ export default function PrrsloomApp() {
             )}
 
             {formError && <Notice tone="error">{formError}</Notice>}
-            <PrimaryButton onClick={run} disabled={running}>{running ? "Running…" : info.runLabel}</PrimaryButton>
-            <JobProgress job={job} error={jobError} />
+            <div className="flex flex-wrap items-center gap-3">
+              <PrimaryButton onClick={run} disabled={running}>{running ? "Running…" : info.runLabel}</PrimaryButton>
+              {job && (job.status === "queued" || job.status === "running") && (
+                <GhostButton onClick={cancel}>Cancel analysis</GhostButton>
+              )}
+            </div>
+            {jobError && !job && <Notice tone="error">{jobError}</Notice>}
           </Panel>
 
           <div className="space-y-6">
+            {/* progress + live log get the wide column, so long log lines stay readable */}
+            {job && <JobProgress job={job} error={jobError} log={logLines} />}
             {result && job && result.module === moduleId ? (
               <Panel className="space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">

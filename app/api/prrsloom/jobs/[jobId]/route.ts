@@ -16,8 +16,30 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/prrsloom/job
       { headers: { "Cache-Control": "no-store" } },
     );
   }
+  // ?since=N -> only log entries from index N on (the page polls every 2 s)
+  const since = Math.max(0, Math.floor(Number(req.nextUrl.searchParams.get("since") || 0)) || 0);
   try {
-    const r = await fetch(`${backendUrl()}/prrsloom/jobs/${jobId}`, {
+    const r = await fetch(`${backendUrl()}/prrsloom/jobs/${jobId}?since=${since}`, {
+      headers: backendHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    });
+    return relay(r);
+  } catch (error) {
+    return unavailable(error);
+  }
+}
+
+// POST /api/prrsloom/jobs/:jobId?action=cancel -> stop a queued or running analysis
+export async function POST(req: NextRequest, ctx: RouteContext<"/api/prrsloom/jobs/[jobId]">) {
+  const { jobId } = await ctx.params;
+  if (!JOB_ID.test(jobId)) return NextResponse.json({ error: "Job not found." }, { status: 404 });
+  if (req.nextUrl.searchParams.get("action") !== "cancel") {
+    return NextResponse.json({ error: "Unknown action." }, { status: 400 });
+  }
+  try {
+    const r = await fetch(`${backendUrl()}/prrsloom/jobs/${jobId}/cancel`, {
+      method: "POST",
       headers: backendHeaders(),
       cache: "no-store",
       signal: AbortSignal.timeout(15000),

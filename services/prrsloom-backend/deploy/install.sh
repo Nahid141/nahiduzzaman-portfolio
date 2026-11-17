@@ -24,7 +24,10 @@ rm -rf /opt/prrsloom/app && mv /opt/prrsloom/app.new /opt/prrsloom/app
 /opt/prrsloom/venv/bin/pip install -q --upgrade pip
 /opt/prrsloom/venv/bin/pip install -q -r /opt/prrsloom/app/requirements.txt
 
-# 3. env + unit
+[ -f /etc/nginx/snippets/prrsloom.conf ] && cp -a /etc/nginx/snippets/prrsloom.conf "$BACKUP/nginx-snippet.conf"
+
+# 3. env + unit (an existing env file is kept, and backed up so rollback.sh can restore it)
+[ -f /etc/prrsloom/prrsloom.env ] && cp -a /etc/prrsloom/prrsloom.env "$BACKUP/prrsloom.env"
 [ -f /etc/prrsloom/prrsloom.env ] || install -m 640 -g prrsloom "$SRC/deploy/prrsloom.env.example" /etc/prrsloom/prrsloom.env
 [ -f /etc/systemd/system/prrsloom.service ] && cp -a /etc/systemd/system/prrsloom.service "$BACKUP/"
 install -m 644 "$SRC/deploy/prrsloom.service" /etc/systemd/system/prrsloom.service
@@ -33,7 +36,8 @@ systemctl enable --now prrsloom.service
 systemctl restart prrsloom.service
 
 # 4. nginx: add /prrsloom/ to the API server block (backup first, auto-restore on failure)
-CONF="$(grep -rl "server_name[^;]*$API_HOST" /etc/nginx/sites-enabled/ 2>/dev/null | head -1 || true)"
+# -R (not -r): sites-enabled entries are symlinks, which -r does not follow
+CONF="$(grep -Rl "server_name[^;]*$API_HOST" /etc/nginx/sites-enabled/ 2>/dev/null | head -1 || true)"
 if [ -n "$CONF" ]; then
   REAL="$(readlink -f "$CONF")"
   cp -a "$REAL" "$BACKUP/nginx-site.conf"
@@ -57,6 +61,12 @@ open(path, "w").write(text)
 PY
   fi
   if nginx -t; then systemctl reload nginx; else cp -a "$BACKUP/nginx-site.conf" "$REAL"; nginx -t && systemctl reload nginx; echo "nginx change reverted" >&2; exit 1; fi
+elif [ -e /etc/nginx/sites-available/prrsloom-api ]; then
+  # never overwrite an existing site file (it carries certbot's HTTPS server block)
+  echo "nginx: /etc/nginx/sites-available/prrsloom-api exists but has no server_name $API_HOST; left unchanged" >&2
+  cp -a /etc/nginx/sites-available/prrsloom-api "$BACKUP/nginx-site.conf"
+  install -m 644 "$SRC/deploy/nginx-prrsloom.conf" /etc/nginx/snippets/prrsloom.conf
+  if nginx -t; then systemctl reload nginx; else cp -a "$BACKUP/nginx-snippet.conf" /etc/nginx/snippets/prrsloom.conf; nginx -t && systemctl reload nginx; exit 1; fi
 else
   # dedicated host (e.g. a new VM): own site file, HTTP first; HTTPS is added by certbot once DNS points here
   install -m 644 "$SRC/deploy/nginx-prrsloom.conf" /etc/nginx/snippets/prrsloom.conf

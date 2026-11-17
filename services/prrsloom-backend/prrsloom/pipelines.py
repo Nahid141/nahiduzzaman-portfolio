@@ -8,6 +8,7 @@ files into ``out_dir`` and returns the JSON-serialisable result payload.
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import json
 import math
@@ -16,6 +17,8 @@ import zipfile
 from datetime import date
 from pathlib import Path
 from typing import Callable
+
+import numpy as np
 
 from . import resources
 from .analyses import classifier as clf
@@ -94,7 +97,7 @@ def _classify(names: list[str], seqs: list[str], progress: Progress, start: floa
     model = resources.load_model("model")
     lineage = resources.load_model("lineage_model")
     progress(start + 0.1, "Running the variant classifier")
-    return clf.make_predict(model, lineage, names, seqs, seed=settings.tie_seed)
+    return clf.make_predict(model, lineage, names, seqs, seed=settings.tie_seed, threads=settings.job_threads)
 
 
 def _select_references(var_target: set[str]):
@@ -143,12 +146,20 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
             user_meta[label] = value if value and value != "NA" else "not_provided"
         annotation_title = ann_col
 
-    progress(0.05, "Reading and aligning user sequences (ClustalW)")
-    aligned_user = msa.clustalw(records)
-    pred = _classify([n for n, _ in aligned_user], [s for _, s in aligned_user], progress, 0.25)
+    progress(0.01, f"Read {len(records)} sequences "
+                   f"({min(len(s) for _, s in records):,}-{max(len(s) for _, s in records):,} nt)")
+    n_uploaded = len(records)
+    records, screening = screen_orf5(records, _stage(progress, 0.01, 0.06))
+    warnings: list[str] = []
+    if screening["applied"]:
+        warnings.append(screening["summary"])
+
+    progress(0.06, f"Aligning {len(records)} user sequences (ClustalW)")
+    aligned_user = msa.clustalw(records, progress=_stage(progress, 0.06, 0.28))
+    pred = _classify([n for n, _ in aligned_user], [s for _, s in aligned_user], progress, 0.28)
     out_rows = pred.rows
 
-    progress(0.45, "Retrieving reference sequences")
+    progress(0.39, "Retrieving reference sequences")
     var_target = {r["assign.final"] for r in out_rows if r["assign.final"] not in (None, "undetermined")}
     ref_target, ref_seqs = _select_references(var_target)
     if ref_seqs:
@@ -157,14 +168,19 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
     else:
         all_records = records
         reference_status = "No reference sequences were found. The tree was built using only user sequences."
-
-    progress(0.55, f"Aligning {len(all_records)} sequences (ClustalW)")
-    aligned_all = msa.clustalw(all_records)
+    progress(0.40, f"{len(ref_seqs)} reference sequences for {len(var_target)} variant(s); "
+                   f"aligning {len(all_records)} sequences (ClustalW)")
+    aligned_all = msa.clustalw(all_records, progress=_stage(progress, 0.40, 0.90))
     names = [n for n, _ in aligned_all]
     if len(names) < 3:
         raise InputError("cannot build an NJ tree with less than 3 observations (user and reference sequences combined).")
-    progress(0.8, "Building the K80 Neighbor-Joining tree and midpoint rooting")
-    dist = phylo.dist_k80([s for _, s in aligned_all])
+    progress(0.90, f"Computing K80 distances for {len(names)} sequences")
+    dist, names, removed, sites = _k80_defined(names, [s for _, s in aligned_all], progress)
+    if removed:
+        warnings.append(f"{len(removed)} sequence(s) were left out of the tree because their K80 distance to other "
+                        "sequences is undefined (too little shared, gap-free alignment or saturated divergence): "
+                        + ", ".join(removed[:25]) + (" …" if len(removed) > 25 else ""))
+    progress(0.92, f"Building the Neighbor-Joining tree ({len(names)} tips, {sites:,} alignment sites) and midpoint rooting")
     tree = phylo.midpoint(phylo.nj(dist, names), names)
     for t in tree.tips():
         t.name = clean_sequence_label(t.name)
@@ -192,30 +208,126 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
             m["extra"] = user_meta.get(t.name, "not_provided")
         tip_data[t.name] = m
 
-    progress(0.9, "Drawing the annotated tree")
+    progress(0.95, f"Drawing the annotated tree ({len(names)} tips)")
     lay = treeplot.layout(tree, tip_data, annotation_title)
     png = f"PRRSLoom_NJ_Tree_Builder_{TODAY()}.png"
     treeplot.render_png(lay, str(out_dir / png))
     cls_csv = "classification_table.csv"
     write_csv(out_dir / cls_csv, out_rows, ["SequenceName", "assign.final", "assign.top", "prob.top", "assign.2", "prob.2", "num.gaps.amb"])
     (out_dir / "nj_tree.nwk").write_text(phylo.to_newick(tree))
+    files = [
+        {"id": png, "label": "Annotated tree (PNG, 300 dpi)", "kind": "figure"},
+        {"id": cls_csv, "label": "Classification table (CSV)", "kind": "table"},
+        {"id": "nj_tree.nwk", "label": "Midpoint-rooted NJ tree (Newick)", "kind": "tree"},
+    ]
+    if screening["applied"]:
+        write_csv(out_dir / "input_screening.csv", screening["rows"], SCREENING_COLUMNS)
+        files.append({"id": "input_screening.csv", "label": "ORF5 input screening (CSV)", "kind": "table"})
+    progress(0.99, "Packaging results")
     bundle = _zip_bundle(out_dir, "prrsloom_nj_tree_results.zip")
+    files.append({"id": bundle, "label": "All results (ZIP)", "kind": "bundle"})
     return {
         "module": "nj_tree",
         "reference_status": reference_status,
+        "n_uploaded_sequences": n_uploaded,
         "n_user_sequences": len(records),
         "n_reference_sequences": len(ref_seqs),
         "classification": out_rows,
         "tree": lay,
-        "warnings": _classifier_warnings(pred),
-        "files": [
-            {"id": png, "label": "Annotated tree (PNG, 300 dpi)", "kind": "figure"},
-            {"id": cls_csv, "label": "Classification table (CSV)", "kind": "table"},
-            {"id": "nj_tree.nwk", "label": "Midpoint-rooted NJ tree (Newick)", "kind": "tree"},
-            {"id": bundle, "label": "All results (ZIP)", "kind": "bundle"},
-        ],
+        "warnings": warnings + _classifier_warnings(pred),
+        "input_screening": {k: screening[k] for k in ("applied", "kept", "trimmed", "excluded")},
+        "files": files,
         "provenance": _provenance(),
     }
+
+
+# ---------------------------------------------------------------- NJ input screening
+
+ORF5_LIKE_LENGTH = (590, 620)   # raw ORF5 lengths (603 nt PRRSV-2, 606 nt PRRSV-1, small indels)
+ORF5_MIN_COVERAGE = 300         # reference positions (of 603) the sequence must cover
+ORF5_MIN_IDENTITY = 0.50        # to the PRRSV-2 ORF5 reference; non-ORF5 regions score 0.26-0.41
+SCREENING_COLUMNS = ["SequenceName", "input_length", "orf5_coverage", "orf5_identity", "action", "used_length", "reason"]
+
+
+def screen_orf5(records: list[tuple[str, str]], progress: Progress) -> tuple[list[tuple[str, str]], dict]:
+    """Keep the R app's input unchanged when every sequence is an ORF5 sequence; otherwise trim
+    longer sequences (genomes, flanked ORF5) to their ORF5 region and exclude sequences that do
+    not contain ORF5, so ClustalW and K80 compare homologous ORF5 sites only.
+
+    The ORF5 region and checks come from the classifier's own alignment to the 603-nt
+    reference (global-local, match 1 / mismatch -3, gap 25 + 15k).
+    """
+    progress(0.0, f"Screening {len(records)} sequences for the ORF5 region")
+    from concurrent.futures import ThreadPoolExecutor
+
+    seqs = [s for _, s in records]
+    if settings.job_threads > 1 and len(seqs) > 1:
+        with ThreadPoolExecutor(max_workers=settings.job_threads, thread_name_prefix="orf5") as pool:
+            regions = list(pool.map(clf.orf5_region, seqs))
+    else:
+        regions = [clf.orf5_region(s) for s in seqs]
+    rows, kept = [], []
+    all_orf5 = all(ORF5_LIKE_LENGTH[0] <= len(s) <= ORF5_LIKE_LENGTH[1] for s in seqs)
+    for (name, seq), reg in zip(records, regions):
+        ok = reg.coverage >= ORF5_MIN_COVERAGE and reg.identity >= ORF5_MIN_IDENTITY
+        row = {"SequenceName": name, "input_length": len(seq), "orf5_coverage": reg.coverage,
+               "orf5_identity": round(reg.identity, 3)}
+        if not ok:
+            reason = (f"covers only {reg.coverage} of 603 ORF5 positions" if reg.coverage < ORF5_MIN_COVERAGE
+                      else f"identity {reg.identity:.2f} to the ORF5 reference (chance level); no ORF5 region found")
+            rows.append({**row, "action": "excluded", "used_length": 0, "reason": reason})
+        elif ORF5_LIKE_LENGTH[0] <= len(seq) <= ORF5_LIKE_LENGTH[1]:
+            rows.append({**row, "action": "kept", "used_length": len(seq), "reason": "ORF5-length sequence"})
+            kept.append((name, seq))
+        else:
+            region = seq[reg.start:reg.end]
+            rows.append({**row, "action": "trimmed", "used_length": len(region),
+                         "reason": f"ORF5 region extracted (positions {reg.start + 1}-{reg.end})"})
+            kept.append((name, region))
+    counts = {a: sum(r["action"] == a for r in rows) for a in ("kept", "trimmed", "excluded")}
+    applied = not (all_orf5 and counts["excluded"] == 0)
+    if not applied:  # pure ORF5 input: exactly the R app's pipeline
+        progress(1.0, f"All {len(records)} sequences are ORF5 sequences; no screening changes")
+        return records, {"applied": False, "rows": rows, **counts, "summary": ""}
+    excluded = [r["SequenceName"] for r in rows if r["action"] == "excluded"]
+    summary = (f"The NJ Tree Builder compares ORF5 sequences. Of {len(records)} uploaded sequences, "
+               f"{counts['kept']} were used as uploaded, {counts['trimmed']} longer sequences (e.g. full genomes) "
+               f"were trimmed to their ORF5 region, and {counts['excluded']} without an ORF5 region were left out"
+               + (": " + ", ".join(excluded[:25]) + (" …" if len(excluded) > 25 else "") if excluded else "")
+               + ". Details: input_screening.csv.")
+    progress(1.0, f"ORF5 screening: {counts['kept']} kept, {counts['trimmed']} trimmed to ORF5, {counts['excluded']} excluded")
+    if len(kept) < 1:
+        raise InputError("None of the uploaded sequences contains the PRRSV ORF5 region, which the NJ Tree Builder requires.")
+    return kept, {"applied": True, "rows": rows, **counts, "summary": summary}
+
+
+def _stage(progress: Progress, lo: float, hi: float) -> Progress:
+    """Map a sub-step's own 0-1 progress onto [lo, hi] of the job."""
+    return lambda frac, msg: progress(lo + (hi - lo) * max(0.0, min(1.0, frac)), msg)
+
+
+def _k80_defined(names: list[str], seqs: list[str], progress: Progress):
+    """K80 distances (ape dist.dna defaults, global deletion). If some are undefined, remove the
+    sequence involved in most undefined distances and recompute, until all are defined."""
+    names, seqs, removed = list(names), list(seqs), []
+    while True:
+        if len(names) < 3:
+            raise InputError("Fewer than 3 sequences remain with defined K80 distances; an NJ tree cannot be built. "
+                             "Removed: " + ", ".join(removed))
+        try:
+            dist = phylo.dist_k80(seqs)
+        except ValueError:  # no alignment column is free of gaps/ambiguity in every sequence
+            x = phylo.dnabin_matrix(seqs)
+            k = int(((x & 8) == 0).sum(axis=1).argmax())
+        else:
+            bad = ~np.isfinite(dist)
+            if not bad.any():
+                x = phylo.dnabin_matrix(seqs)
+                return dist, names, removed, int(np.all((x & 8) != 0, axis=0).sum())
+            k = int(bad.sum(axis=1).argmax())
+        progress(0.90, f"K80 undefined for {names[k]}; leaving it out of the tree")
+        removed.append(names.pop(k))
+        seqs.pop(k)
 
 
 def _classifier_warnings(pred: clf.Prediction) -> list[str]:
@@ -340,7 +452,8 @@ def run_timer(params: dict, inputs: dict, out_dir: Path, progress: Progress) -> 
         progress(0.1, "Aligning sequence pairs")
         results = timer.results_from_sequences(
             names, [s for _, s in records], lookup,
-            progress=lambda d, t: progress(0.1 + 0.8 * d / t, f"Aligned {d} of {t} pairs"))
+            progress=lambda d, t: progress(0.1 + 0.8 * d / t, f"Aligned {d} of {t} pairs"),
+            threads=settings.job_threads)
         columns = AUDIT_COLUMNS + ["gaps_ignored", "ambiguous_sites_ignored", "alignment_length"]
     elif mode == "pairwise":
         header, rows = read_csv_text(inputs.get("pairwise", ""), "pairwise comparison CSV")
@@ -676,6 +789,11 @@ def run(module: str, params: dict, inputs: dict, out_dir: Path, progress: Progre
     out_dir.mkdir(parents=True, exist_ok=True)
     result = RUNNERS[module](params, inputs, out_dir, progress)
     payload = json_safe(result)
-    (out_dir / "result.json").write_text(json.dumps(payload))
+    text = json.dumps(payload)
+    (out_dir / "result.json").write_text(text)
+    # Compressed once here so the API can send it with Content-Encoding: gzip (a 150-sequence
+    # TIMER result is ~16 MB of JSON) without compressing on every request.
+    with gzip.open(out_dir / "result.json.gz", "wb", compresslevel=6) as fh:
+        fh.write(text.encode("utf-8"))
     _ = io
     return payload

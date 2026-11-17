@@ -9,18 +9,27 @@ User=prrsloom
 Group=prrsloom
 WorkingDirectory=/opt/prrsloom/app
 EnvironmentFile=/etc/prrsloom/prrsloom.env
+# Exactly one uvicorn worker: the job dispatcher runs inside the API process, and a second
+# worker would start a second dispatcher over the same queue. Analyses never run in the API
+# process (they are child processes), so one async worker is enough for the HTTP traffic.
 ExecStart=/opt/prrsloom/venv/bin/uvicorn prrsloom.api:app --host 127.0.0.1 --port 8010 --workers 1 --proxy-headers
 Restart=on-failure
 RestartSec=5
-# isolation from the QI-GeneX-N service and the rest of the host
+# isolation from the rest of the host
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/srv/prrsloom
-MemoryMax=4G
-CPUQuota=150%
-TasksMax=256
+# Sized for the dedicated GCP VM (n4-standard-4: 4 vCPU, 16 GB). The service (API + up to
+# PRRSLOOM_MAX_WORKERS analyses) may use 10 GB; ~6 GB stay for Debian, nginx and page cache.
+# MemoryHigh makes the kernel reclaim/throttle before the hard limit is reached.
+# On a host shared with other services (e.g. the Oracle box with QI-GeneX-N) lower these
+# (MemoryMax=4G, CPUQuota=150%) and set PRRSLOOM_MAX_WORKERS=1, PRRSLOOM_CPU_THREADS=2.
+MemoryHigh=9G
+MemoryMax=10G
+CPUQuota=400%
+TasksMax=512
 KillMode=control-group
 
 [Install]

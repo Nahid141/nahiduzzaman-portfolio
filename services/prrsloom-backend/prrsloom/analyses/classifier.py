@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 import numpy as np
 
@@ -49,10 +50,45 @@ class Prediction:
     dropped: list[str] = field(default_factory=list)
 
 
+@lru_cache(maxsize=4096)
+def _align_to_reference(seq: str):
+    """global-local alignment of the cleaned sequence to the ORF5 reference (cached: input
+    screening and the classifier align the same sequences)."""
+    cleaned = _NON_NT.sub("", seq).upper()
+    return pairwise_alignment(REFERENCE_603, cleaned, CLASSIFIER_TABLE, 25, 15, "global-local"), cleaned
+
+
+@dataclass
+class Orf5Region:
+    coverage: int        # reference positions (of 603) covered by the sequence
+    identity: float      # fraction of covered positions identical to the PRRSV-2 reference
+    start: int           # ORF5 region in the ORIGINAL sequence: seq[start:end]
+    end: int
+
+
+def orf5_region(seq: str) -> Orf5Region:
+    """Where (and how well) the sequence covers the 603-nt ORF5 reference.
+
+    Uses the classifier's own reference alignment. Measured on real uploads: PRRSV-2 ORF5
+    scores 0.81-0.99 identity, PRRSV-1 ORF5 0.57-0.62, regions without ORF5 (other genes)
+    0.26-0.41 (chance level for this alignment).
+    """
+    res, cleaned = _align_to_reference(seq)
+    aligned = realign_to_reference(seq).upper()
+    covered = [(a, r) for a, r in zip(aligned, REFERENCE_603) if a != "-"]
+    identity = sum(a == r for a, r in covered) / len(covered) if covered else 0.0
+    # map the aligned range of the cleaned (ACGT-only) sequence back to original coordinates,
+    # so ambiguity codes inside the region are kept
+    keep = [i for i, ch in enumerate(seq) if ch in "ACGTacgt"]
+    s0, w = res.subject.start - 1, res.subject.width
+    if w <= 0 or not keep:
+        return Orf5Region(0, 0.0, 0, 0)
+    return Orf5Region(len(covered), identity, keep[s0], keep[min(s0 + w, len(keep)) - 1] + 1)
+
+
 def realign_to_reference(seq: str) -> str:
     """The per-sequence block inside make.predict for nchar != 603."""
-    cleaned = _NON_NT.sub("", seq).upper()
-    res = pairwise_alignment(REFERENCE_603, cleaned, CLASSIFIER_TABLE, 25, 15, "global-local")
+    res, cleaned = _align_to_reference(seq)
     aligned = res.aligned_subject()
     if len(aligned) > ORF5_LENGTH:
         deletions = sorted(zip(res.pattern.indel_start, res.pattern.indel_width), key=lambda t: -t[0])
@@ -69,17 +105,25 @@ def _fasta_roundtrip_name(name: str) -> str:
     return name.strip() if name is not None else name
 
 
-def normalise_batch(names: list[str], seqs: list[str], skip_545: bool) -> tuple[list[str], list[str], list[str]]:
-    """Returns (names, sequences, dropped) after the 603-nt normalisation block."""
+def normalise_batch(names: list[str], seqs: list[str], skip_545: bool, threads: int = 1) -> tuple[list[str], list[str], list[str]]:
+    """Returns (names, sequences, dropped) after the 603-nt normalisation block.
+
+    Re-alignments are independent; with ``threads > 1`` they run concurrently (the DP releases
+    the GIL) and are collected in input order, so the result does not depend on ``threads``.
+    """
     long_idx = [i for i, s in enumerate(seqs) if len(s) != ORF5_LENGTH]
     if not long_idx:
         return list(names), list(seqs), []
-    realigned_names, realigned_seqs = [], []
-    for i in long_idx:
-        if skip_545 and i + 1 == 545:
-            continue
-        realigned_names.append(_fasta_roundtrip_name(names[i]))
-        realigned_seqs.append(realign_to_reference(seqs[i]).lower())
+    todo = [i for i in long_idx if not (skip_545 and i + 1 == 545)]
+    if threads > 1 and len(todo) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="realign") as pool:
+            aligned = list(pool.map(realign_to_reference, [seqs[i] for i in todo]))
+    else:
+        aligned = [realign_to_reference(seqs[i]) for i in todo]
+    realigned_names = [_fasta_roundtrip_name(names[i]) for i in todo]
+    realigned_seqs = [a.lower() for a in aligned]
     keep_names = [n for n, s in zip(names, seqs) if len(s) == ORF5_LENGTH]
     keep_seqs = [s for s in seqs if len(s) == ORF5_LENGTH]
     # R excludes by *name*: any sequence sharing a name with a non-603 one is excluded too.
@@ -164,9 +208,9 @@ def _ratio(top: float, second: float) -> float:
 
 
 def make_predict(model: ClassifierModel, lineage_model: ClassifierModel, names: list[str],
-                 seqs: list[str], seed: int = 2026) -> Prediction:
+                 seqs: list[str], seed: int = 2026, threads: int = 1) -> Prediction:
     rng = np.random.default_rng(seed)
-    names_n, seqs_n, dropped = normalise_batch(names, seqs, skip_545=True)
+    names_n, seqs_n, dropped = normalise_batch(names, seqs, skip_545=True, threads=threads)
     if not names_n:
         return Prediction(rows=[], dropped=dropped)
     rows, ties = _score(model, names_n, seqs_n, rng)

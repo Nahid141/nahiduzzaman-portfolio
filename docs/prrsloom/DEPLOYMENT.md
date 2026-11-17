@@ -46,9 +46,15 @@ enables the service, inserts `include snippets/prrsloom.conf;` into the HTTPS se
 `nginx -t` (restoring the backup automatically on failure), warms the classifier cache and checks
 `/prrsloom/health`.
 
-Capacity defaults (adjust in `/etc/prrsloom/prrsloom.env`): 1 concurrent job, queue of 20, 30-min
-timeout, 3 GB address-space limit per job, results kept 72 h; systemd caps the service at 4 GB RAM
-and 1.5 CPUs.
+Capacity (adjust in `/etc/prrsloom/prrsloom.env`; `install.sh` never overwrites that file, it only
+backs it up for `rollback.sh`). Recommended for the dedicated 4 vCPU / 16 GB GCP VM — see
+`deploy/prrsloom.env.example`: 2 concurrent jobs (`PRRSLOOM_MAX_WORKERS=2`) sharing 4 CPU threads
+(`PRRSLOOM_CPU_THREADS=4`, i.e. 2 per job, with BLAS/OpenMP/numba capped to the same), queue of 20,
+60-min timeout, 4 GB address-space limit per job, 512 MB alignment cache, results kept 72 h.
+systemd caps the whole service at 10 GB (`MemoryHigh=9G`) and 4 CPUs, leaving ~6 GB for the OS,
+nginx and page cache. On a host shared with other services use 1 job / 2 threads and the old
+4 GB / 150% unit limits. Exactly one uvicorn worker is required (the job dispatcher lives in it).
+Performance work, benchmarks and scale limits: `PERFORMANCE.md`.
 
 ## Verify
 

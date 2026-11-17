@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from starlette.concurrency import run_in_threadpool
 
 from . import __version__, jobs, resources
 from .config import settings
@@ -172,27 +173,50 @@ async def submit(
             if len(fasta_text.encode()) > settings.max_upload_bytes:
                 raise InputError("The pasted FASTA text is too large.")
             inputs["fasta"] = fasta_text
-        _quick_validate(module, p, inputs)
+        # parsing a few MB of FASTA/CSV is CPU work: keep it off the event loop so status polls
+        # and downloads from other users are not stalled behind an upload
+        await run_in_threadpool(_quick_validate, module, p, inputs)
     except InputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
     _rate_limit(client)
     try:
-        job_id = jobs.create(module, p, inputs, client)
+        job_id = await run_in_threadpool(jobs.create, module, p, inputs, client)
     except OverflowError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from None
     return {"job_id": job_id, "status": "queued"}
 
 
-def _public(job: dict) -> dict:
+def _public(job: dict, since: int = 0) -> dict:
     out = {k: job.get(k) for k in ("id", "module", "status", "progress", "message", "error", "created", "started", "finished", "queue_position")}
+    log = list(job.get("log") or [])
+    # outcomes decided by the dispatcher (time limit, killed for memory, cancellation) are not in
+    # the worker's own log; add them so the log always ends with what actually happened
+    last = log[-1]["m"] if log else ""
+    if job.get("status") == "failed" and job.get("error") and job["error"] != last:
+        log.append({"t": job.get("finished"), "p": round((job.get("progress") or 0) * 100, 1), "l": "error", "m": job["error"]})
+    elif job.get("status") == "cancelled" and "cancel" not in last.lower():
+        log.append({"t": job.get("finished"), "p": round((job.get("progress") or 0) * 100, 1), "l": "warn", "m": "Cancelled by user"})
+    out["log_total"] = len(log)
+    out["log"] = log[max(0, since):]
     return out
 
 
 @router.get("/jobs/{job_id}")
-def status(job_id: str, x_prrsloom_key: str | None = Header(default=None)):
+def status(job_id: str, since: int = 0, x_prrsloom_key: str | None = Header(default=None)):
+    """Job status. ``log`` holds entries from index ``since`` on (``log_total`` = all entries)."""
     _check_key(x_prrsloom_key)
     job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found. Results are kept for a limited time.")
+    return _public(job, since)
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel(job_id: str, x_prrsloom_key: str | None = Header(default=None)):
+    """Cancel a queued or running job (idempotent; finished jobs are returned unchanged)."""
+    _check_key(x_prrsloom_key)
+    job = jobs.cancel(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found. Results are kept for a limited time.")
     return _public(job)
@@ -207,7 +231,7 @@ def _signed_or_key(job_id: str, name: str, expires: int | None, sig: str | None,
 
 
 @router.get("/jobs/{job_id}/result")
-def result(job_id: str, expires: int | None = None, sig: str | None = None,
+def result(request: Request, job_id: str, expires: int | None = None, sig: str | None = None,
            x_prrsloom_key: str | None = Header(default=None)):
     _signed_or_key(job_id, "result.json", expires, sig, x_prrsloom_key)
     job = jobs.get(job_id)
@@ -218,11 +242,16 @@ def result(job_id: str, expires: int | None = None, sig: str | None = None,
     path = jobs.job_dir(job_id) / "out" / "result.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Result not found.")
-    return FileResponse(path, media_type="application/json")
+    gz = path.with_name("result.json.gz")
+    if gz.exists() and "gzip" in request.headers.get("accept-encoding", "").lower():
+        # pre-compressed by the worker; the browser decompresses transparently
+        return FileResponse(gz, media_type="application/json",
+                            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return FileResponse(path, media_type="application/json", headers={"Vary": "Accept-Encoding"})
 
 
 def _result_file(job_id: str, file_id: str):
-    if not FILE_ID.match(file_id or "") or file_id == "result.json":
+    if not FILE_ID.match(file_id or "") or file_id in ("result.json", "result.json.gz"):
         raise HTTPException(status_code=400, detail="Invalid file name.")
     try:
         out = (jobs.job_dir(job_id) / "out").resolve()

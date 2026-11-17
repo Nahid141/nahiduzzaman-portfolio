@@ -30,10 +30,17 @@ export async function submitJob(module: ModuleId, params: Record<string, unknown
   return data as { job_id: string };
 }
 
-export async function getJob(jobId: string): Promise<JobStatus> {
-  const response = await fetch(`/api/prrsloom/jobs/${jobId}`, { cache: "no-store" });
+export async function getJob(jobId: string, since = 0): Promise<JobStatus> {
+  const response = await fetch(`/api/prrsloom/jobs/${jobId}?since=${since}`, { cache: "no-store" });
   const data = await readJson(response);
   if (!response.ok) throw new Error(errorText(data, `Status check failed (HTTP ${response.status}).`));
+  return data as JobStatus;
+}
+
+export async function cancelJob(jobId: string): Promise<JobStatus> {
+  const response = await fetch(`/api/prrsloom/jobs/${jobId}?action=cancel`, { method: "POST", cache: "no-store" });
+  const data = await readJson(response);
+  if (!response.ok) throw new Error(errorText(data, `Cancellation failed (HTTP ${response.status}).`));
   return data as JobStatus;
 }
 

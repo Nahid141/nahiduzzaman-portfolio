@@ -97,8 +97,38 @@ def layout(tree: Node, tip_data: dict[str, dict], extra_column: str | None,
     }
 
 
+
+# Figures at least this large are written band by band (pngband): a 3000-tip tree is
+# 3600 x 162000 px (ggsave sizing, 0.18 in per tip at 300 dpi), and a single Agg canvas for it
+# needs 2.3 GB. Smaller figures use savefig unchanged.
+BANDED_PNG_MIN_PIXELS = 64_000_000
+
+
 def render_png(lay: dict, path: str, dpi: int = 300) -> None:
     """ggsave() sizing from save_tree_plot_auto(): width max(12, 8 + 0.08 * longest label), height max(8, 0.18 * n)."""
+    import matplotlib.pyplot as plt
+
+    fig, ax, placed = build_figure(lay, dpi)
+    width_px, height_px = fig.canvas.get_width_height(physical=True)
+    if width_px * height_px >= BANDED_PNG_MIN_PIXELS:
+        from . import pngband
+
+        # margin 2 tip rows: covers marker radius and label height beyond each artist's anchor
+        pngband.save_png(fig, ax, placed, path, dpi, margin=2.0)
+    else:
+        fig.savefig(path, dpi=dpi, facecolor="white")
+    plt.close(fig)
+
+
+def _figure_inches(lay: dict) -> tuple[float, float]:
+    tips = lay["tips"]
+    longest = max((len(t["label"]) for t in tips), default=1)
+    return max(12.0, 8 + longest * 0.08), max(8.0, len(tips) * 0.18)
+
+
+def build_figure(lay: dict, dpi: int) -> tuple:
+    """The annotated tree figure: returns (fig, ax, placed) with placed = [(artist, y_lo, y_hi)]
+    in data coordinates (lets pngband skip artists outside a band)."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -109,31 +139,38 @@ def render_png(lay: dict, path: str, dpi: int = 300) -> None:
     tips = lay["tips"]
     n = len(tips)
     longest = max((len(t["label"]) for t in tips), default=1)
-    width_in = max(12.0, 8 + longest * 0.08)
-    height_in = max(8.0, n * 0.18)
+    width_in, height_in = _figure_inches(lay)
     fig = plt.figure(figsize=(width_in, height_in), dpi=dpi)
     ax = fig.add_axes([0.02, 0.06, 0.72, 0.92])
+    hm = lay["heatmap"]
+    right = max(hm["sub_lineage"]["start"] + hm["sub_lineage"]["width"],
+                (hm["extra"]["start"] + hm["extra"]["width"]) if hm.get("extra") else 0)
+    label_room = longest * 0.012 * max(lay["x_range"], 0.05)
+    # Final limits are known from the layout, so set them before adding artists: this turns
+    # autoscaling off. Otherwise every scatter() call re-scanned all artists (O(n^2): 42 s of
+    # a 3000-tip render). Artists, order and the rendered pixels are unchanged.
+    ax.set_xlim(-0.01 * max(lay["x_range"], 0.01), max(right, lay["x_max"] + 0.02 + label_room) * 1.02)
+    ax.set_ylim(0.3, n + 0.7)
+    placed = []
     for x1, y1, x2, y2 in lay["segments"]:
-        ax.plot([x1, x2], [y1, y2], color="black", linewidth=0.5, solid_capstyle="butt")
+        (line,) = ax.plot([x1, x2], [y1, y2], color="black", linewidth=0.5, solid_capstyle="butt")
+        placed.append((line, min(y1, y2), max(y1, y2)))
     pal = lay["palettes"]
     for t in tips:
-        ax.scatter([t["x"]], [t["y"]], s=22, color=pal["assign_final"].get(t["assign_final"], GRAY["gray70"]), zorder=3, linewidths=0)
-        ax.text(t["x"] + 0.02, t["y"], t["label"], fontsize=8.5, va="center", ha="left")
+        pts = ax.scatter([t["x"]], [t["y"]], s=22, color=pal["assign_final"].get(t["assign_final"], GRAY["gray70"]), zorder=3, linewidths=0)
+        txt = ax.text(t["x"] + 0.02, t["y"], t["label"], fontsize=8.5, va="center", ha="left")
+        placed += [(pts, t["y"], t["y"]), (txt, t["y"], t["y"])]
     for lab in lay["internal_labels"]:
-        ax.text(lab["x"], lab["y"], f" {lab['label']}", fontsize=8.5, va="center", ha="left")
-    hm = lay["heatmap"]
+        txt = ax.text(lab["x"], lab["y"], f" {lab['label']}", fontsize=8.5, va="center", ha="left")
+        placed.append((txt, lab["y"], lab["y"]))
     for key, spec in (("sub_lineage", hm["sub_lineage"]), ("extra", hm.get("extra"))):
         if not spec:
             continue
         for t in tips:
             value = t["sub_lineage"] if key == "sub_lineage" else t["extra"]
             color = pal[key].get(value, GRAY["gray90"])
-            ax.add_patch(Rectangle((spec["start"], t["y"] - 0.5), spec["width"], 1.0, facecolor=color, edgecolor="none"))
-    right = max(hm["sub_lineage"]["start"] + hm["sub_lineage"]["width"],
-                (hm["extra"]["start"] + hm["extra"]["width"]) if hm.get("extra") else 0)
-    label_room = longest * 0.012 * max(lay["x_range"], 0.05)
-    ax.set_xlim(-0.01 * max(lay["x_range"], 0.01), max(right, lay["x_max"] + 0.02 + label_room) * 1.02)
-    ax.set_ylim(0.3, n + 0.7)
+            rect = ax.add_patch(Rectangle((spec["start"], t["y"] - 0.5), spec["width"], 1.0, facecolor=color, edgecolor="none"))
+            placed.append((rect, t["y"] - 0.5, t["y"] + 0.5))
     ax.axis("off")
 
     handles = [Line2D([], [], marker="o", linestyle="", color=c, label=k) for k, c in pal["assign_final"].items()]
@@ -149,6 +186,5 @@ def render_png(lay: dict, path: str, dpi: int = 300) -> None:
         fig.legend(handles=handles, title=lay["extra_column"], loc="upper left", bbox_to_anchor=(0.87, 0.55),
                    fontsize=8, title_fontsize=9, frameon=False)
     fig.text(0.98, 0.015, lay["caption"], ha="right", va="bottom", fontsize=10, color="#595959", style="italic")
-    fig.savefig(path, dpi=dpi, facecolor="white")
-    plt.close(fig)
     _ = math
+    return fig, ax, placed

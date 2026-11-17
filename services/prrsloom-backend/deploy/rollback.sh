@@ -4,7 +4,7 @@
 set -euo pipefail
 if [ "${1:-}" = "--remove" ]; then
   systemctl disable --now prrsloom.service || true
-  for f in $(grep -rl "snippets/prrsloom.conf" /etc/nginx/sites-enabled/ 2>/dev/null); do
+  for f in $(grep -Rl "snippets/prrsloom.conf" /etc/nginx/sites-enabled/ 2>/dev/null); do
     sed -i '/snippets\/prrsloom.conf/d' "$(readlink -f "$f")"
   done
   nginx -t && systemctl reload nginx
@@ -15,8 +15,12 @@ B=/opt/prrsloom/backups/${1:-$(ls -1 /opt/prrsloom/backups | tail -1)}
 [ -d "$B" ] || { echo "no backup $B" >&2; exit 1; }
 [ -d "$B/app" ] && { rm -rf /opt/prrsloom/app; cp -a "$B/app" /opt/prrsloom/app; }
 [ -f "$B/prrsloom.service" ] && cp -a "$B/prrsloom.service" /etc/systemd/system/prrsloom.service
+[ -f "$B/prrsloom.env" ] && cp -a "$B/prrsloom.env" /etc/prrsloom/prrsloom.env
+[ -f "$B/nginx-snippet.conf" ] && cp -a "$B/nginx-snippet.conf" /etc/nginx/snippets/prrsloom.conf
 if [ -f "$B/nginx-site.conf" ]; then
-  T="$(readlink -f "$(grep -rl "fnunahiduzzaman" /etc/nginx/sites-enabled/ | head -1)")"
+  # -R (not -r): sites-enabled entries are symlinks, which -r does not follow
+  T="$(grep -Rl "fnunahiduzzaman" /etc/nginx/sites-enabled/ 2>/dev/null | head -1 || true)"
+  T="$(readlink -f "${T:-/etc/nginx/sites-available/prrsloom-api}")"
   cp -a "$B/nginx-site.conf" "$T"
 fi
 systemctl daemon-reload; systemctl restart prrsloom.service
