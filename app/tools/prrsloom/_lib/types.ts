@@ -70,7 +70,7 @@ export type NjResult = {
   tree: TreeLayout;
   warnings: string[];
   files: ResultFile[];
-  options?: NjOptions & { alignment_sites: number; method_label: string; model_label: string };
+  options?: NjOptions & { alignment_sites: number; method_label: string; model_label: string; alignment_reused?: boolean };
 };
 
 export type NjOptions = {
@@ -79,11 +79,13 @@ export type NjOptions = {
   reference_selection: "nearest" | "recent";
   alignment: "clustalw" | "mafft";
   tree_method: "nj" | "bionj" | "upgma";
-  distance_model: "K80" | "JC69" | "TN93" | "raw" | "N";
+  distance_model: "K80" | "JC69" | "T92" | "TN93" | "raw" | "N";
   gap_handling: "global" | "pairwise";
   rooting: "midpoint" | "outgroup" | "none";
   outgroup: string;
   bootstrap: number;
+  gamma: number;
+  fresh_alignment: boolean;
 };
 
 export type TreeLabelResult = {

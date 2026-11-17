@@ -66,25 +66,60 @@ function schemeColors(scheme: Scheme, cls: string, n: number): string[] {
   });
 }
 
-/* ------------------------------------------------------------------ text width */
+/* ------------------------------------------------------------------ text and shapes */
+
+const FONTS: { id: string; label: string }[] = [
+  { id: "Helvetica, Arial, sans-serif", label: "Helvetica / Arial" },
+  { id: "'Times New Roman', Times, serif", label: "Times New Roman" },
+  { id: "Georgia, serif", label: "Georgia" },
+  { id: "Verdana, Geneva, sans-serif", label: "Verdana" },
+  { id: "'Courier New', Courier, monospace", label: "Courier (monospace)" },
+];
 
 let measureCtx: CanvasRenderingContext2D | null | undefined;
-const FONT = "Helvetica, Arial, sans-serif";
-function textWidth(s: string, size: number, bold = false) {
+function textWidth(s: string, size: number, font: string, bold = false, italic = false) {
   if (measureCtx === undefined) measureCtx = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
-  if (!measureCtx) return s.length * size * 0.56;
-  measureCtx.font = `${bold ? "700 " : ""}${size}px ${FONT}`;
+  if (!measureCtx) return s.length * size * 0.6;
+  measureCtx.font = `${italic ? "italic " : ""}${bold ? "700 " : ""}${size}px ${font}`;
   return measureCtx.measureText(s).width;
+}
+
+type Shape = "circle" | "square" | "triangle" | "diamond" | "inverted" | "star";
+const SHAPES: Shape[] = ["circle", "triangle", "square", "diamond", "inverted", "star"];
+
+function glyph(key: string, shape: Shape, x: number, y: number, r: number, fill: string, title?: string, stroke?: string) {
+  const t = title ? <title>{title}</title> : null;
+  const common = { fill, stroke, strokeWidth: stroke ? 0.8 : undefined };
+  if (shape === "circle") return <circle key={key} cx={x} cy={y} r={r} {...common}>{t}</circle>;
+  if (shape === "square") return <rect key={key} x={x - r * 0.9} y={y - r * 0.9} width={r * 1.8} height={r * 1.8} {...common}>{t}</rect>;
+  const pts =
+    shape === "triangle" ? [[0, -1.15], [1.05, 0.75], [-1.05, 0.75]]
+      : shape === "inverted" ? [[0, 1.15], [1.05, -0.75], [-1.05, -0.75]]
+        : shape === "diamond" ? [[0, -1.25], [1.1, 0], [0, 1.25], [-1.1, 0]]
+          : Array.from({ length: 10 }, (_, k) => {
+            const a = -Math.PI / 2 + (k * Math.PI) / 5, rr = k % 2 ? 0.5 : 1.25;
+            return [rr * Math.cos(a), rr * Math.sin(a)];
+          });
+  return <polygon key={key} points={pts.map(([px, py]) => `${x + px * r},${y + py * r}`).join(" ")} {...common}>{t}</polygon>;
+}
+
+/** A round scale-bar length (1, 2 or 5 x 10^k) about a fifth of ``span``. */
+function niceLength(span: number) {
+  const target = span / 5;
+  if (!(target > 0)) return 0;
+  const p = 10 ** Math.floor(Math.log10(target));
+  return [1, 2, 5, 10].map((m) => m * p).reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a));
 }
 
 /* ------------------------------------------------------------------ geometry */
 
-type Kind = "rectangular" | "slanted" | "cladogram" | "circular" | "unrooted";
+type Kind = "rectangular" | "slanted" | "cladogram" | "circular" | "fan" | "unrooted";
 const KINDS: { id: Kind; label: string; icon: ReactNode }[] = [
   { id: "rectangular", label: "Rectangular", icon: <path d="M3 12h3M6 6v12M6 6h12M6 18h5M11 15v6M11 15h7M11 21h7" transform="translate(0,-1.5)" /> },
   { id: "slanted", label: "Slanted", icon: <path d="M3 12l6-6h9M3 12l6 6M9 18l5-3h4M9 18l5 3h4" transform="translate(0,-1.5) scale(1,.9)" /> },
   { id: "cladogram", label: "Cladogram", icon: <path d="M3 12h3M6 5v14M6 5h13M6 19h4M10 16v6M10 16h9M10 22h9" transform="scale(.8) translate(2,-1)" /> },
   { id: "circular", label: "Circular", icon: <><circle cx="12" cy="12" r="1.5" /><path d="M12 12l5-5M12 12l-5 5M12 12l6 3M12 12l-2-7" /><path d="M18 6a8.5 8.5 0 1 1-12 12" /></> },
+  { id: "fan", label: "Fan", icon: <><path d="M3 19a9 9 0 0 1 18 0" /><path d="M12 19l-6-7M12 19l0-9M12 19l6-7" /></> },
   { id: "unrooted", label: "Unrooted", icon: <path d="M12 12l-4-4-3 1M8 8l-1-4M12 12l5-2 3 2M17 10l1-5M12 12l1 6-3 3M13 18l4 2" /> },
 ];
 
@@ -141,28 +176,38 @@ function equalAngle(t: Topo) {
 type Style = {
   kind: Kind;
   scheme: Scheme;
-  colorBy: string;          // class for tip points ("" = none)
+  colorBy: string;          // class for tip symbols ("" = none)
+  shapeBy: string;          // class for tip symbol shapes ("" = one shape)
+  tipShape: Shape;
   strips: string[];         // classes drawn as bars beside the labels
   legends: string[];        // classes with a legend
+  shadeBy: string;          // class shading the tree background row by row ("" = none)
   branchByClass: boolean;
   labelByClass: boolean;
   boldUploaded: boolean;
+  italic: boolean;
+  font: string;
   showLabels: boolean;
   alignLabels: boolean;
   showSupport: boolean;
   supportMin: number;
   showInternal: boolean;
+  scaleBar: boolean;
+  title: string;
+  legendPos: "right" | "bottom";
   factor: number;           // px per tip (vertical expansion)
   fontSize: number;
   tipSize: number;
   branchWidth: number;
   branchColor: string;
-  openAngle: number;
+  openAngle: number;        // circular
+  fanAngle: number;         // fan
+  stripWidth: number;
 };
 
 const WIDTH = 1200;
-const STRIP = 14, STRIP_GAP = 3, GAP = 10;
-const ENTRY = 17, TITLE = 24, BLOCK_GAP = 14, COL_W = 210;
+const STRIP_GAP = 3, GAP = 10;
+const ENTRY = 17, TITLE = 24, BLOCK_GAP = 14, COL_W = 210, BOTTOM_ROWS = 12;
 
 function tipTitle(t: TreeTip) {
   const parts = [t.label, `assign.final: ${t.assign_final ?? "NA"}`, `sub_lineage: ${t.sub_lineage ?? "NA"}`];
@@ -177,7 +222,7 @@ function tipValue(t: TreeTip, cls: string): string | null {
   return t.meta?.[cls.slice(5)] ?? null;
 }
 
-export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: number }) {
+export function TreeView({ tree, minHeight, units = "substitutions/site" }: { tree: TreeLayout; minHeight: number; units?: string }) {
   const topo = useMemo(() => topology(tree), [tree]);
   // classes: built-in labels plus every metadata column carried by the tips
   const classes = useMemo(() => {
@@ -192,9 +237,11 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
   const extraId = tree.extra_column ? ((tree.meta_columns ?? []).includes(tree.extra_column) ? `meta:${tree.extra_column}` : "extra") : null;
   const defaultStrips = ["sub_lineage", ...(extraId ? [extraId] : [])];
   const initial: Style = {
-    kind: "rectangular", scheme: "prrsloom", colorBy: "assign_final", strips: defaultStrips, legends: ["assign_final", ...defaultStrips],
-    branchByClass: false, labelByClass: false, boldUploaded: false, showLabels: true, alignLabels: false,
-    showSupport: true, supportMin: 50, showInternal: true, factor: 15, fontSize: 11, tipSize: 4, branchWidth: 1, branchColor: "#111111", openAngle: 350,
+    kind: "rectangular", scheme: "prrsloom", colorBy: "assign_final", shapeBy: "", tipShape: "circle",
+    strips: defaultStrips, legends: ["assign_final", ...defaultStrips], shadeBy: "",
+    branchByClass: false, labelByClass: false, boldUploaded: false, italic: false, font: FONTS[0].id,
+    showLabels: true, alignLabels: false, showSupport: true, supportMin: 50, showInternal: true, scaleBar: true, title: "", legendPos: "right",
+    factor: 15, fontSize: 11, tipSize: 4, branchWidth: 1, branchColor: "#111111", openAngle: 350, fanAngle: 180, stripWidth: 14,
   };
   const [st, setSt] = useState<Style>(initial);
   const [custom, setCustom] = useState<Record<string, Record<string, string>>>({});
@@ -205,7 +252,7 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
 
   // palettes per class: category -> colour, plus tip counts for the legend
   const palettes = useMemo(() => {
-    const out: Record<string, { color: Record<string, string>; count: Record<string, number> }> = {};
+    const out: Record<string, { color: Record<string, string>; count: Record<string, number>; cats: string[] }> = {};
     for (const { id } of classes) {
       const count: Record<string, number> = {};
       for (const t of tree.tips) {
@@ -220,31 +267,42 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
       const color: Record<string, string> = {};
       for (const c of cats) color[c] = backend?.[c] ?? (MISSING.has(c) ? (c === "reference" ? "#D9D9D9" : GRAY70) : cols[coloured.indexOf(c)]);
       Object.assign(color, custom[id] ?? {});
-      out[id] = { color, count };
+      out[id] = { color, count, cats };
     }
     return out;
   }, [classes, tree, st.scheme, custom]);
   const colorOf = (cls: string, t: TreeTip) => palettes[cls]?.color[tipValue(t, cls) ?? "NA"] ?? GRAY70;
+  const shapeOf = (t: TreeTip): Shape => {
+    if (!st.shapeBy || !palettes[st.shapeBy]) return st.tipShape;
+    const k = palettes[st.shapeBy].cats.indexOf(tipValue(t, st.shapeBy) ?? "NA");
+    return SHAPES[(Math.max(0, k) + SHAPES.indexOf(st.tipShape)) % SHAPES.length];
+  };
 
   const n = tree.n_tips;
   const fontSize = st.fontSize;
+  const STRIP = st.stripWidth;
   const uploaded = (t: TreeTip) => t.meta?.Source === "Uploaded";
   const labelW = useMemo(() => {
     const m = new Map<string, number>();
-    for (const t of tree.tips) m.set(t.label, st.showLabels ? textWidth(t.label, fontSize, st.boldUploaded && t.meta?.Source === "Uploaded") : 0);
+    for (const t of tree.tips) m.set(t.label, st.showLabels ? textWidth(t.label, fontSize, st.font, st.boldUploaded && t.meta?.Source === "Uploaded", st.italic) : 0);
     return m;
-  }, [tree, fontSize, st.showLabels, st.boldUploaded]);
+  }, [tree, fontSize, st.showLabels, st.boldUploaded, st.font, st.italic]);
 
-  // legend blocks, flowed into as many columns as the figure height needs
-  const legend = st.legends.filter((id) => palettes[id]).map((id) => ({
-    id, title: classLabel(id), shape: id === st.colorBy ? "circle" : "square",
-    entries: Object.keys(palettes[id].color).filter((c) => palettes[id].count[c]),
+  // legend blocks (colour classes, plus the shape class)
+  type Block = { id: string; title: string; kind: "color" | "shape"; shape: Shape; entries: string[] };
+  const legend: Block[] = st.legends.filter((id) => palettes[id]).map((id) => ({
+    id, title: classLabel(id), kind: "color", shape: id === st.colorBy ? st.tipShape : "square",
+    entries: palettes[id].cats,
   }));
-  const radial = st.kind === "circular" || st.kind === "unrooted";
+  if (st.shapeBy && palettes[st.shapeBy]) legend.push({ id: `shape:${st.shapeBy}`, title: `${classLabel(st.shapeBy)} (shape)`, kind: "shape", shape: "circle", entries: palettes[st.shapeBy].cats });
+  const radial = st.kind === "circular" || st.kind === "fan" || st.kind === "unrooted";
+  const titleH = st.title.trim() ? 34 : 0;
+  const scaleH = st.scaleBar && st.kind !== "cladogram" ? 26 : 0;
+  // right legend: columns flowing down; bottom legend: blocks of up to BOTTOM_ROWS entries side by side
   const approxH = radial ? WIDTH - 260 : Math.max(minHeight, n * st.factor);
   const legendTotal = legend.reduce((a, b) => a + TITLE + b.entries.length * ENTRY + BLOCK_GAP, 0);
-  const legendCols = legend.length ? Math.max(1, Math.ceil(legendTotal / Math.max(300, approxH - 60))) : 0;
-  const legendW = legendCols * COL_W + (legendCols ? 16 : 0);
+  const rightCols = st.legendPos === "right" && legend.length ? Math.max(1, Math.ceil(legendTotal / Math.max(300, approxH - 60))) : 0;
+  const legendW = rightCols * COL_W + (rightCols ? 16 : 0);
 
   const g = useMemo(() => {
     const OFF = st.tipSize + 4;
@@ -256,13 +314,16 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
     const tipX = (t: TreeTip) => (xs && tipIdx.has(t.label) ? xs[tipIdx.get(t.label)!] : t.x);
     const plotW = WIDTH - legendW - 24;
     const maxLabel = Math.max(0, ...tree.tips.map((t) => labelW.get(t.label) ?? 0));
-    if (st.kind === "circular" || st.kind === "unrooted") {
+    const top = 30 + titleH;
+    if (st.kind === "circular" || st.kind === "fan" || st.kind === "unrooted") {
       const size = Math.max(640, plotW, Math.min(2400, 2 * (OFF + maxLabel + stripLead + stripsW) + n * 4));
-      return { radial: true as const, height: size + 20, width: size + legendW + 30, size, OFF, stripsW, stripLead, xs, maxLabel };
+      const half = st.kind === "fan" && st.fanAngle <= 180;
+      const plotH = half ? size / 2 + 40 : size + 20;
+      return { radial: true as const, top, plotH, height: top + plotH + scaleH, width: Math.max(WIDTH, size + legendW + 30), size, OFF, stripsW, stripLead, xs, maxLabel, half };
     }
-    const height = Math.max(minHeight, n * st.factor);
-    const top = 30, bottom = 46;
-    const rowH = (height - top - bottom) / Math.max(1, n - 1);
+    const plotH = Math.max(minHeight, n * st.factor);
+    const bottom = 30;
+    const rowH = (plotH - 30 - bottom) / Math.max(1, n - 1);
     const sy = (y: number) => top + (n - y) * rowH;
     // Automatic overlap correction: solve the x scale so that, for every tip,
     // left + s*x + offset + label width + gap + bars <= right edge of the plot.
@@ -281,12 +342,25 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
     const labelX = (t: TreeTip) => (st.alignLabels ? sx(xMax) : sx(tipX(t))) + OFF;
     const labelEnd = Math.max(sx(xMax), ...tree.tips.map((t) => labelX(t) + (labelW.get(t.label) ?? 0)));
     const stripStart = labelEnd + stripLead;
-    const width = Math.max(WIDTH, Math.ceil(stripStart + stripsW + 16 + legendW + 12));
-    return { radial: false as const, height, width, rowH, sx, sy, labelX, stripStart, OFF, xs, tipIdx, tipX, xMax };
-  }, [st.kind, st.tipSize, st.strips, st.alignLabels, st.factor, topo, tree, n, minHeight, labelW, legendW]);
+    // room on the right for the rotated bar headers
+    const headerRoom = st.strips.length ? Math.max(...st.strips.map((c) => textWidth(classLabel(c), 9, st.font, true))) * 0.77 : 0;
+    const width = Math.max(WIDTH, Math.ceil(stripStart + stripsW + Math.max(16, headerRoom + 8) + legendW + 12));
+    return { radial: false as const, top, plotH, height: top + plotH - 30 + scaleH, width, rowH, sx, sy, s, labelX, stripStart, OFF, xs, tipX, xMax };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st.kind, st.tipSize, st.strips, st.alignLabels, st.factor, st.fanAngle, st.font, STRIP, topo, tree, n, minHeight, labelW, legendW, titleH, scaleH, classes]);
 
+  // bottom legend size
+  const bottomBlocks = st.legendPos === "bottom" ? legend.flatMap((b) => {
+    const parts: Block[] = [];
+    for (let k = 0; k < b.entries.length; k += BOTTOM_ROWS) parts.push({ ...b, title: k ? "" : b.title, entries: b.entries.slice(k, k + BOTTOM_ROWS) });
+    return parts;
+  }) : [];
+  const perRow = Math.max(1, Math.floor((g.width - 40) / COL_W));
+  const bottomRows = Math.ceil(bottomBlocks.length / perRow);
+  const bottomRowH = TITLE + BOTTOM_ROWS * ENTRY + BLOCK_GAP;
+  const legendH = bottomBlocks.length ? bottomRows * Math.min(bottomRowH, TITLE + Math.max(...bottomBlocks.map((b) => b.entries.length)) * ENTRY + BLOCK_GAP) + 10 : 0;
   const width = g.width;
-  const height = g.height;
+  const height = g.height + legendH + 22;
   const legendX = width - legendW + 8;
 
   // a branch takes the class colour when every tip below it shares that class
@@ -313,24 +387,48 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
   const tipFill = (t: TreeTip) => (st.colorBy ? colorOf(st.colorBy, t) : st.branchColor);
   const labelFill = (t: TreeTip) => (st.labelByClass && st.colorBy ? colorOf(st.colorBy, t) : "#111");
   const weight = (t: TreeTip) => (st.boldUploaded && uploaded(t) ? 700 : 400);
+  const fstyle = st.italic ? "italic" : "normal";
   const r = st.tipSize;
   const small = Math.max(7, fontSize - 3);
   const els: ReactNode[] = [];
+  const back: ReactNode[] = [];
+  const tipGlyph = (key: string, t: TreeTip, x: number, y: number) => (r > 0 ? glyph(key, shapeOf(t), x, y, r, tipFill(t), tipTitle(t)) : null);
+  const scaleBar = (pxPerUnit: number, span: number, x0: number, y0: number) => {
+    const len = niceLength(span);
+    if (!len || !st.scaleBar) return;
+    const w = len * pxPerUnit;
+    els.push(<g key="scale">
+      <line x1={x0} y1={y0} x2={x0 + w} y2={y0} stroke="#111" strokeWidth={1.5} />
+      <line x1={x0} y1={y0 - 4} x2={x0} y2={y0 + 4} stroke="#111" strokeWidth={1.2} />
+      <line x1={x0 + w} y1={y0 - 4} x2={x0 + w} y2={y0 + 4} stroke="#111" strokeWidth={1.2} />
+      <text x={x0 + w + 8} y={y0} dominantBaseline="middle" fontSize={11} fill="#111">{`${+len.toPrecision(3)} ${units}`}</text>
+    </g>);
+  };
 
   if (g.radial && topo) {
     const size = g.size;
-    const cx = size / 2 + 12, cy = size / 2 + 10;
+    const cx = size / 2 + 12;
     const R = size / 2 - 16;
+    const cy = g.top + (g.half ? R + 10 : size / 2 - 10);
     const outer = g.OFF + g.maxLabel + g.stripLead + g.stripsW;
-    if (st.kind === "circular") {
+    if (st.kind === "circular" || st.kind === "fan") {
       const xs = g.xs!;
       const xMax = Math.max(1e-9, ...xs);
       const inner = 8;
       const sr = Math.max(10, R - outer - inner) / xMax;
       const rad = (x: number) => inner + sr * x;
-      const open = (st.openAngle * Math.PI) / 180;
-      const th = (y: number) => -Math.PI / 2 + ((y - 1) / Math.max(1, n - (st.openAngle >= 360 ? 0 : 1))) * open;
+      const deg0 = st.kind === "fan" ? st.fanAngle : st.openAngle;
+      const open = (deg0 * Math.PI) / 180;
+      const start = st.kind === "fan" ? -Math.PI / 2 - open / 2 : -Math.PI / 2;
+      const th = (y: number) => start + ((y - 1) / Math.max(1, n - (deg0 >= 360 ? 0 : 1))) * open;
       const P = (rr: number, a: number): [number, number] => [cx + rr * Math.cos(a), cy + rr * Math.sin(a)];
+      const dA = open / Math.max(1, n);
+      if (st.shadeBy && palettes[st.shadeBy]) topo.tipOf.forEach((t, i) => {
+        if (!t) return;
+        const a = th(topo.y[i]), b0 = a - dA / 2, b1 = a + dA / 2, r1 = inner + sr * xMax + g.OFF + g.maxLabel;
+        const [ax, ay] = P(inner, b0), [bx, by] = P(r1, b0), [qx, qy] = P(r1, b1), [ex, ey] = P(inner, b1);
+        back.push(<path key={`sh${i}`} d={`M${ax},${ay}L${bx},${by}A${r1},${r1} 0 0 1 ${qx},${qy}L${ex},${ey}Z`} fill={colorOf(st.shadeBy, t)} fillOpacity={0.16} stroke={colorOf(st.shadeBy, t)} strokeOpacity={0.16} strokeWidth={0.8} />);
+      });
       for (let i = 1; i < xs.length; i++) {
         const a = th(topo.y[i]);
         const [x1, y1] = P(rad(xs[topo.parent[i]]), a), [x2, y2] = P(rad(xs[i]), a);
@@ -345,12 +443,11 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
         els.push(<path key={`a${i}`} d={`M${x1},${y1}A${rr},${rr} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${x2},${y2}`} fill="none" stroke={bColor(i)} strokeWidth={st.branchWidth} />);
       });
       const rStrip = inner + sr * xMax + g.OFF + g.maxLabel + g.stripLead;
-      const dA = open / Math.max(1, n);
       topo.tipOf.forEach((t, i) => {
         if (!t) return;
         const a = th(topo.y[i]);
         const [px, py] = P(rad(xs[i]), a);
-        els.push(<circle key={`p${i}`} cx={px} cy={py} r={r} fill={tipFill(t)}><title>{tipTitle(t)}</title></circle>);
+        els.push(tipGlyph(`p${i}`, t, px, py));
         const deg = (a * 180) / Math.PI;
         const flip = Math.cos(a) < -1e-9;
         const lr = (st.alignLabels ? inner + sr * xMax : rad(xs[i])) + g.OFF;
@@ -360,7 +457,7 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
             const [ex, ey] = P(rad(xs[i]) + r, a);
             els.push(<line key={`d${i}`} x1={ex} y1={ey} x2={lx} y2={ly} stroke="#bbb" strokeWidth={0.6} strokeDasharray="2 2" />);
           }
-          els.push(<text key={`l${i}`} x={lx} y={ly} fontSize={fontSize} dominantBaseline="middle" textAnchor={flip ? "end" : "start"}
+          els.push(<text key={`l${i}`} x={lx} y={ly} fontSize={fontSize} dominantBaseline="middle" textAnchor={flip ? "end" : "start"} fontStyle={fstyle}
             transform={`rotate(${flip ? deg + 180 : deg} ${lx} ${ly})`} fill={labelFill(t)} fontWeight={weight(t)}>{t.label}</text>);
         }
         st.strips.forEach((cls, k) => {
@@ -378,6 +475,7 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
         const [x, y] = P(rad(xs[i]), th(topo.y[i]));
         els.push(<text key={`n${i}`} x={x - 2} y={y - 2} fontSize={small} textAnchor="end" fill="#666">{txt}</text>);
       });
+      scaleBar(sr, xMax, 24, g.top + g.plotH + 4);
     } else {
       const { px, py, ang } = equalAngle(topo);
       const minX = Math.min(...px), maxX = Math.max(...px), minY = Math.min(...py), maxY = Math.max(...py);
@@ -392,9 +490,10 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
         if (!t) return;
         const a = ang[i], deg = (a * 180) / Math.PI, flip = Math.cos(a) < -1e-9;
         const dx = Math.cos(a), dy = Math.sin(a);
-        els.push(<circle key={`p${i}`} cx={X(i)} cy={Y(i)} r={r} fill={tipFill(t)}><title>{tipTitle(t)}</title></circle>);
+        if (st.shadeBy && palettes[st.shadeBy]) back.push(<circle key={`sh${i}`} cx={X(i)} cy={Y(i)} r={Math.max(6, r * 2.4)} fill={colorOf(st.shadeBy, t)} fillOpacity={0.25} />);
+        els.push(tipGlyph(`p${i}`, t, X(i), Y(i)));
         const lx = X(i) + dx * g.OFF, ly = Y(i) + dy * g.OFF;
-        if (st.showLabels) els.push(<text key={`l${i}`} x={lx} y={ly} fontSize={fontSize} dominantBaseline="middle" textAnchor={flip ? "end" : "start"}
+        if (st.showLabels) els.push(<text key={`l${i}`} x={lx} y={ly} fontSize={fontSize} dominantBaseline="middle" textAnchor={flip ? "end" : "start"} fontStyle={fstyle}
           transform={`rotate(${flip ? deg + 180 : deg} ${lx} ${ly})`} fill={labelFill(t)} fontWeight={weight(t)}>{t.label}</text>);
         const w = labelW.get(t.label) ?? 0;
         st.strips.forEach((cls, k) => {
@@ -408,9 +507,23 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
         const txt = topo.tipOf[i] ? null : internalText(lab);
         if (txt) els.push(<text key={`n${i}`} x={X(i) + 3} y={Y(i) - 3} fontSize={small} fill="#666">{txt}</text>);
       });
+      scaleBar(s, maxX - minX, 24, g.top + g.plotH + 4);
     }
   } else if (!g.radial) {
     const { sx, sy, labelX, stripStart, xs, tipX } = g;
+    if (st.shadeBy && palettes[st.shadeBy]) {
+      // contiguous runs of tips sharing a class value become one shaded band behind the tree
+      const ordered = [...tree.tips].sort((a, b) => b.y - a.y);
+      let k = 0;
+      while (k < ordered.length) {
+        const v = tipValue(ordered[k], st.shadeBy) ?? "NA";
+        let e = k;
+        while (e + 1 < ordered.length && (tipValue(ordered[e + 1], st.shadeBy) ?? "NA") === v) e++;
+        const y0 = sy(ordered[k].y) - g.rowH / 2, y1 = sy(ordered[e].y) + g.rowH / 2;
+        if (!MISSING.has(v)) back.push(<rect key={`sh${k}`} x={4} y={y0} width={stripStart - 8} height={y1 - y0} fill={colorOf(st.shadeBy, ordered[k])} fillOpacity={0.14} />);
+        k = e + 1;
+      }
+    }
     if (topo && xs) {
       for (let i = 1; i < xs.length; i++) {
         const p = topo.parent[i];
@@ -432,8 +545,8 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
       const x = tipX(t);
       const y = sy(t.y);
       if (st.alignLabels && st.showLabels) els.push(<line key={`d${t.label}`} x1={sx(x) + r + 1} y1={y} x2={labelX(t) - 2} y2={y} stroke="#bbb" strokeWidth={0.6} strokeDasharray="2 2" />);
-      if (r > 0) els.push(<circle key={`p${t.label}`} cx={sx(x)} cy={y} r={r} fill={tipFill(t)}><title>{tipTitle(t)}</title></circle>);
-      if (st.showLabels) els.push(<text key={`l${t.label}`} x={labelX(t)} y={y} dominantBaseline="middle" fontSize={fontSize} fill={labelFill(t)} fontWeight={weight(t)}>{t.label}</text>);
+      els.push(tipGlyph(`p${t.label}`, t, sx(x), y));
+      if (st.showLabels) els.push(<text key={`l${t.label}`} x={labelX(t)} y={y} dominantBaseline="middle" fontSize={fontSize} fill={labelFill(t)} fontWeight={weight(t)} fontStyle={fstyle}>{t.label}</text>);
       st.strips.forEach((cls, k) => els.push(
         <rect key={`s${cls}${t.label}`} x={stripStart + k * (STRIP + STRIP_GAP)} y={y - g.rowH / 2} width={STRIP} height={Math.max(1, g.rowH)} fill={colorOf(cls, t)}>
           <title>{`${t.label} · ${classLabel(cls)}: ${tipValue(t, cls) ?? "NA"}`}</title>
@@ -452,31 +565,42 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
     // headers above the annotation bars
     st.strips.forEach((cls, k) => {
       const x = stripStart + k * (STRIP + STRIP_GAP) + STRIP / 2;
-      els.push(<text key={`h${cls}`} x={x} y={22} fontSize={9} fontWeight={700} transform={`rotate(-40 ${x} 22)`} fill="#333">{classLabel(cls)}</text>);
+      els.push(<text key={`h${cls}`} x={x} y={g.top - 8} fontSize={9} fontWeight={700} transform={`rotate(-40 ${x} ${g.top - 8})`} fill="#333">{classLabel(cls)}</text>);
     });
+    if (st.kind !== "cladogram") scaleBar(g.s, g.xMax, 18, g.top + g.plotH - 40);
   }
 
-  // legend columns on the right
+  // legends
   const legendEls: ReactNode[] = [];
-  {
-    const colH = Math.max(300, height - 60);
-    let col = 0, y = 26;
+  const drawBlock = (b: Block, x0: number, y: number, key: string) => {
+    if (b.title) legendEls.push(<text key={`lt${key}`} x={x0} y={y} fontSize={12} fontWeight={700} fill="#111">{b.title}</text>);
+    b.entries.forEach((name, k) => {
+      const yy = y + 18 + k * ENTRY;
+      const cls = b.kind === "shape" ? b.id.slice(6) : b.id;
+      const count = palettes[cls]?.count[name] ?? 0;
+      const sym = b.kind === "shape"
+        ? glyph(`g${key}${name}`, SHAPES[(palettes[cls].cats.indexOf(name) + SHAPES.indexOf(st.tipShape)) % SHAPES.length], x0 + 6, yy, 5, "#777")
+        : b.shape === "square" ? <rect key={`g${key}${name}`} x={x0} y={yy - 6} width={12} height={12} fill={palettes[cls].color[name]} />
+          : glyph(`g${key}${name}`, b.shape, x0 + 6, yy, 5, palettes[cls].color[name]);
+      legendEls.push(<g key={`le${key}${name}`}>{sym}
+        <text x={x0 + 18} y={yy} dominantBaseline="middle" fontSize={11} fill="#222">{name}<tspan fill="#888"> ({count})</tspan></text></g>);
+    });
+  };
+  if (st.legendPos === "right") {
+    const colH = Math.max(300, g.height - 60);
+    let col = 0, y = 26 + titleH;
     for (const b of legend) {
       const h = TITLE + b.entries.length * ENTRY;
-      if (y > 26 && y + h > colH) { col++; y = 26; }
-      const x0 = legendX + col * COL_W;
-      legendEls.push(<text key={`lt${b.id}`} x={x0} y={y} fontSize={12} fontWeight={700} fill="#111">{b.title}</text>);
-      b.entries.forEach((name, k) => {
-        const yy = y + 18 + k * ENTRY;
-        const c = palettes[b.id].color[name];
-        legendEls.push(
-          <g key={`le${b.id}${name}`}>
-            {b.shape === "circle" ? <circle cx={x0 + 6} cy={yy} r={5} fill={c} /> : <rect x={x0} y={yy - 6} width={12} height={12} fill={c} />}
-            <text x={x0 + 18} y={yy} dominantBaseline="middle" fontSize={11} fill="#222">{name}<tspan fill="#888"> ({palettes[b.id].count[name]})</tspan></text>
-          </g>);
-      });
+      if (y > 26 + titleH && y + h > colH) { col++; y = 26 + titleH; }
+      drawBlock(b, legendX + col * COL_W, y, b.id);
       y += h + BLOCK_GAP;
     }
+  } else {
+    bottomBlocks.forEach((b, k) => {
+      const row = Math.floor(k / perRow), col = k % perRow;
+      const rowH = legendH / Math.max(1, bottomRows);
+      drawBlock(b, 24 + col * COL_W, g.height + 14 + row * rowH, `${b.id}${k}`);
+    });
   }
 
   const fileBase = `PRRSLoom_tree_${st.kind}_${today()}`;
@@ -498,6 +622,7 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
   const kinds = topo ? KINDS : KINDS.filter((k) => k.id === "rectangular");
   const editable = st.legends.filter((id) => palettes[id]);
   const selectCls = "mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/50";
+  const classOptions = (none: string) => [<option key="" value="">{none}</option>, ...classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)];
 
   return (
     <div className="space-y-4">
@@ -520,28 +645,28 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
             <button type="button" onClick={exportPng} className="rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-3 py-1.5 text-xs font-black text-slate-950 hover:brightness-110">Download PNG (high-res)</button>
           </div>
         </div>
+        {!topo && <p className="mt-2 text-xs text-slate-400">This result was computed before tree topology was stored; re-run the analysis to use the other tree styles.</p>}
 
         {showPanel && (
-          <div className="mt-4 grid gap-5 lg:grid-cols-3">
+          <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-3">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Colours</p>
               <label className="block text-xs font-bold text-slate-200">Colour tips by
-                <select value={st.colorBy} onChange={(e) => set("colorBy", e.target.value)} className={selectCls}>
-                  <option value="">No class (single colour)</option>
-                  {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                </select>
+                <select value={st.colorBy} onChange={(e) => set("colorBy", e.target.value)} className={selectCls}>{classOptions("No class (single colour)")}</select>
               </label>
               <label className="block text-xs font-bold text-slate-200">Colour scheme
                 <select value={st.scheme} onChange={(e) => { set("scheme", e.target.value as Scheme); setCustom({}); }} className={selectCls}>
                   {SCHEMES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
               </label>
+              <label className="block text-xs font-bold text-slate-200">Shade background by
+                <select value={st.shadeBy} onChange={(e) => set("shadeBy", e.target.value)} className={selectCls}>{classOptions("No shading")}</select>
+              </label>
               <label className="flex items-center justify-between text-xs font-bold text-slate-200">Branch colour
                 <input type="color" value={st.branchColor} onChange={(e) => set("branchColor", e.target.value)} className="h-7 w-12 cursor-pointer rounded border border-white/10 bg-transparent" />
               </label>
               <Toggle label="Colour branches by class" checked={st.branchByClass} onChange={(v) => set("branchByClass", v)} />
               <Toggle label="Colour tip labels by class" checked={st.labelByClass} onChange={(v) => set("labelByClass", v)} />
-              {(tree.meta_columns ?? []).includes("Source") && <Toggle label="Bold uploaded sequences" checked={st.boldUploaded} onChange={(v) => set("boldUploaded", v)} />}
             </div>
             <div className="space-y-3">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Metadata bars &amp; legends</p>
@@ -551,7 +676,7 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
                   <tbody>
                     {classes.map((c) => (
                       <tr key={c.id} className="border-t border-white/5 text-slate-200">
-                        <td className="px-2 py-1.5 font-semibold">{c.label}<span className="ml-1 text-slate-500">({Object.keys(palettes[c.id]?.count ?? {}).length})</span></td>
+                        <td className="px-2 py-1.5 font-semibold">{c.label}<span className="ml-1 text-slate-500">({palettes[c.id]?.cats.length ?? 0})</span></td>
                         <td className="text-center"><input type="checkbox" aria-label={`Bar for ${c.label}`} checked={st.strips.includes(c.id)} onChange={() => toggle("strips", c.id)} className="h-4 w-4 accent-cyan-400" /></td>
                         <td className="text-center"><input type="checkbox" aria-label={`Legend for ${c.label}`} checked={st.legends.includes(c.id)} onChange={() => toggle("legends", c.id)} className="h-4 w-4 accent-cyan-400" /></td>
                       </tr>
@@ -559,18 +684,51 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
                   </tbody>
                 </table>
               </div>
-              <Toggle label="Show tip labels" checked={st.showLabels} onChange={(v) => set("showLabels", v)} />
-              <Toggle label="Align tip labels (dotted leaders)" checked={st.alignLabels} onChange={(v) => set("alignLabels", v)} />
-              <Toggle label="Show bootstrap / support values" checked={st.showSupport} onChange={(v) => set("showSupport", v)} />
-              {st.showSupport && <Slider label="Show support from" value={st.supportMin} min={0} max={100} step={5} onChange={(v) => set("supportMin", v)} format={(v) => `≥ ${v}%`} />}
+              <label className="block text-xs font-bold text-slate-200">Legend position
+                <select value={st.legendPos} onChange={(e) => set("legendPos", e.target.value as Style["legendPos"])} className={selectCls}>
+                  <option value="right">Right of the tree</option>
+                  <option value="bottom">Below the tree</option>
+                </select>
+              </label>
+              <Slider label="Bar width" value={st.stripWidth} min={6} max={40} step={1} onChange={(v) => set("stripWidth", v)} format={(v) => `${v} px`} />
             </div>
             <div className="space-y-3">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Size &amp; shape</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Tips, labels &amp; text</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-xs font-bold text-slate-200">Tip symbol
+                  <select value={st.tipShape} onChange={(e) => set("tipShape", e.target.value as Shape)} className={selectCls}>
+                    {SHAPES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs font-bold text-slate-200">Shape by class
+                  <select value={st.shapeBy} onChange={(e) => set("shapeBy", e.target.value)} className={selectCls}>{classOptions("One shape")}</select>
+                </label>
+              </div>
+              <label className="block text-xs font-bold text-slate-200">Font
+                <select value={st.font} onChange={(e) => set("font", e.target.value)} className={selectCls}>
+                  {FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-bold text-slate-200">Figure title
+                <input value={st.title} onChange={(e) => set("title", e.target.value)} placeholder="Optional title" className={selectCls} />
+              </label>
+              <Toggle label="Show tip labels" checked={st.showLabels} onChange={(v) => set("showLabels", v)} />
+              <Toggle label="Italic labels" checked={st.italic} onChange={(v) => set("italic", v)} />
+              <Toggle label="Align tip labels (dotted leaders)" checked={st.alignLabels} onChange={(v) => set("alignLabels", v)} />
+              {(tree.meta_columns ?? []).includes("Source") && <Toggle label="Bold uploaded sequences" checked={st.boldUploaded} onChange={(v) => set("boldUploaded", v)} />}
+            </div>
+            <div className="space-y-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Size, support &amp; scale</p>
               {!radial && <Slider label="Vertical expansion" value={st.factor} min={8} max={150} step={1} onChange={(v) => set("factor", v)} format={(v) => `${v} px/tip`} />}
               {st.kind === "circular" && <Slider label="Circle opening" value={st.openAngle} min={180} max={360} step={5} onChange={(v) => set("openAngle", v)} format={(v) => `${v}°`} />}
+              {st.kind === "fan" && <Slider label="Fan angle" value={st.fanAngle} min={60} max={300} step={5} onChange={(v) => set("fanAngle", v)} format={(v) => `${v}°`} />}
               <Slider label="Label size" value={st.fontSize} min={6} max={20} step={0.5} onChange={(v) => set("fontSize", v)} />
-              <Slider label="Tip point size" value={st.tipSize} min={0} max={10} step={0.5} onChange={(v) => set("tipSize", v)} />
+              <Slider label="Tip symbol size" value={st.tipSize} min={0} max={10} step={0.5} onChange={(v) => set("tipSize", v)} />
               <Slider label="Branch width" value={st.branchWidth} min={0.3} max={4} step={0.1} onChange={(v) => set("branchWidth", v)} />
+              <Toggle label="Show bootstrap / support values" checked={st.showSupport} onChange={(v) => set("showSupport", v)} />
+              {st.showSupport && <Slider label="Show support from" value={st.supportMin} min={0} max={100} step={5} onChange={(v) => set("supportMin", v)} format={(v) => `≥ ${v}%`} />}
+              <Toggle label="Show other internal labels" checked={st.showInternal} onChange={(v) => set("showInternal", v)} />
+              <Toggle label="Scale bar" checked={st.scaleBar} onChange={(v) => set("scaleBar", v)} />
               <button type="button" onClick={() => { setSt(initial); setCustom({}); }} className="w-full rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 hover:border-cyan-300/50">Reset style</button>
             </div>
           </div>
@@ -584,7 +742,7 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
                 <div key={id}>
                   <p className="mb-1 text-[11px] font-bold text-slate-400">{classLabel(id)}</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {Object.keys(palettes[id].color).filter((c) => palettes[id].count[c]).map((cat) => (
+                    {palettes[id].cats.map((cat) => (
                       <label key={cat} className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] py-0.5 pl-0.5 pr-2 text-[11px] text-slate-200">
                         <input type="color" value={palettes[id].color[cat]} aria-label={`${classLabel(id)} ${cat}`}
                           onChange={(e) => setCustom((c) => ({ ...c, [id]: { ...(c[id] ?? {}), [cat]: e.target.value } }))}
@@ -602,8 +760,10 @@ export function TreeView({ tree, minHeight }: { tree: TreeLayout; minHeight: num
 
       <div className="overflow-auto rounded-2xl border border-white/10 bg-white" style={{ maxHeight: "85vh" }}>
         <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} width="100%" style={{ minWidth: Math.min(width, 900) }} role="img"
-          aria-label={`Annotated phylogenetic tree with ${n} tips (${st.kind} layout)`} className="block" fontFamily={FONT}>
+          aria-label={`Annotated phylogenetic tree with ${n} tips (${st.kind} layout)`} className="block" fontFamily={st.font}>
           <rect width={width} height={height} fill="#ffffff" />
+          {st.title.trim() && <text x={20} y={30} fontSize={18} fontWeight={700} fill="#111">{st.title}</text>}
+          {back}
           {els}
           {legendEls}
           <text x={width - 12} y={height - 8} textAnchor="end" fontSize={12} fontStyle="italic" fill="#595959">{tree.caption}</text>

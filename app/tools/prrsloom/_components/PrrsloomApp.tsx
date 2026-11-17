@@ -415,7 +415,7 @@ function Results({ result }: { result: AnyResult }) {
     return (
       <div className="space-y-4">
         <p className="text-sm text-slate-300">{result.n_matched} of {result.n_tips} tips matched a SequenceName in the classification CSV.</p>
-        <TreeView tree={result.tree} minHeight={900} />
+        <TreeView tree={result.tree} minHeight={900} units="branch-length units" />
       </div>
     );
   }
@@ -427,7 +427,7 @@ function Results({ result }: { result: AnyResult }) {
           {[
             ["Method", result.options.method_label],
             ["Distance", `${result.options.model_label}, ${result.options.gap_handling} deletion`],
-            ["Alignment", `${result.options.alignment === "mafft" ? "MAFFT" : "ClustalW"} · ${result.options.alignment_sites.toLocaleString()} sites`],
+            ["Alignment", `${result.options.alignment === "mafft" ? "MAFFT" : "ClustalW"} · ${result.options.alignment_sites.toLocaleString()} sites${result.options.alignment_reused ? " · reused stored alignment of identical input" : ""}`],
             ["Root", result.options.tree_method === "upgma" ? "UPGMA (rooted)" : result.options.rooting === "outgroup" ? `outgroup ${result.options.outgroup}` : result.options.rooting],
             ["Bootstrap", result.options.bootstrap ? `${result.options.bootstrap} replicates` : "off"],
           ].map(([k, v]) => (
@@ -443,7 +443,8 @@ function Results({ result }: { result: AnyResult }) {
           </button>
         ))}
       </div>
-      {tab === "tree" ? <TreeView tree={result.tree} minHeight={700} /> : (
+      {tab === "tree" ? <TreeView tree={result.tree} minHeight={700}
+        units={result.options?.distance_model === "N" ? "nucleotide differences" : result.options?.distance_model === "raw" ? "differences/site" : "substitutions/site"} /> : (
         <DataTable caption="Classification table" rows={result.classification} pageSize={10}
           columns={["SequenceName", "assign.final", "assign.top", "prob.top", "assign.2", "prob.2", "num.gaps.amb"]} />
       )}

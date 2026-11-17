@@ -140,11 +140,13 @@ NJ_DEFAULTS = {
     "rooting": "midpoint",             # midpoint (R app) | outgroup | none
     "outgroup": "",
     "bootstrap": 0,                    # replicates, 0 = off
+    "gamma": 0,                        # gamma shape alpha for rate variation among sites, 0 = equal rates
+    "fresh_alignment": False,          # True: never reuse a stored alignment of identical input
 }
 MAX_BOOTSTRAP = 1000
 MAX_ACCESSIONS = 200
 MODEL_LABEL = {"K80": "K80 (Kimura 2-parameter)", "JC69": "JC69 (Jukes-Cantor)", "TN93": "TN93 (Tamura-Nei)",
-               "raw": "uncorrected p", "N": "nucleotide-difference (count)"}
+               "raw": "uncorrected p", "N": "nucleotide-difference (count)", "T92": "T92 (Tamura 1992)"}
 METHOD_LABEL = {"nj": "Neighbor-Joining", "bionj": "BIONJ", "upgma": "UPGMA"}
 NJ_CHOICES = {"reference_mode": ("none", "auto", "accession", "manual"), "reference_selection": ("nearest", "recent"),
               "alignment": ("clustalw", "mafft"), "tree_method": treebuild.METHODS, "distance_model": treebuild.MODELS,
@@ -167,6 +169,15 @@ def nj_options(params: dict) -> dict:
             raise InputError(f"{k.replace('_', ' ').capitalize()} must be a whole number.") from None
         if not 0 <= o[k] <= hi:
             raise InputError(f"{k.replace('_', ' ').capitalize()} must be between 0 and {hi}.")
+    try:
+        o["gamma"] = float(o["gamma"] or 0)
+    except (TypeError, ValueError):
+        raise InputError("Gamma shape (alpha) must be a number; 0 means equal rates among sites.") from None
+    if o["gamma"] and not 0.05 <= o["gamma"] <= 100:
+        raise InputError("Gamma shape (alpha) must be between 0.05 and 100 (0 = equal rates among sites).")
+    if o["gamma"] and o["distance_model"] in ("raw", "N"):
+        raise InputError("Gamma rate variation applies to the JC69, K80, T92 and TN93 models, not to p or N distances.")
+    o["fresh_alignment"] = o["fresh_alignment"] in (True, 1, "1", "true", "True")
     o["outgroup"] = clean_sequence_label(o["outgroup"]) or ""
     if o["rooting"] == "outgroup" and o["tree_method"] != "upgma" and not o["outgroup"]:
         raise InputError("Enter the sequence name to use as the outgroup, or choose midpoint rooting.")
@@ -365,17 +376,27 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
     progress(0.01, "Options: " + "; ".join([
         f"references {o['reference_mode']}" + (f" ({o['reference_count']} per variant, {o['reference_selection']})"
                                                 if o["reference_mode"] == "auto" and o["reference_count"] else ""),
-        f"alignment {o['alignment']}", METHOD_LABEL[o["tree_method"]], f"distance {o['distance_model']}",
+        f"alignment {o['alignment']}" + (" (fresh, no stored result)" if o["fresh_alignment"] else ""),
+        METHOD_LABEL[o["tree_method"]], f"distance {o['distance_model']}" + (f"+G(alpha={o['gamma']:g})" if o["gamma"] else ""),
         f"{o['gap_handling']} deletion", f"rooting {rooted}", f"bootstrap {o['bootstrap'] or 'off'}"]))
     n_uploaded = len(records)
     records, screening = screen_orf5(records, _stage(progress, 0.01, 0.06))
     warnings: list[str] = []
     if screening["applied"]:
         warnings.append(screening["summary"])
+    reused: list[str] = []
+    use_cache = not o["fresh_alignment"]
     if o["alignment"] == "clustalw":
-        aligner, align = "ClustalW", msa.clustalw
+        aligner, run_aligner = "ClustalW", msa.clustalw
     else:
-        aligner, align = "MAFFT", (lambda recs, progress=None: msa.mafft(recs))
+        aligner, run_aligner = "MAFFT", msa.mafft
+
+    def align(recs, progress):
+        def watch(frac, msg):
+            if "reused" in msg:
+                reused.append(msg)
+            progress(frac, msg)
+        return run_aligner(recs, progress=watch, use_cache=use_cache)
 
     progress(0.06, f"Aligning {len(records)} user sequences ({aligner})")
     aligned_user = align(records, progress=_stage(progress, 0.06, 0.24))
@@ -426,7 +447,7 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
     if len(names) < 3:
         raise InputError("cannot build a tree with less than 3 observations (user and reference sequences combined). "
                          "Upload more sequences or include reference sequences.")
-    progress(0.82, f"Computing {MODEL_LABEL[o['distance_model']]} distances ({o['gap_handling']} deletion) "
+    progress(0.82, f"Computing {MODEL_LABEL[o['distance_model']]}{' + gamma' if o['gamma'] else ''} distances ({o['gap_handling']} deletion) "
                    f"for {len(names)} sequences")
     dist, names, removed, sites, kept_seqs = _distances_defined(names, [s for _, s in aligned_all], o, progress)
     if removed:
@@ -452,7 +473,7 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
         support = treebuild.bootstrap_support(tree, phylo.dnabin_matrix(kept_seqs), names, o["bootstrap"],
                                               o["distance_model"], o["gap_handling"], o["tree_method"],
                                               seed=settings.tie_seed, threads=settings.job_threads,
-                                              progress=boot_progress)
+                                              gamma=o["gamma"] or None, progress=boot_progress)
         treebuild.label_support(tree, support)
         vals = list(support.values())
         if vals:
@@ -533,7 +554,8 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
         "warnings": warnings + _classifier_warnings(pred),
         "input_screening": {k: screening[k] for k in ("applied", "kept", "trimmed", "excluded")},
         "options": {**o, "alignment_sites": sites, "method_label": METHOD_LABEL[o["tree_method"]],
-                    "model_label": MODEL_LABEL[o["distance_model"]]},
+                    "model_label": MODEL_LABEL[o["distance_model"]] + (f" + Γ (α = {o['gamma']:g})" if o["gamma"] else ""),
+                    "alignment_reused": bool(reused)},
         "files": files,
         "provenance": _provenance(),
     }
@@ -617,13 +639,13 @@ def _distances_defined(names: list[str], seqs: list[str], o: dict, progress: Pro
     some are undefined, remove the sequence involved in most undefined distances and recompute,
     until all are defined. Returns (dist, names, removed, comparable sites, sequences)."""
     names, seqs, removed = list(names), list(seqs), []
-    model, deletion = o.get("distance_model", "K80"), o.get("gap_handling", "global")
+    model, deletion, gamma = o.get("distance_model", "K80"), o.get("gap_handling", "global"), o.get("gamma") or None
     while True:
         if len(names) < 3:
             raise InputError(f"Fewer than 3 sequences remain with defined {model} distances; a tree cannot be built. "
                              "Removed: " + ", ".join(removed))
         try:
-            dist = treebuild.compute(seqs, model, deletion)
+            dist = treebuild.compute(seqs, model, deletion, gamma)
         except ValueError:  # no alignment column is free of gaps/ambiguity in every sequence
             x = phylo.dnabin_matrix(seqs)
             k = int(((x & 8) == 0).sum(axis=1).argmax())

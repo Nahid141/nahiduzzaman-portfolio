@@ -107,3 +107,27 @@ def test_nj_options_validation():
         with pytest.raises(InputError):
             nj_options(bad)
     assert parse_accessions("AF046869, MN073167\nAF046869 x") == ["AF046869", "MN073167", "x"]
+
+
+def test_gamma_and_t92_reduce_to_known_cases():
+    seqs, _ = _alignment(rate=0.06)
+    x = phylo.dnabin_matrix(seqs)
+    # a very large gamma shape means (almost) equal rates
+    for model in ("JC69", "K80", "TN93"):
+        a, b = treebuild.distance(x, model), treebuild.distance(x, model, gamma=1e6)
+        assert np.allclose(a, b, rtol=1e-4)
+    # gamma rates always give larger corrected distances than equal rates
+    assert (treebuild.distance(x, "K80", gamma=0.5) >= treebuild.distance(x, "K80") - 1e-12).all()
+    # T92 with 50 % GC is K80
+    x50 = phylo.dnabin_matrix(["ACGTACGTAC" * 20, "GCGTACATAC" * 20, "ATGTACGTGC" * 20])
+    assert np.allclose(treebuild.distance(x50, "T92"), treebuild.distance(x50, "K80"))
+
+
+def test_gamma_option_validation():
+    from prrsloom.pipelines import nj_options
+
+    assert nj_options({"gamma": "0.5"})["gamma"] == 0.5
+    assert nj_options({"fresh_alignment": True})["fresh_alignment"] is True
+    for bad in ({"gamma": 500}, {"gamma": "x"}, {"gamma": 0.5, "distance_model": "raw"}):
+        with pytest.raises(InputError):
+            nj_options(bad)

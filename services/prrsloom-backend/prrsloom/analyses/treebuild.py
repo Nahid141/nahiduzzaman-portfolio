@@ -20,7 +20,7 @@ import numpy as np
 from . import phylo
 from .phylo import Node
 
-MODELS = ("K80", "JC69", "TN93", "raw", "N")
+MODELS = ("K80", "JC69", "T92", "TN93", "raw", "N")
 METHODS = ("nj", "bionj", "upgma")
 DELETION = ("global", "pairwise")
 ROOTING = ("midpoint", "outgroup", "none")
@@ -29,17 +29,24 @@ ROOTING = ("midpoint", "outgroup", "none")
 _A, _G, _C, _T = 136, 72, 40, 24
 
 
-def distance(x: np.ndarray, model: str = "K80", deletion: str = "global", weights: np.ndarray | None = None) -> np.ndarray:
-    """ape::dist.dna(x, model, pairwise.deletion = deletion == "pairwise") on a DNAbin matrix.
+def distance(x: np.ndarray, model: str = "K80", deletion: str = "global", weights: np.ndarray | None = None,
+             gamma: float | None = None) -> np.ndarray:
+    """ape::dist.dna(x, model, pairwise.deletion = deletion == "pairwise", gamma = gamma).
 
     Site counts come from one-hot matrix products (exact integer counts in float64), so a
     300-sequence matrix takes milliseconds. ``weights`` (column multiplicities) gives the
-    distance of a bootstrap resample without copying the alignment. Pairs without comparable
-    sites, and saturated pairs (log of a non-positive number), give non-finite values, as in ape.
+    distance of a bootstrap resample without copying the alignment. Base frequencies (T92,
+    TN93) are taken from every A/C/G/T in the alignment before deletion, as ape's base.freq().
+    ``gamma`` is the shape alpha of gamma-distributed rates among sites (JC69, K80, T92, TN93):
+    each -log(w) term of the model becomes alpha * (w^(-1/alpha) - 1). Pairs without
+    comparable sites, and saturated pairs, give non-finite values, as in ape.
     """
     if model not in MODELS:
         raise ValueError(f"Unknown distance model '{model}'.")
     w = np.ones(x.shape[1]) if weights is None else np.asarray(weights, dtype=float)
+    counts = {b: float(((x == b) * w).sum()) for b in (_A, _G, _C, _T)}
+    tot = sum(counts.values())
+    gA, gG, gC, gT = (counts[b] / tot for b in (_A, _G, _C, _T))
     known = (x & 8) != 0
     if deletion == "global":
         keep = np.all(known, axis=0)
@@ -55,37 +62,54 @@ def distance(x: np.ndarray, model: str = "K80", deletion: str = "global", weight
     ag, ct = ag + ag.T, ct + ct.T          # A<->G and C<->T transitions
     nd = L - same
     ts = ag + ct
-    with np.errstate(invalid="ignore", divide="ignore"):
+
+    def mlog(v):  # -log(v), or its gamma-rates counterpart
+        return alpha_term(v, gamma)
+
+    with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
         if model == "N":
             d = np.where(L > 0, nd, np.nan)
         elif model == "raw":
             d = nd / L
         elif model == "JC69":
-            d = -0.75 * np.log(1 - 4 * (nd / L) / 3)
+            d = 0.75 * mlog(1 - 4 * (nd / L) / 3)
         elif model == "K80":
             P = ts / L
             Q = (nd - ts) / L
-            d = -0.5 * np.log((1 - 2 * P - Q) * np.sqrt(1 - 2 * Q))
-        else:  # TN93, base frequencies from all known bases (ape)
-            tot = sum((oh * w).sum() for oh in onehot.values())
-            gA, gG, gC, gT = ((onehot[b] * w).sum() / tot for b in (_A, _G, _C, _T))
+            if gamma:
+                d = 0.5 * mlog(1 - 2 * P - Q) + 0.25 * mlog(1 - 2 * Q)
+            else:  # ape's expression, so K80 matches phylo.dist_k80 bit for bit
+                d = -0.5 * np.log((1 - 2 * P - Q) * np.sqrt(1 - 2 * Q))
+        elif model == "T92":  # Tamura 1992: GC content from the base frequencies
+            P = ts / L
+            Q = (nd - ts) / L
+            h = 2 * (gG + gC) * (1 - gG - gC)
+            d = h * mlog(1 - P / h - Q) + 0.5 * (1 - h) * mlog(1 - 2 * Q)
+        else:  # TN93
             gR, gY = gA + gG, gC + gT
             k1 = 2 * gA * gG / gR
             k2 = 2 * gC * gT / gY
             k3 = 2 * (gR * gY - gA * gG * gY / gR - gC * gT * gR / gY)
             P1, P2, Q = ag / L, ct / L, (nd - ts) / L
-            d = (-k1 * np.log(1 - P1 / k1 - Q / (2 * gR)) - k2 * np.log(1 - P2 / k2 - Q / (2 * gY))
-                 - k3 * np.log(1 - Q / (2 * gR * gY)))
+            d = k1 * mlog(1 - P1 / k1 - Q / (2 * gR)) + k2 * mlog(1 - P2 / k2 - Q / (2 * gY)) + k3 * mlog(1 - Q / (2 * gR * gY))
     np.fill_diagonal(d, 0.0)
     return d
 
 
-def compute(seqs_or_matrix, model: str = "K80", deletion: str = "global") -> np.ndarray:
+def alpha_term(v: np.ndarray, gamma: float | None) -> np.ndarray:
+    """-log(v) (equal rates) or alpha * (v^(-1/alpha) - 1) (gamma rates); non-positive v -> nan."""
+    v = np.where(v > 0, v, np.nan)
+    if not gamma:
+        return -np.log(v)
+    return gamma * (np.power(v, -1.0 / gamma) - 1)
+
+
+def compute(seqs_or_matrix, model: str = "K80", deletion: str = "global", gamma: float | None = None) -> np.ndarray:
     """Distances for aligned sequences; K80 + global deletion is exactly phylo.dist_k80."""
-    if model == "K80" and deletion == "global" and isinstance(seqs_or_matrix, list):
+    if model == "K80" and deletion == "global" and not gamma and isinstance(seqs_or_matrix, list):
         return phylo.dist_k80(seqs_or_matrix)
     x = seqs_or_matrix if isinstance(seqs_or_matrix, np.ndarray) else phylo.dnabin_matrix(seqs_or_matrix)
-    return distance(x, model, deletion)
+    return distance(x, model, deletion, gamma=gamma)
 
 
 # ---------------------------------------------------------------- tree methods
@@ -254,7 +278,7 @@ def _splits(tree: Node, index: dict[str, int], full: int) -> set[int]:
 
 
 def bootstrap_support(tree: Node, x: np.ndarray, names: list[str], replicates: int, model: str, deletion: str,
-                      method: str, seed: int = 1, threads: int = 1,
+                      method: str, seed: int = 1, threads: int = 1, gamma: float | None = None,
                       progress: Callable[[int, int], None] | None = None) -> dict[int, float]:
     """Percent of bootstrap trees containing each clade of ``tree``; keyed by id(node).
 
@@ -274,7 +298,7 @@ def bootstrap_support(tree: Node, x: np.ndarray, names: list[str], replicates: i
     def one(cols: np.ndarray):
         for _ in range(20):
             try:
-                d = distance(x, model, deletion, weights=cols)
+                d = distance(x, model, deletion, weights=cols, gamma=gamma)
             except ValueError:  # no complete column in this resample
                 d = None
             if d is not None and np.all(np.isfinite(d)):

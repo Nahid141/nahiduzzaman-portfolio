@@ -267,4 +267,4 @@ def test_clustalw_progress_is_exact_and_alignment_unchanged(data_dir):
     assert any("pairwise alignment 15 / 15" in m for _, m in seen)    # 6 sequences -> 15 pairs
     again = []
     assert msa.clustalw(recs, progress=lambda f, m: again.append(m)) == first  # cached, identical
-    assert "cached" in again[-1]
+    assert "reused" in again[-1]

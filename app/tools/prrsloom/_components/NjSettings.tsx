@@ -14,6 +14,8 @@ export const NJ_DEFAULTS: NjOptions = {
   rooting: "midpoint",
   outgroup: "",
   bootstrap: 0,
+  gamma: 0,
+  fresh_alignment: false,
 };
 
 export type NjReferenceInputs = { file: File | null; text: string; accessions: string };
@@ -28,7 +30,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
       <div className="grid gap-1 rounded-2xl border border-white/10 bg-black/30 p-1" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
         {options.map((o) => (
           <button key={o.value} type="button" aria-pressed={value === o.value} onClick={() => onChange(o.value)} title={o.hint}
-            className={`rounded-xl px-2 py-2 text-xs font-black transition focus:outline-none focus:ring-2 focus:ring-cyan-300/60 ${
+            className={`min-w-0 break-words rounded-xl px-1 py-2 text-[11px] font-black leading-tight transition focus:outline-none focus:ring-2 focus:ring-cyan-300/60 ${
               value === o.value ? "bg-gradient-to-r from-cyan-400 to-sky-400 text-slate-950 shadow" : "text-slate-300 hover:bg-white/10"}`}>
             {o.label}
           </button>
@@ -102,21 +104,28 @@ export function NjSettings({ value, onChange, refs, onRefs }: {
         <summary className="cursor-pointer list-none text-sm font-black text-slate-100">
           <span className="mr-2 inline-block transition group-open:rotate-90">▸</span>Phylogenetic method
           <span className="ml-2 text-xs font-semibold text-slate-400">
-            {value.alignment === "mafft" ? "MAFFT" : "ClustalW"} · {value.tree_method.toUpperCase()} · {value.distance_model}{value.bootstrap ? ` · ${value.bootstrap} bootstraps` : ""}
+            {value.alignment === "mafft" ? "MAFFT" : "ClustalW"} · {value.tree_method.toUpperCase()} · {value.distance_model}{value.gamma ? `+Γ` : ""}{value.bootstrap ? ` · ${value.bootstrap} bootstraps` : ""}
           </span>
         </summary>
         <div className="mt-3 space-y-3">
           <Segmented label="Tree method" value={value.tree_method}
             options={[{ value: "nj", label: "Neighbor-Joining" }, { value: "bionj", label: "BIONJ" }, { value: "upgma", label: "UPGMA" }]}
             onChange={(v) => set("tree_method", v)} />
-          <Select label="Nucleotide distance model" value={value.distance_model} onChange={(v) => set("distance_model", v as NjOptions["distance_model"])}
+          <Select label="Nucleotide distance model" value={value.distance_model} onChange={(v) => onChange({ ...value, distance_model: v as NjOptions["distance_model"], gamma: v === "raw" || v === "N" ? 0 : value.gamma })}
             options={[
               { value: "K80", label: "K80 · Kimura 2-parameter (R app)" },
               { value: "TN93", label: "TN93 · Tamura-Nei" },
+              { value: "T92", label: "T92 · Tamura 1992 (GC content)" },
               { value: "JC69", label: "JC69 · Jukes-Cantor" },
               { value: "raw", label: "p-distance · uncorrected proportion" },
               { value: "N", label: "N · number of nucleotide differences" },
             ]} />
+          {value.distance_model !== "raw" && value.distance_model !== "N" && (
+            <Select label="Rate variation among sites" value={String(value.gamma)} onChange={(v) => set("gamma", Number(v))}
+              hint={value.gamma ? "Gamma-distributed rates (shape α); lower α = stronger variation among sites." : undefined}
+              options={[["0", "Equal rates (R app)"], ["0.25", "Gamma α = 0.25"], ["0.5", "Gamma α = 0.5"], ["1", "Gamma α = 1"], ["2", "Gamma α = 2"]]
+                .map(([v, l]) => ({ value: v, label: l }))} />
+          )}
           <Segmented label="Gaps and ambiguous bases" value={value.gap_handling}
             options={[{ value: "global", label: "Global deletion (R app)" }, { value: "pairwise", label: "Pairwise deletion" }]}
             onChange={(v) => set("gap_handling", v)} />
@@ -136,6 +145,10 @@ export function NjSettings({ value, onChange, refs, onRefs }: {
           <Segmented label="Multiple alignment" value={value.alignment}
             options={[{ value: "clustalw", label: "ClustalW (R app)" }, { value: "mafft", label: "MAFFT (faster)" }]}
             onChange={(v) => set("alignment", v)} />
+          <label className="flex items-start gap-3 text-xs text-slate-300">
+            <input type="checkbox" checked={value.fresh_alignment} onChange={(e) => set("fresh_alignment", e.target.checked)} className="mt-0.5 h-4 w-4 accent-cyan-400" />
+            <span><strong className="text-slate-100">Always re-align from scratch.</strong> By default, an alignment of byte-identical input (same sequences, aligner and settings) that was computed before is reused; it is the identical result, returned in seconds.</span>
+          </label>
         </div>
       </details>
     </div>
