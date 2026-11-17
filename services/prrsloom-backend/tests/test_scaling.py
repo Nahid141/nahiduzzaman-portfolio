@@ -5,6 +5,7 @@ import random
 
 import numpy as np
 import pytest
+from conftest import aligner_available
 
 
 def _same(a, b):
@@ -268,3 +269,19 @@ def test_clustalw_progress_is_exact_and_alignment_unchanged(data_dir):
     again = []
     assert msa.clustalw(recs, progress=lambda f, m: again.append(m)) == first  # cached, identical
     assert "reused" in again[-1]
+
+
+@pytest.mark.skipif(not aligner_available("PRRSLOOM_MAFFT", "mafft"), reason="MAFFT not installed")
+def test_mafft_reports_strategy_and_linsi_runs(data_dir):
+    from prrsloom.analyses import msa
+
+    rng = random.Random(4)
+    base = "".join(rng.choice("ACGT") for _ in range(300))
+    recs = [(f"m{k}", base[: 100 + k] + base[105 + k:]) for k in range(6)]
+    for accurate in (False, True):
+        seen = []
+        out = msa.mafft(recs, use_cache=False, progress=lambda f, m: seen.append(m), accurate=accurate)
+        assert len({len(s) for _, s in out}) == 1 and [n for n, _ in out] == [n for n, _ in recs]
+        assert "strategy" in seen[-1] and "columns" in seen[-1]
+        if accurate:
+            assert "L-INS-i" in seen[-1]

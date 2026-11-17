@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import threading
 from pathlib import Path
 from typing import Callable
@@ -55,7 +56,15 @@ def _which(binary: str) -> str:
 # and progressive group, which gives exact progress; the alignment and guide tree are
 # byte-identical with and without -QUIET (checked on ClustalW 2.1).
 CLUSTALW_ARGS = ("-ALIGN", "-TYPE=DNA", "-OUTPUT=FASTA")
-MAFFT_ARGS = ("--auto", "--quiet", "--thread", "1")
+# MAFFT --auto (as before) picks its strategy from the data size: L-INS-i for small sets,
+# FFT-NS-i / FFT-NS-2 (fast progressive) for larger ones. --quiet is not used so the strategy
+# MAFFT chose can be reported; the alignment is the same with and without it.
+MAFFT_ARGS = ("--auto", "--thread", "1")
+# L-INS-i: local pairwise alignment + up to 1000 iterative refinement cycles, MAFFT's most
+# accurate mode for up to a few hundred sequences. Runs on the job's threads: on 503 ORF5
+# sequences 1 and 4 threads gave byte-identical alignments (326 s vs 123 s).
+MAFFT_LINSI_ARGS = ("--localpair", "--maxiterate", "1000")
+_STRATEGY = re.compile(r"Strategy:\s*\n\s*(.+)")
 # share of ClustalW's run time spent in the (all-pairs) pairwise stage vs. progressive alignment
 _PAIRWISE_SHARE = 0.85
 _PAIR_LINE = re.compile(r"^Sequences \(\d+:\d+\) Aligned")
@@ -152,25 +161,32 @@ def _stream_clustalw(cmd: list[str], cwd: Path, n: int, timeout: int, report: Pr
 
 
 def mafft(records: list[tuple[str, str]], timeout: int | None = None, use_cache: bool = True,
-          progress: Progress | None = None) -> list[tuple[str, str]]:
+          progress: Progress | None = None, accurate: bool = False) -> list[tuple[str, str]]:
+    """MAFFT --auto, or with ``accurate`` L-INS-i (slower, iterative refinement)."""
     exe = _which(settings.mafft_bin)
     seqs = [s for _, s in records]
     report = progress or (lambda f, m: None)
-    aligned = cache_get("mafft", exe, MAFFT_ARGS, seqs) if use_cache else None
+    args = (*MAFFT_LINSI_ARGS, "--thread", str(max(1, settings.job_threads))) if accurate else MAFFT_ARGS
+    aligned = cache_get("mafft", exe, args, seqs) if use_cache else None
     if aligned is not None:
         report(1.0, f"MAFFT: this exact input ({len(seqs)} sequences) was aligned before; reused that stored result")
     else:
-        report(0.0, f"MAFFT: aligning {len(seqs)} sequences")
+        report(0.0, f"MAFFT: aligning {len(seqs)} sequences ({'L-INS-i' if accurate else 'automatic strategy'})")
     if aligned is None:
         with tempfile.TemporaryDirectory(prefix="prrsloom_mf_") as tmp:
             tmp = Path(tmp)
             _write_tokens(records, tmp / "in.fasta")
-            proc = _run([exe, *MAFFT_ARGS, str(tmp / "in.fasta")], "MAFFT", timeout)
+            started = time.monotonic()
+            proc = _run([exe, *args, str(tmp / "in.fasta")], "MAFFT", timeout)
             if proc.returncode != 0 or not proc.stdout.strip():
                 raise AlignerError(f"MAFFT failed: {proc.stderr[-400:]}")
             aligned = read_fasta_text(proc.stdout)
-        cache_put("mafft", exe, MAFFT_ARGS, seqs, aligned)
-        report(1.0, f"MAFFT: alignment complete ({len(seqs)} sequences)")
+            took = time.monotonic() - started
+        cache_put("mafft", exe, args, seqs, aligned)
+        m = _STRATEGY.search(proc.stderr or "")
+        strategy = m.group(1).strip() if m else ("L-INS-i" if accurate else "automatic")
+        report(1.0, f"MAFFT: alignment complete ({len(seqs)} sequences, {len(aligned[0][1]):,} columns, "
+                    f"strategy {strategy}, {took:.1f} s)")
     by_token = {tok: seq.upper() for tok, seq in aligned}
     # DECIPHER::AlignSeqs keeps the input order
     return [(records[i][0], by_token[f"s{i:06d}"]) for i in range(len(records))]

@@ -427,7 +427,7 @@ function Results({ result }: { result: AnyResult }) {
           {[
             ["Method", result.options.method_label],
             ["Distance", `${result.options.model_label}, ${result.options.gap_handling} deletion`],
-            ["Alignment", `${result.options.alignment === "mafft" ? "MAFFT" : "ClustalW"} · ${result.options.alignment_sites.toLocaleString()} sites${result.options.alignment_reused ? " · reused stored alignment of identical input" : ""}`],
+            ["Alignment", `${result.options.alignment === "mafft" ? "MAFFT (auto)" : result.options.alignment === "mafft_linsi" ? "MAFFT L-INS-i" : "ClustalW"} · ${result.options.alignment_sites.toLocaleString()} sites${result.options.alignment_reused ? " · reused stored alignment of identical input" : ""}`],
             ["Root", result.options.tree_method === "upgma" ? "UPGMA (rooted)" : result.options.rooting === "outgroup" ? `outgroup ${result.options.outgroup}` : result.options.rooting],
             ["Bootstrap", result.options.bootstrap ? `${result.options.bootstrap} replicates` : "off"],
           ].map(([k, v]) => (
