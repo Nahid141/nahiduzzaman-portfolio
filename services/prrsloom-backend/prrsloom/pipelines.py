@@ -23,7 +23,7 @@ import numpy as np
 from . import resources
 from .analyses import classifier as clf
 from .analyses import haplotypes as hap
-from .analyses import msa, phylo, timer, treeplot
+from .analyses import msa, phylo, timer, treebuild, treeplot
 from .config import settings
 from .fasta import InputError, make_unique, parse_fasta, read_csv_text
 
@@ -129,75 +129,349 @@ def _provenance() -> dict:
 
 # ---------------------------------------------------------------- NJ Tree Builder
 
-def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -> dict:
-    records = parse_fasta(inputs.get("fasta", ""))
-    user_meta = None
-    annotation_title = None
-    if inputs.get("metadata"):
-        header, rows = read_csv_text(inputs["metadata"], "metadata CSV")
-        id_col = _require_column(header, params.get("metadata_id_col"), "sequence ID column", "metadata CSV")
-        ann_col = _require_column(header, params.get("metadata_annotation_col"), "annotation column", "metadata CSV")
-        user_meta = {}
-        for r in rows:
-            label = clean_sequence_label(r.get(id_col))
-            if _blank(label) or label in user_meta:
-                continue
+NJ_DEFAULTS = {
+    "reference_mode": "auto",          # none | auto | accession | manual
+    "reference_count": 0,              # auto: references per detected variant (0 = all, as the R app)
+    "reference_selection": "nearest",  # auto with a count: nearest | recent
+    "alignment": "clustalw",           # clustalw (R app) | mafft
+    "tree_method": "nj",               # nj (R app) | bionj | upgma
+    "distance_model": "K80",           # K80 (R app) | JC69 | TN93 | raw | N
+    "gap_handling": "global",          # global (R app) | pairwise
+    "rooting": "midpoint",             # midpoint (R app) | outgroup | none
+    "outgroup": "",
+    "bootstrap": 0,                    # replicates, 0 = off
+}
+MAX_BOOTSTRAP = 1000
+MAX_ACCESSIONS = 200
+MODEL_LABEL = {"K80": "K80 (Kimura 2-parameter)", "JC69": "JC69 (Jukes-Cantor)", "TN93": "TN93 (Tamura-Nei)",
+               "raw": "uncorrected p", "N": "nucleotide-difference (count)"}
+METHOD_LABEL = {"nj": "Neighbor-Joining", "bionj": "BIONJ", "upgma": "UPGMA"}
+NJ_CHOICES = {"reference_mode": ("none", "auto", "accession", "manual"), "reference_selection": ("nearest", "recent"),
+              "alignment": ("clustalw", "mafft"), "tree_method": treebuild.METHODS, "distance_model": treebuild.MODELS,
+              "gap_handling": treebuild.DELETION, "rooting": treebuild.ROOTING}
+
+
+def nj_options(params: dict) -> dict:
+    """Validated tree options; anything not given keeps the R app's behaviour."""
+    o = {}
+    for k, default in NJ_DEFAULTS.items():
+        v = params.get(k)
+        o[k] = default if v is None or (v == "" and k != "outgroup") else v
+    for k, allowed in NJ_CHOICES.items():
+        if o[k] not in allowed:
+            raise InputError(f"Unknown {k.replace('_', ' ')} '{o[k]}'. Choose one of: {', '.join(allowed)}.")
+    for k, hi in (("reference_count", 500), ("bootstrap", MAX_BOOTSTRAP)):
+        try:
+            o[k] = int(o[k])
+        except (TypeError, ValueError):
+            raise InputError(f"{k.replace('_', ' ').capitalize()} must be a whole number.") from None
+        if not 0 <= o[k] <= hi:
+            raise InputError(f"{k.replace('_', ' ').capitalize()} must be between 0 and {hi}.")
+    o["outgroup"] = clean_sequence_label(o["outgroup"]) or ""
+    if o["rooting"] == "outgroup" and o["tree_method"] != "upgma" and not o["outgroup"]:
+        raise InputError("Enter the sequence name to use as the outgroup, or choose midpoint rooting.")
+    return o
+
+
+ACCESSION_RE = re.compile(r"^[A-Za-z]{1,6}_?\d{5,9}(\.\d+)?$")
+
+
+def parse_accessions(text: str) -> list[str]:
+    out: list[str] = []
+    for tok in re.split(r"[\s,;]+", text or ""):
+        tok = tok.strip().strip("\"'")
+        if tok and tok not in out:
+            out.append(tok)
+    if len(out) > MAX_ACCESSIONS:
+        raise InputError(f"At most {MAX_ACCESSIONS} reference accessions can be requested ({len(out)} given).")
+    return out
+
+
+def fetch_genbank(accessions: list[str], timeout: int = 60) -> dict[str, tuple[str, str]]:
+    """NCBI nuccore FASTA for GenBank accessions -> {ACCESSION (no version): (header, sequence)}."""
+    import urllib.parse
+    import urllib.request
+
+    from .fasta import read_fasta_text
+
+    out: dict[str, tuple[str, str]] = {}
+    for k in range(0, len(accessions), 100):
+        body = urllib.parse.urlencode({"db": "nuccore", "id": ",".join(accessions[k:k + 100]), "rettype": "fasta",
+                                       "retmode": "text", "tool": "PRRSLooM"}).encode()
+        req = urllib.request.Request("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", data=body,
+                                     headers={"User-Agent": "PRRSLooM/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            text = resp.read().decode("utf-8", "replace")
+        for header, seq in read_fasta_text(text):
+            out[header.split()[0].split(".")[0].upper()] = (header, seq)
+    return out
+
+
+def _library_rows() -> list[tuple[dict, str]]:
+    """Reference library rows with a sequence (the R app's selection: genbank.full present,
+    first row per name), in table order."""
+    refs = resources.load_references()
+    by_name: dict[str, str] = {}
+    for n, sq in refs.fasta:
+        by_name.setdefault(n.strip(), sq)
+    seen, rows = set(), []
+    for row in refs.table:
+        g = (row.get("genbank.full") or "").strip()
+        if g and g != "NA" and g in by_name and g not in seen:
+            seen.add(g)
+            rows.append((row, by_name[g]))
+    return rows
+
+
+def _nearest_first(cands: list[tuple[dict, str]], user_seqs: list[str]) -> list[tuple[dict, str]]:
+    """Library references ordered by p-distance (603-nt ORF5 frame) to their closest user sequence."""
+    if not cands or not user_seqs:
+        return cands
+    frame = lambda s: phylo.to_dnabin(s[:603].ljust(603, "-"))  # noqa: E731
+    users = np.vstack([frame(clf.realign_to_reference(s)) for s in user_seqs])
+    refs = np.vstack([frame(sq) for _, sq in cands])
+    kr = (refs & 8) != 0
+    best = np.full(len(cands), np.inf)
+    for u in users:
+        both = kr & ((u & 8) != 0)
+        d = ((refs != u) & both).sum(axis=1) / np.maximum(both.sum(axis=1), 1)
+        best = np.minimum(best, d)
+    return [cands[i] for i in sorted(range(len(cands)), key=lambda i: (best[i], i))]
+
+
+def _date_key(row: dict) -> float:
+    try:
+        return -float(row.get("date") or row.get("year") or 0)
+    except ValueError:
+        return 0.0
+
+
+def _reference_set(o: dict, var_target: set[str], user_by_var: dict[str, list[str]], inputs: dict,
+                   progress: Progress) -> tuple[list[tuple[str, str]], dict[str, dict], list[str], str]:
+    """Reference sequences for the tree: (name, sequence) records, metadata by cleaned name,
+    warnings and a status line."""
+    warnings: list[str] = []
+    mode = o["reference_mode"]
+    if mode == "none":
+        return [], {}, warnings, "Tree built with the uploaded sequences only (no reference sequences requested)."
+
+    if mode == "auto":
+        # the R app's selection and order (reference FASTA order); with a count, keep the
+        # closest / most recent N of each variant, still in that order
+        target, ref_seqs = _select_references(var_target)
+        row_by_name = {(r.get("genbank.full") or "").strip(): r for r in target}
+        if o["reference_count"]:
+            keep: set[int] = set()
+            for var in sorted(var_target, key=str):
+                cands = [(k, row_by_name.get(orig.strip(), {})) for k, (_, orig, _) in enumerate(ref_seqs)
+                         if row_by_name.get(orig.strip(), {}).get("var") == var]
+                if len(cands) > o["reference_count"]:
+                    if o["reference_selection"] == "recent":
+                        cands = sorted(cands, key=lambda c: _date_key(c[1]))
+                    else:
+                        order = _nearest_first([(c, ref_seqs[c[0]][2]) for c in cands], user_by_var.get(var, []))
+                        cands = [c for c, _ in order]
+                keep.update(k for k, _ in cands[: o["reference_count"]])
+            ref_seqs = [r for k, r in enumerate(ref_seqs) if k in keep]
+        if not ref_seqs:
+            return [], {}, warnings, "No reference sequences were found. The tree was built using only user sequences."
+        meta = {clean_sequence_label(short): {"assign.final": row_by_name.get(orig.strip(), {}).get("var")}
+                for short, orig, _ in ref_seqs}
+        how = ("all library references of each detected variant" if not o["reference_count"] else
+               f"up to {o['reference_count']} {'closest' if o['reference_selection'] == 'nearest' else 'most recent'} "
+               "library references per detected variant")
+        progress(1.0, f"{len(ref_seqs)} library references selected ({how})")
+        status = ("References found and included in the tree." if not o["reference_count"]
+                  else f"References included in the tree: {how}.")
+        return [(short, sq) for short, _, sq in ref_seqs], meta, warnings, status
+
+    if mode == "accession":
+        wanted = parse_accessions(inputs.get("reference_accessions", ""))
+        if not wanted:
+            raise InputError("Enter at least one reference accession (GenBank accession or reference library name).")
+        by_key: dict[str, tuple[dict, str]] = {}
+        for r, sq in _library_rows():
+            for key in (r.get("accession"), r.get("genbank.full")):
+                if not _blank(key):
+                    by_key.setdefault(str(key).strip().upper(), (r, sq))
+        records, meta, missing = [], {}, []
+        for acc in wanted:
+            hit = by_key.get(acc.upper()) or by_key.get(acc.split(".")[0].upper())
+            if hit:
+                records.append((acc, hit[1]))
+                meta[clean_sequence_label(acc)] = {"assign.final": hit[0].get("var")}
+            else:
+                missing.append(acc)
+        progress(0.3, f"{len(records)} accession(s) found in the PRRSV-2 reference library")
+        if missing:
+            bad = [a for a in missing if not ACCESSION_RE.match(a)]
+            if bad:
+                raise InputError("Not found in the reference library and not valid GenBank accessions: " + ", ".join(bad[:20]))
+            progress(0.4, f"Downloading {len(missing)} reference sequence(s) from NCBI GenBank")
+            try:
+                fetched = fetch_genbank(missing)
+            except Exception as exc:  # network or NCBI outage
+                raise InputError(f"NCBI GenBank could not be reached to download {', '.join(missing[:10])}: {exc}") from None
+            for acc in missing:
+                hit = fetched.get(acc.split(".")[0].upper())
+                if hit:
+                    records.append((acc, hit[1]))
+                    meta[clean_sequence_label(acc)] = {"assign.final": None}
+                else:
+                    warnings.append(f"Accession {acc} was not found in GenBank and was skipped.")
+            progress(1.0, f"Downloaded {sum(1 for a in missing if a.split('.')[0].upper() in fetched)} of {len(missing)} from GenBank")
+        return records, meta, warnings, f"{len(records)} of {len(wanted)} requested reference accessions included in the tree."
+
+    text = inputs.get("references", "")  # manual
+    if not text.strip():
+        raise InputError("Upload or paste the reference sequences (FASTA) for manual reference selection.")
+    records = parse_fasta(text)
+    progress(1.0, f"{len(records)} user-supplied reference sequences")
+    return (records, {clean_sequence_label(n): {"assign.final": None} for n, _ in records}, warnings,
+            f"{len(records)} user-supplied reference sequence(s) included in the tree.")
+
+
+def _read_nj_metadata(params: dict, inputs: dict):
+    """(annotation column values by label or None, all metadata columns by label, columns, title)."""
+    if not inputs.get("metadata"):
+        return None, {}, [], None
+    header, rows = read_csv_text(inputs["metadata"], "metadata CSV")
+    id_col = _require_column(header, params.get("metadata_id_col"), "sequence ID column", "metadata CSV")
+    ann_col = params.get("metadata_annotation_col") or None
+    if ann_col:
+        _require_column(header, ann_col, "annotation column", "metadata CSV")
+    columns = [c for c in header if c != id_col][:30]
+    single: dict[str, str] = {}
+    full: dict[str, dict] = {}
+    for r in rows:
+        label = clean_sequence_label(r.get(id_col))
+        if _blank(label) or label in full:
+            continue
+        full[label] = {c: ("not_provided" if _blank(r.get(c)) else str(r.get(c)).strip()) for c in columns}
+        if ann_col:
             value = (r.get(ann_col) or "").strip()
-            user_meta[label] = value if value and value != "NA" else "not_provided"
-        annotation_title = ann_col
+            single[label] = value if value and value != "NA" else "not_provided"
+    return (single if ann_col else None), full, columns, ann_col
+
+
+def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -> dict:
+    o = nj_options(params)
+    records = parse_fasta(inputs.get("fasta", ""))
+    user_meta, user_meta_all, meta_columns, annotation_title = _read_nj_metadata(params, inputs)
 
     progress(0.01, f"Read {len(records)} sequences "
                    f"({min(len(s) for _, s in records):,}-{max(len(s) for _, s in records):,} nt)")
+    rooted = "UPGMA (rooted)" if o["tree_method"] == "upgma" else o["rooting"] + (f" ({o['outgroup']})" if o["rooting"] == "outgroup" else "")
+    progress(0.01, "Options: " + "; ".join([
+        f"references {o['reference_mode']}" + (f" ({o['reference_count']} per variant, {o['reference_selection']})"
+                                                if o["reference_mode"] == "auto" and o["reference_count"] else ""),
+        f"alignment {o['alignment']}", METHOD_LABEL[o["tree_method"]], f"distance {o['distance_model']}",
+        f"{o['gap_handling']} deletion", f"rooting {rooted}", f"bootstrap {o['bootstrap'] or 'off'}"]))
     n_uploaded = len(records)
     records, screening = screen_orf5(records, _stage(progress, 0.01, 0.06))
     warnings: list[str] = []
     if screening["applied"]:
         warnings.append(screening["summary"])
+    if o["alignment"] == "clustalw":
+        aligner, align = "ClustalW", msa.clustalw
+    else:
+        aligner, align = "MAFFT", (lambda recs, progress=None: msa.mafft(recs))
 
-    progress(0.06, f"Aligning {len(records)} user sequences (ClustalW)")
-    aligned_user = msa.clustalw(records, progress=_stage(progress, 0.06, 0.28))
-    pred = _classify([n for n, _ in aligned_user], [s for _, s in aligned_user], progress, 0.28)
+    progress(0.06, f"Aligning {len(records)} user sequences ({aligner})")
+    aligned_user = align(records, progress=_stage(progress, 0.06, 0.24))
+    pred = _classify([n for n, _ in aligned_user], [s for _, s in aligned_user], progress, 0.24)
     out_rows = pred.rows
 
-    progress(0.39, "Retrieving reference sequences")
+    progress(0.35, "Selecting reference sequences")
     var_target = {r["assign.final"] for r in out_rows if r["assign.final"] not in (None, "undetermined")}
-    ref_target, ref_seqs = _select_references(var_target)
-    if ref_seqs:
-        all_records = records + [(short, s) for short, _, s in ref_seqs]
-        reference_status = "References found and included in the tree."
-    else:
-        all_records = records
+    user_by_var: dict[str, list[str]] = {}
+    seq_of = dict(records)
+    for r in out_rows:
+        if r["SequenceName"] in seq_of:
+            user_by_var.setdefault(r["assign.final"], []).append(seq_of[r["SequenceName"]])
+    ref_records, ref_meta, ref_warn, reference_status = _reference_set(
+        o, var_target, user_by_var, inputs, _stage(progress, 0.35, 0.38))
+    warnings += ref_warn
+    ref_rows: list[dict] = []
+    if ref_records and o["reference_mode"] in ("accession", "manual"):
+        ref_records, ref_screen = screen_orf5(ref_records, _stage(progress, 0.38, 0.39))
+        if ref_screen["applied"] and (ref_screen["trimmed"] or ref_screen["excluded"]):
+            warnings.append("References: " + ref_screen["summary"].replace(" Details: input_screening.csv.", "")
+                            .replace(" uploaded sequences", " reference sequences").replace("used as uploaded", "used as given"))
+        unlabeled = [n for n, _ in ref_records if not ref_meta.get(clean_sequence_label(n), {}).get("assign.final")]
+        if unlabeled:
+            progress(0.39, f"Classifying {len(unlabeled)} reference sequence(s) without a library label")
+            by = dict(ref_records)
+            rp = _classify(unlabeled, [by[n] for n in unlabeled], lambda f, m: None, 0.0)
+            for r in rp.rows:
+                ref_meta.setdefault(clean_sequence_label(r["SequenceName"]), {})["assign.final"] = r["assign.final"]
+                ref_rows.append(r)
+    user_set = {n for n, _ in records}
+    renamed = []
+    for k, (n, sq) in enumerate(ref_records):
+        if n in user_set:  # a reference with the same name as an uploaded sequence
+            ref_meta[clean_sequence_label(f"{n}_ref")] = ref_meta.get(clean_sequence_label(n), {})
+            ref_records[k] = (f"{n}_ref", sq)
+            renamed.append(n)
+    if renamed:
+        warnings.append("References sharing a name with an uploaded sequence were renamed with '_ref': " + ", ".join(renamed[:20]))
+    all_records = records + ref_records
+    if o["reference_mode"] != "none" and not ref_records:
         reference_status = "No reference sequences were found. The tree was built using only user sequences."
-    progress(0.40, f"{len(ref_seqs)} reference sequences for {len(var_target)} variant(s); "
-                   f"aligning {len(all_records)} sequences (ClustalW)")
-    aligned_all = msa.clustalw(all_records, progress=_stage(progress, 0.40, 0.90))
+
+    progress(0.40, f"{len(ref_records)} reference sequences for {len(var_target)} variant(s); "
+                   f"aligning {len(all_records)} sequences ({aligner})")
+    aligned_all = align(all_records, progress=_stage(progress, 0.40, 0.82))
     names = [n for n, _ in aligned_all]
     if len(names) < 3:
-        raise InputError("cannot build an NJ tree with less than 3 observations (user and reference sequences combined).")
-    progress(0.90, f"Computing K80 distances for {len(names)} sequences")
-    dist, names, removed, sites = _k80_defined(names, [s for _, s in aligned_all], progress)
+        raise InputError("cannot build a tree with less than 3 observations (user and reference sequences combined). "
+                         "Upload more sequences or include reference sequences.")
+    progress(0.82, f"Computing {MODEL_LABEL[o['distance_model']]} distances ({o['gap_handling']} deletion) "
+                   f"for {len(names)} sequences")
+    dist, names, removed, sites, kept_seqs = _distances_defined(names, [s for _, s in aligned_all], o, progress)
     if removed:
-        warnings.append(f"{len(removed)} sequence(s) were left out of the tree because their K80 distance to other "
-                        "sequences is undefined (too little shared, gap-free alignment or saturated divergence): "
-                        + ", ".join(removed[:25]) + (" …" if len(removed) > 25 else ""))
-    progress(0.92, f"Building the Neighbor-Joining tree ({len(names)} tips, {sites:,} alignment sites) and midpoint rooting")
-    tree = phylo.midpoint(phylo.nj(dist, names), names)
+        warnings.append(f"{len(removed)} sequence(s) were left out of the tree because their {o['distance_model']} "
+                        "distance to other sequences is undefined (too little shared, gap-free alignment or "
+                        "saturated divergence): " + ", ".join(removed[:25]) + (" …" if len(removed) > 25 else ""))
+    progress(0.84, f"Building the {METHOD_LABEL[o['tree_method']]} tree ({len(names)} tips, {sites:,} sites), rooting: {rooted}")
+    tree = treebuild.build(dist, names, o["tree_method"])
+    outgroup = None
+    if o["rooting"] == "outgroup" and o["tree_method"] != "upgma":
+        outgroup = next((n for n in names if clean_sequence_label(n) == o["outgroup"]), None)
+        if outgroup is None:
+            raise InputError(f"The outgroup '{o['outgroup']}' is not one of the sequences in the tree.")
+    tree = treebuild.root(tree, names, o["rooting"], outgroup, o["tree_method"])
+    if o["bootstrap"]:
+        progress(0.85, f"Bootstrap: {o['bootstrap']:,} replicates of {o['distance_model']} + {METHOD_LABEL[o['tree_method']]}")
+        step = max(1, o["bootstrap"] // 20)
+
+        def boot_progress(done: int, total: int):
+            if done % step == 0 or done == total:
+                progress(0.85 + 0.09 * done / total, f"Bootstrap replicate {done:,} / {total:,}")
+
+        support = treebuild.bootstrap_support(tree, phylo.dnabin_matrix(kept_seqs), names, o["bootstrap"],
+                                              o["distance_model"], o["gap_handling"], o["tree_method"],
+                                              seed=settings.tie_seed, threads=settings.job_threads,
+                                              progress=boot_progress)
+        treebuild.label_support(tree, support)
+        vals = list(support.values())
+        if vals:
+            progress(0.94, f"Bootstrap done: median clade support {float(np.median(vals)):.0f}%, "
+                           f"{sum(v >= 70 for v in vals)} of {len(vals)} clades with at least 70%")
     for t in tree.tips():
         t.name = clean_sequence_label(t.name)
 
     # prepare_meta_data()
+    user_labels = {clean_sequence_label(n) for n in user_set}
     meta: dict[str, dict] = {}
     for r in out_rows:
         label = clean_sequence_label(r["SequenceName"])
         if label not in meta:
             af = r["assign.final"]
             meta[label] = {"assign.final": af, "sub_lineage": af[:2] if af else None}
-    var_by_name = {(row.get("genbank.full") or "").strip(): row.get("var") for row in ref_target}
-    for short, original, _ in ref_seqs:
-        label = clean_sequence_label(short)
+    for label, m in ref_meta.items():
         if label not in meta:
-            v = var_by_name.get(original.strip())
-            v = None if _blank(v) else v
+            v = None if _blank(m.get("assign.final")) else m.get("assign.final")
             meta[label] = {"assign.final": v, "sub_lineage": v[:2] if v else None}
     tip_data = {}
     for t in tree.tips():
@@ -206,20 +480,42 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
         m["sub_lineage"] = m.get("sub_lineage") or "not_annotated"
         if user_meta is not None:
             m["extra"] = user_meta.get(t.name, "not_provided")
+        source = "Uploaded" if t.name in user_labels else "Reference"
+        row = user_meta_all.get(t.name)
+        m["meta"] = {"Source": source, **{c: (row[c] if row else "reference" if source == "Reference" else "not_provided")
+                                          for c in meta_columns}}
         tip_data[t.name] = m
 
     progress(0.95, f"Drawing the annotated tree ({len(names)} tips)")
-    lay = treeplot.layout(tree, tip_data, annotation_title)
+    lay = treeplot.layout(tree, tip_data, annotation_title, meta_columns=["Source", *meta_columns])
+    lay["internal_support"] = bool(o["bootstrap"])
     png = f"PRRSLoom_NJ_Tree_Builder_{TODAY()}.png"
     treeplot.render_png(lay, str(out_dir / png))
     cls_csv = "classification_table.csv"
-    write_csv(out_dir / cls_csv, out_rows, ["SequenceName", "assign.final", "assign.top", "prob.top", "assign.2", "prob.2", "num.gaps.amb"])
-    (out_dir / "nj_tree.nwk").write_text(phylo.to_newick(tree))
+    cls_cols = ["SequenceName", "assign.final", "assign.top", "prob.top", "assign.2", "prob.2", "num.gaps.amb"]
+    write_csv(out_dir / cls_csv, out_rows, cls_cols)
+    slug = {"nj": "NJ", "bionj": "BIONJ", "upgma": "UPGMA"}[o["tree_method"]]
+    nwk = f"{slug.lower()}_tree.nwk"
+    (out_dir / nwk).write_text(phylo.to_newick(tree))
+    root_word = ("Rooted" if o["tree_method"] == "upgma" else {"midpoint": "Midpoint-rooted", "outgroup": "Outgroup-rooted",
+                                                               "none": "Unrooted"}[o["rooting"]])
     files = [
         {"id": png, "label": "Annotated tree (PNG, 300 dpi)", "kind": "figure"},
         {"id": cls_csv, "label": "Classification table (CSV)", "kind": "table"},
-        {"id": "nj_tree.nwk", "label": "Midpoint-rooted NJ tree (Newick)", "kind": "tree"},
+        {"id": nwk, "label": f"{root_word} {slug} tree{' with bootstrap support' if o['bootstrap'] else ''} (Newick)", "kind": "tree"},
     ]
+    if ref_rows:
+        write_csv(out_dir / "reference_classification.csv", ref_rows, cls_cols)
+        files.append({"id": "reference_classification.csv", "label": "Reference classification (CSV)", "kind": "table"})
+    labels = [clean_sequence_label(n) for n in names]
+    (out_dir / "alignment.fasta").write_text("".join(f">{lab}\n{sq}\n" for lab, sq in zip(labels, kept_seqs)))
+    files.append({"id": "alignment.fasta", "label": f"Multiple alignment ({aligner}, FASTA)", "kind": "alignment"})
+    _write_matrix(out_dir / "distance_matrix.csv", labels, dist)
+    files.append({"id": "distance_matrix.csv", "label": f"Distance matrix ({MODEL_LABEL[o['distance_model']]}, CSV)", "kind": "table"})
+    if o["distance_model"] != "N":
+        _write_matrix(out_dir / "nt_differences.csv", labels,
+                      treebuild.distance(phylo.dnabin_matrix(kept_seqs), "N", "pairwise"))
+        files.append({"id": "nt_differences.csv", "label": "Pairwise nucleotide differences (CSV)", "kind": "table"})
     if screening["applied"]:
         write_csv(out_dir / "input_screening.csv", screening["rows"], SCREENING_COLUMNS)
         files.append({"id": "input_screening.csv", "label": "ORF5 input screening (CSV)", "kind": "table"})
@@ -231,14 +527,24 @@ def run_nj_tree(params: dict, inputs: dict, out_dir: Path, progress: Progress) -
         "reference_status": reference_status,
         "n_uploaded_sequences": n_uploaded,
         "n_user_sequences": len(records),
-        "n_reference_sequences": len(ref_seqs),
+        "n_reference_sequences": len(ref_records),
         "classification": out_rows,
         "tree": lay,
         "warnings": warnings + _classifier_warnings(pred),
         "input_screening": {k: screening[k] for k in ("applied", "kept", "trimmed", "excluded")},
+        "options": {**o, "alignment_sites": sites, "method_label": METHOD_LABEL[o["tree_method"]],
+                    "model_label": MODEL_LABEL[o["distance_model"]]},
         "files": files,
         "provenance": _provenance(),
     }
+
+
+def _write_matrix(path: Path, labels: list[str], d: np.ndarray) -> None:
+    buf = io.StringIO()
+    buf.write(",".join(_csv_cell(x) for x in ["", *labels]) + "\n")
+    for lab, row in zip(labels, d):
+        buf.write(_csv_cell(lab) + "," + ",".join(f"{v:.6g}" if np.isfinite(v) else "NA" for v in row) + "\n")
+    path.write_text(buf.getvalue())
 
 
 # ---------------------------------------------------------------- NJ input screening
@@ -306,26 +612,29 @@ def _stage(progress: Progress, lo: float, hi: float) -> Progress:
     return lambda frac, msg: progress(lo + (hi - lo) * max(0.0, min(1.0, frac)), msg)
 
 
-def _k80_defined(names: list[str], seqs: list[str], progress: Progress):
-    """K80 distances (ape dist.dna defaults, global deletion). If some are undefined, remove the
-    sequence involved in most undefined distances and recompute, until all are defined."""
+def _distances_defined(names: list[str], seqs: list[str], o: dict, progress: Progress):
+    """Distances under the chosen model and gap handling (the R app: K80, global deletion). If
+    some are undefined, remove the sequence involved in most undefined distances and recompute,
+    until all are defined. Returns (dist, names, removed, comparable sites, sequences)."""
     names, seqs, removed = list(names), list(seqs), []
+    model, deletion = o.get("distance_model", "K80"), o.get("gap_handling", "global")
     while True:
         if len(names) < 3:
-            raise InputError("Fewer than 3 sequences remain with defined K80 distances; an NJ tree cannot be built. "
+            raise InputError(f"Fewer than 3 sequences remain with defined {model} distances; a tree cannot be built. "
                              "Removed: " + ", ".join(removed))
         try:
-            dist = phylo.dist_k80(seqs)
+            dist = treebuild.compute(seqs, model, deletion)
         except ValueError:  # no alignment column is free of gaps/ambiguity in every sequence
             x = phylo.dnabin_matrix(seqs)
             k = int(((x & 8) == 0).sum(axis=1).argmax())
         else:
             bad = ~np.isfinite(dist)
             if not bad.any():
-                x = phylo.dnabin_matrix(seqs)
-                return dist, names, removed, int(np.all((x & 8) != 0, axis=0).sum())
+                known = (phylo.dnabin_matrix(seqs) & 8) != 0
+                sites = known.all(axis=0).sum() if deletion == "global" else known.any(axis=0).sum()
+                return dist, names, removed, int(sites), seqs
             k = int(bad.sum(axis=1).argmax())
-        progress(0.90, f"K80 undefined for {names[k]}; leaving it out of the tree")
+        progress(0.82, f"{model} distance undefined for {names[k]}; leaving it out of the tree")
         removed.append(names.pop(k))
         seqs.pop(k)
 

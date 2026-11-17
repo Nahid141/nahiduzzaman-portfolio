@@ -10,8 +10,6 @@ page can draw it at any height (the "vertical expansion" slider).
 
 from __future__ import annotations
 
-import math
-
 from .palettes import GRAY, make_named_palette
 from .phylo import Node, ladderize
 
@@ -19,8 +17,13 @@ CAPTION = "Generated with PRRS-Loom developed by the V-EPI Lab, University of Mi
 
 
 def layout(tree: Node, tip_data: dict[str, dict], extra_column: str | None,
-           palette_rows: list[dict] | None = None) -> dict:
-    """ggtree rectangular layout: x = root distance, tip y = 1..n bottom-up, node y = mean(children)."""
+           palette_rows: list[dict] | None = None, meta_columns: list[str] | None = None) -> dict:
+    """ggtree rectangular layout: x = root distance, tip y = 1..n bottom-up, node y = mean(children).
+
+    ``nodes`` also lists the topology ([parent index, x, y, label] in preorder, parent -1 for
+    the root) so the web page can redraw the tree in other layouts (circular, unrooted, ...);
+    ``tip.meta`` carries every metadata column for legends and colouring by any class.
+    """
     ladderize(tree)
     xs: dict[int, float] = {}
     ys: dict[int, float] = {}
@@ -65,11 +68,15 @@ def layout(tree: Node, tip_data: dict[str, dict], extra_column: str | None,
             "assign_final": meta.get("assign.final"),
             "sub_lineage": meta.get("sub_lineage"),
             "extra": meta.get("extra") if extra_column else None,
+            "meta": meta.get("meta") or {},
         })
     internal_labels = [
         {"label": n.name, "x": xs[id(n)], "y": ys[id(n)]}
         for n in order if not n.is_tip and n.name
     ]
+    index = {id(n): k for k, n in enumerate(order)}
+    nodes = [[index[id(n.parent)] if n.parent is not None else -1, xs[id(n)], ys[id(n)], n.name or None]
+             for n in order]
     x_values = list(xs.values())
     x_max = max(x_values)
     x_range = x_max - min(x_values)
@@ -82,6 +89,8 @@ def layout(tree: Node, tip_data: dict[str, dict], extra_column: str | None,
     extra_palette = make_named_palette([r.get("extra") for r in src], "extra") if extra_column else {}
     return {
         "segments": segments,
+        "nodes": nodes,
+        "meta_columns": list(meta_columns or []),
         "tips": tip_rows,
         "internal_labels": internal_labels,
         "x_max": x_max,
@@ -138,19 +147,42 @@ def build_figure(lay: dict, dpi: int) -> tuple:
 
     tips = lay["tips"]
     n = len(tips)
-    longest = max((len(t["label"]) for t in tips), default=1)
     width_in, height_in = _figure_inches(lay)
     fig = plt.figure(figsize=(width_in, height_in), dpi=dpi)
     ax = fig.add_axes([0.02, 0.06, 0.72, 0.92])
     hm = lay["heatmap"]
-    right = max(hm["sub_lineage"]["start"] + hm["sub_lineage"]["width"],
-                (hm["extra"]["start"] + hm["extra"]["width"]) if hm.get("extra") else 0)
-    label_room = longest * 0.012 * max(lay["x_range"], 0.05)
-    # Final limits are known from the layout, so set them before adding artists: this turns
-    # autoscaling off. Otherwise every scatter() call re-scanned all artists (O(n^2): 42 s of
-    # a 3000-tip render). Artists, order and the rendered pixels are unchanged.
-    ax.set_xlim(-0.01 * max(lay["x_range"], 0.01), max(right, lay["x_max"] + 0.02 + label_room) * 1.02)
+    strips = [("sub_lineage", hm["sub_lineage"])] + ([("extra", hm["extra"])] if hm.get("extra") else [])
+
+    # Automatic overlap correction: the R figure puts the sub_lineage bar at a fixed data offset
+    # (x_max + 0.08), so long labels on long branches ran into the coloured bars. Here every tip
+    # label is measured and the right axis limit is solved so that, for every tip,
+    #   branch end + label offset + label width + gap + bars  fits inside the axes.
+    from matplotlib.font_manager import FontProperties
+
+    renderer = fig.canvas.get_renderer()
+    font = FontProperties(size=8.5)
+    widths = [renderer.get_text_width_height_descent(t["label"], font, ismath=False)[0] for t in tips]
+    pt = dpi / 72.0
+    off, gap, bar, bar_gap, pad = 3 * pt, 6 * pt, 9 * pt, 2 * pt, 4 * pt
+    bars = len(strips) * bar + (len(strips) - 1) * bar_gap
+    need = max((off + w + gap + bars + pad for w in widths), default=bars + gap)
+    W = 0.72 * width_in * dpi
+    if need > 0.6 * W:  # labels would squeeze the tree: widen the figure instead
+        width_in = need / 0.6 / 0.72 / dpi
+        fig.set_size_inches(width_in, height_in)
+        W = 0.72 * width_in * dpi
+    x0 = -0.01 * max(lay["x_range"], 0.01)
+    span = max(lay["x_max"] - x0, 1e-9)
+    for t, w in zip(tips, widths):
+        span = max(span, (t["x"] - x0) * W / (W - (off + w + gap + bars + pad)))
+    ax.set_xlim(x0, x0 + span)
     ax.set_ylim(0.3, n + 0.7)
+    to_data = span / W
+    label_end = max((x0 + ((t["x"] - x0) / to_data + off + w) * to_data for t, w in zip(tips, widths)), default=lay["x_max"])
+    bar_start = label_end + gap * to_data
+    columns = {key: (bar_start + k * (bar + bar_gap) * to_data, bar * to_data) for k, (key, _) in enumerate(strips)}
+    # Final limits are set before adding artists: this turns autoscaling off (otherwise every
+    # scatter() call re-scanned all artists, O(n^2)).
     placed = []
     for x1, y1, x2, y2 in lay["segments"]:
         (line,) = ax.plot([x1, x2], [y1, y2], color="black", linewidth=0.5, solid_capstyle="butt")
@@ -158,18 +190,26 @@ def build_figure(lay: dict, dpi: int) -> tuple:
     pal = lay["palettes"]
     for t in tips:
         pts = ax.scatter([t["x"]], [t["y"]], s=22, color=pal["assign_final"].get(t["assign_final"], GRAY["gray70"]), zorder=3, linewidths=0)
-        txt = ax.text(t["x"] + 0.02, t["y"], t["label"], fontsize=8.5, va="center", ha="left")
+        txt = ax.text(t["x"] + off * to_data, t["y"], t["label"], fontsize=8.5, va="center", ha="left")
         placed += [(pts, t["y"], t["y"]), (txt, t["y"], t["y"])]
+    support = lay.get("internal_support")
     for lab in lay["internal_labels"]:
-        txt = ax.text(lab["x"], lab["y"], f" {lab['label']}", fontsize=8.5, va="center", ha="left")
+        if support:  # bootstrap percentages: show clades with at least 50% support, small and grey
+            try:
+                if float(lab["label"]) < 50:
+                    continue
+            except ValueError:
+                pass
+            txt = ax.text(lab["x"], lab["y"], f"{lab['label']} ", fontsize=6.5, color=GRAY["gray35"], va="bottom", ha="right")
+        else:
+            txt = ax.text(lab["x"], lab["y"], f" {lab['label']}", fontsize=8.5, va="center", ha="left")
         placed.append((txt, lab["y"], lab["y"]))
-    for key, spec in (("sub_lineage", hm["sub_lineage"]), ("extra", hm.get("extra"))):
-        if not spec:
-            continue
+    for key, _spec in strips:
+        start, width = columns[key]
         for t in tips:
             value = t["sub_lineage"] if key == "sub_lineage" else t["extra"]
             color = pal[key].get(value, GRAY["gray90"])
-            rect = ax.add_patch(Rectangle((spec["start"], t["y"] - 0.5), spec["width"], 1.0, facecolor=color, edgecolor="none"))
+            rect = ax.add_patch(Rectangle((start, t["y"] - 0.5), width, 1.0, facecolor=color, edgecolor="none"))
             placed.append((rect, t["y"] - 0.5, t["y"] + 0.5))
     ax.axis("off")
 
@@ -186,5 +226,4 @@ def build_figure(lay: dict, dpi: int) -> tuple:
         fig.legend(handles=handles, title=lay["extra_column"], loc="upper left", bbox_to_anchor=(0.87, 0.55),
                    fontsize=8, title_fontsize=9, frameon=False)
     fig.text(0.98, 0.015, lay["caption"], ha="right", va="bottom", fontsize=10, color="#595959", style="italic")
-    _ = math
     return fig, ax, placed

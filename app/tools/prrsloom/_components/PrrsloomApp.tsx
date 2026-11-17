@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelJob, csvHeader, fetchExampleFasta, getJob, getResult, submitJob } from "../_lib/client";
 import { MODULES, MODULE_BY_ID } from "../_lib/modules";
-import type { AnyResult, JobStatus, LogEntry, ModuleId } from "../_lib/types";
+import type { AnyResult, JobStatus, LogEntry, ModuleId, NjOptions } from "../_lib/types";
 import { HaplotypeView } from "./HaplotypeView";
+import { NJ_DEFAULTS, NjSettings, njSettingsProblem, type NjReferenceInputs } from "./NjSettings";
 import { TimerView } from "./TimerView";
 import { TreeView } from "./TreeView";
 import { Checkbox, DataTable, Downloads, Eyebrow, FileField, GhostButton, JobProgress, Notice, NumberField, Panel, PrimaryButton, Select, TextArea } from "./ui";
@@ -59,6 +60,8 @@ export default function PrrsloomApp() {
   const [result, setResult] = useState<AnyResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [logLines, setLogLines] = useState<LogEntry[]>([]);
+  const [njOpts, setNjOpts] = useState<NjOptions>(NJ_DEFAULTS);
+  const [njRefs, setNjRefs] = useState<NjReferenceInputs>({ file: null, text: "", accessions: "" });
   const pollToken = useRef(0);
 
   // R-app defaults for column pickers whenever the CSV changes
@@ -156,11 +159,15 @@ export default function PrrsloomApp() {
   };
 
   const validate = (): string | null => {
-    for (const f of [fastaFile, metaFile, treeFile, pairFile]) if (f && f.size > MAX_FILE) return `${f.name} is larger than 4 MB.`;
+    for (const f of [fastaFile, metaFile, treeFile, pairFile, njRefs.file]) if (f && f.size > MAX_FILE) return `${f.name} is larger than 4 MB.`;
     const needsFasta = moduleId === "nj_tree" || moduleId === "haplotype" || (moduleId === "timer" && !usePairwise);
     if (needsFasta && !fastaFile && !fastaText.trim()) return "Upload a FASTA file or paste FASTA sequences before running the analysis.";
     if (needsFasta && !fastaFile && !fastaText.trim().startsWith(">")) return "Pasted FASTA sequences must start with a header line beginning with '>'.";
     if (meta.error && metaFile) return meta.error;
+    if (moduleId === "nj_tree") {
+      const problem = njSettingsProblem(njOpts, njRefs);
+      if (problem) return problem;
+    }
     if (moduleId === "tree_label" && !treeFile) return "Upload a tree file (.tre, .tree, .nwk, .nex or .nexus).";
     if (moduleId === "tree_label" && !metaFile) return "Upload the PRRSLoom classification CSV.";
     if (moduleId === "tree_label" && metaFile && meta.cols.length && !(meta.cols.includes("SequenceName") && meta.cols.includes("assign.final")))
@@ -179,11 +186,20 @@ export default function PrrsloomApp() {
     const params: Record<string, unknown> = {};
     const files: Record<string, File | null> = {};
     let text: string | undefined;
+    const texts: Record<string, string> = {};
     if (moduleId === "nj_tree" || moduleId === "haplotype" || (moduleId === "timer" && !usePairwise)) {
       files.fasta = fastaFile;
       text = fastaFile ? undefined : fastaText;
     }
     if (moduleId === "nj_tree" && metaFile) { files.metadata = metaFile; params.metadata_id_col = idCol; params.metadata_annotation_col = annCol; }
+    if (moduleId === "nj_tree") {
+      Object.assign(params, njOpts);
+      if (njOpts.reference_mode === "manual") {
+        if (njRefs.file) files.references = njRefs.file;
+        else texts.reference_text = njRefs.text;
+      }
+      if (njOpts.reference_mode === "accession") texts.reference_accessions = njRefs.accessions;
+    }
     if (moduleId === "haplotype" && metaFile) { files.metadata = metaFile; params.id_column = idCol; }
     if (moduleId === "tree_label") { files.tree = treeFile; files.metadata = metaFile; params.extra_annotation_col = extraCol; }
     if (moduleId === "timer") {
@@ -202,7 +218,7 @@ export default function PrrsloomApp() {
       }
     }
     try {
-      const { job_id } = await submitJob(moduleId, params, files, text);
+      const { job_id } = await submitJob(moduleId, params, files, text, texts);
       window.history.replaceState(null, "", `/tools/prrsloom?module=${moduleId}&job=${job_id}`);
       setJob({ id: job_id, module: moduleId, status: "queued", progress: 0, message: "Queued", error: null });
       poll(job_id);
@@ -356,6 +372,8 @@ export default function PrrsloomApp() {
               </div>
             )}
 
+            {moduleId === "nj_tree" && <NjSettings value={njOpts} onChange={setNjOpts} refs={njRefs} onRefs={setNjRefs} />}
+
             {formError && <Notice tone="error">{formError}</Notice>}
             <div className="flex flex-wrap items-center gap-3">
               <PrimaryButton onClick={run} disabled={running}>{running ? "Running…" : info.runLabel}</PrimaryButton>
@@ -404,6 +422,19 @@ function Results({ result }: { result: AnyResult }) {
   return (
     <div className="space-y-4">
       <Notice tone="info">{result.reference_status} {result.n_user_sequences} uploaded and {result.n_reference_sequences} reference sequences in the tree.</Notice>
+      {result.options && (
+        <div className="flex flex-wrap gap-2 text-xs font-bold">
+          {[
+            ["Method", result.options.method_label],
+            ["Distance", `${result.options.model_label}, ${result.options.gap_handling} deletion`],
+            ["Alignment", `${result.options.alignment === "mafft" ? "MAFFT" : "ClustalW"} · ${result.options.alignment_sites.toLocaleString()} sites`],
+            ["Root", result.options.tree_method === "upgma" ? "UPGMA (rooted)" : result.options.rooting === "outgroup" ? `outgroup ${result.options.outgroup}` : result.options.rooting],
+            ["Bootstrap", result.options.bootstrap ? `${result.options.bootstrap} replicates` : "off"],
+          ].map(([k, v]) => (
+            <span key={k} className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-cyan-100"><span className="text-cyan-300/70">{k}:</span> {v}</span>
+          ))}
+        </div>
+      )}
       <div role="tablist" aria-label="NJ results" className="flex gap-2">
         {(["tree", "table"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} type="button" onClick={() => setTab(t)}
