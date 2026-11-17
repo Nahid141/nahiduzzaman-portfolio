@@ -26,10 +26,17 @@ export type TreeTip = {
   assign_final: string | null;
   sub_lineage: string | null;
   extra: string | null;
+  /** every metadata class for this tip (NJ Tree Builder): Source plus the metadata CSV columns */
+  meta?: Record<string, string>;
 };
 
 export type TreeLayout = {
   segments: [number, number, number, number][];
+  /** topology in preorder: [parent index (-1 = root), x (root distance), y, label] */
+  nodes?: [number, number, number, string | null][];
+  meta_columns?: string[];
+  /** internal labels are bootstrap percentages */
+  internal_support?: boolean;
   tips: TreeTip[];
   internal_labels: { label: string; x: number; y: number }[];
   x_max: number;
@@ -63,6 +70,22 @@ export type NjResult = {
   tree: TreeLayout;
   warnings: string[];
   files: ResultFile[];
+  options?: NjOptions & { alignment_sites: number; method_label: string; model_label: string; alignment_reused?: boolean };
+};
+
+export type NjOptions = {
+  reference_mode: "none" | "auto" | "accession" | "manual";
+  reference_count: number;
+  reference_selection: "nearest" | "recent";
+  alignment: "clustalw" | "mafft";
+  tree_method: "nj" | "bionj" | "upgma";
+  distance_model: "K80" | "JC69" | "T92" | "TN93" | "raw" | "N";
+  gap_handling: "global" | "pairwise";
+  rooting: "midpoint" | "outgroup" | "none";
+  outgroup: string;
+  bootstrap: number;
+  gamma: number;
+  fresh_alignment: boolean;
 };
 
 export type TreeLabelResult = {

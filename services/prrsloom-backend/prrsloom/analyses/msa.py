@@ -75,15 +75,16 @@ def _run(cmd: list[str], name: str, timeout: int | None, **kwargs) -> subprocess
 
 
 def clustalw(records: list[tuple[str, str]], timeout: int | None = None,
-             progress: Progress | None = None) -> list[tuple[str, str]]:
+             progress: Progress | None = None, use_cache: bool = True) -> list[tuple[str, str]]:
     """ClustalW 2.1 with default parameters. ``progress(fraction, message)`` receives exact
     counts from ClustalW's own output (pairwise alignments done / total, then groups)."""
     exe = _which(settings.clustalw_bin)
     seqs = [s for _, s in records]
     report = progress or (lambda f, m: None)
-    aligned = cache_get("clustalw", exe, CLUSTALW_ARGS, seqs)
+    aligned = cache_get("clustalw", exe, CLUSTALW_ARGS, seqs) if use_cache else None
     if aligned is not None:
-        report(1.0, f"ClustalW: identical input aligned before, reused cached alignment ({len(seqs)} sequences)")
+        report(1.0, f"ClustalW: this exact input ({len(seqs)} sequences) was aligned before with the same ClustalW "
+                    "binary and parameters; reused that stored result (identical output, no re-computation)")
     else:
         with tempfile.TemporaryDirectory(prefix="prrsloom_cw_") as tmp:
             tmp = Path(tmp)
@@ -150,10 +151,16 @@ def _stream_clustalw(cmd: list[str], cwd: Path, n: int, timeout: int, report: Pr
     return code, "\n".join(tail)
 
 
-def mafft(records: list[tuple[str, str]], timeout: int | None = None) -> list[tuple[str, str]]:
+def mafft(records: list[tuple[str, str]], timeout: int | None = None, use_cache: bool = True,
+          progress: Progress | None = None) -> list[tuple[str, str]]:
     exe = _which(settings.mafft_bin)
     seqs = [s for _, s in records]
-    aligned = cache_get("mafft", exe, MAFFT_ARGS, seqs)
+    report = progress or (lambda f, m: None)
+    aligned = cache_get("mafft", exe, MAFFT_ARGS, seqs) if use_cache else None
+    if aligned is not None:
+        report(1.0, f"MAFFT: this exact input ({len(seqs)} sequences) was aligned before; reused that stored result")
+    else:
+        report(0.0, f"MAFFT: aligning {len(seqs)} sequences")
     if aligned is None:
         with tempfile.TemporaryDirectory(prefix="prrsloom_mf_") as tmp:
             tmp = Path(tmp)
@@ -163,6 +170,7 @@ def mafft(records: list[tuple[str, str]], timeout: int | None = None) -> list[tu
                 raise AlignerError(f"MAFFT failed: {proc.stderr[-400:]}")
             aligned = read_fasta_text(proc.stdout)
         cache_put("mafft", exe, MAFFT_ARGS, seqs, aligned)
+        report(1.0, f"MAFFT: alignment complete ({len(seqs)} sequences)")
     by_token = {tok: seq.upper() for tok, seq in aligned}
     # DECIPHER::AlignSeqs keeps the input order
     return [(records[i][0], by_token[f"s{i:06d}"]) for i in range(len(records))]

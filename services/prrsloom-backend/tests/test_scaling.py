@@ -229,7 +229,7 @@ def test_orf5_screening_trims_genomes_and_excludes_non_orf5():
 def test_k80_safety_net_removes_only_undefined_sequences():
     import numpy as np
 
-    from prrsloom.pipelines import _k80_defined
+    from prrsloom.pipelines import _distances_defined
 
     rng = random.Random(9)
     base = "".join(rng.choice("ACGT") for _ in range(300))
@@ -242,7 +242,7 @@ def test_k80_safety_net_removes_only_undefined_sequences():
     # a sequence unrelated to the others: K80 saturates (undefined) against all of them
     seqs.append("".join(rng.choice("ACGT") for _ in range(300)))
     names = [f"q{k}" for k in range(6)]
-    dist, kept, removed, sites = _k80_defined(names, seqs, lambda f, m: None)
+    dist, kept, removed, sites, _ = _distances_defined(names, seqs, {}, lambda f, m: None)
     assert np.isfinite(dist).all() and sites == 300
     assert removed == ["q5"] and kept == names[:5]
 
@@ -267,4 +267,4 @@ def test_clustalw_progress_is_exact_and_alignment_unchanged(data_dir):
     assert any("pairwise alignment 15 / 15" in m for _, m in seen)    # 6 sequences -> 15 pairs
     again = []
     assert msa.clustalw(recs, progress=lambda f, m: again.append(m)) == first  # cached, identical
-    assert "cached" in again[-1]
+    assert "reused" in again[-1]

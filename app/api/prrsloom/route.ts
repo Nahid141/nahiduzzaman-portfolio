@@ -8,7 +8,8 @@ export const maxDuration = 60;
 // Vercel functions accept request bodies up to ~4.5 MB; PRRSLooM inputs are FASTA/CSV/tree text.
 const MAX_BODY = 4 * 1024 * 1024;
 const MODULES = new Set(["nj_tree", "tree_label", "timer", "haplotype"]);
-const UPLOAD_FIELDS = ["fasta", "metadata", "tree", "pairwise"] as const;
+const UPLOAD_FIELDS = ["fasta", "metadata", "tree", "pairwise", "references"] as const;
+const TEXT_FIELDS = ["fasta_text", "reference_text", "reference_accessions"] as const;
 
 export async function GET(req: NextRequest) {
   const example = req.nextUrl.searchParams.get("example");
@@ -43,9 +44,14 @@ export async function POST(req: NextRequest) {
   const outgoing = new FormData();
   outgoing.set("module", moduleName);
   outgoing.set("params", String(incoming.get("params") || "{}"));
-  const pasted = incoming.get("fasta_text");
-  if (typeof pasted === "string" && pasted.trim()) outgoing.set("fasta_text", pasted);
   let total = 0;
+  for (const field of TEXT_FIELDS) {
+    const value = incoming.get(field);
+    if (typeof value === "string" && value.trim()) {
+      total += value.length;
+      outgoing.set(field, value);
+    }
+  }
   for (const field of UPLOAD_FIELDS) {
     const value = incoming.get(field);
     if (value instanceof File && value.size > 0) {

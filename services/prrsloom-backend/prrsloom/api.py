@@ -118,9 +118,20 @@ def _quick_validate(module: str, params: dict, inputs: dict[str, str]) -> None:
         if col not in headers.get(key, []):
             raise InputError(f"The selected {what} was not found in the {label}.")
 
+    if module == "nj_tree":
+        from .pipelines import nj_options, parse_accessions
+
+        o = nj_options(params)
+        if o["reference_mode"] == "accession" and not parse_accessions(inputs.get("reference_accessions", "")):
+            raise InputError("Enter at least one reference accession (GenBank accession or reference library name).")
+        if o["reference_mode"] == "manual":
+            if not inputs.get("references"):
+                raise InputError("Upload or paste the reference sequences (FASTA) for manual reference selection.")
+            parse_fasta(inputs["references"])
     if module == "nj_tree" and "metadata" in headers:
         need("metadata", "metadata_id_col", "sequence ID column", "metadata CSV")
-        need("metadata", "metadata_annotation_col", "annotation column", "metadata CSV")
+        if params.get("metadata_annotation_col"):
+            need("metadata", "metadata_annotation_col", "annotation column", "metadata CSV")
     if module == "timer" and params.get("mode", "fasta") == "fasta":
         need("metadata", "metadata_id_col", "sequence ID column", "collection date CSV")
         need("metadata", "metadata_date_col", "collection date/year column", "collection date CSV")
@@ -146,6 +157,9 @@ async def submit(
     metadata: UploadFile | None = File(None),
     tree: UploadFile | None = File(None),
     pairwise: UploadFile | None = File(None),
+    references: UploadFile | None = File(None),
+    reference_text: str = Form(""),
+    reference_accessions: str = Form(""),
     x_prrsloom_key: str | None = Header(default=None),
     x_client_ip: str | None = Header(default=None),
 ):
@@ -163,7 +177,8 @@ async def submit(
 
     inputs: dict[str, str] = {}
     try:
-        for key, upload in (("fasta", fasta), ("metadata", metadata), ("tree", tree), ("pairwise", pairwise)):
+        for key, upload in (("fasta", fasta), ("metadata", metadata), ("tree", tree), ("pairwise", pairwise),
+                            ("references", references)):
             if upload is not None and upload.filename:
                 data = await upload.read(settings.max_upload_bytes + 1)
                 inputs[key] = decode_upload(data, f"{key} file")
@@ -173,6 +188,12 @@ async def submit(
             if len(fasta_text.encode()) > settings.max_upload_bytes:
                 raise InputError("The pasted FASTA text is too large.")
             inputs["fasta"] = fasta_text
+        if "references" not in inputs and reference_text.strip():
+            if len(reference_text.encode()) > settings.max_upload_bytes:
+                raise InputError("The pasted reference FASTA text is too large.")
+            inputs["references"] = reference_text
+        if reference_accessions.strip():
+            inputs["reference_accessions"] = reference_accessions[:20000]
         # parsing a few MB of FASTA/CSV is CPU work: keep it off the event loop so status polls
         # and downloads from other users are not stalled behind an upload
         await run_in_threadpool(_quick_validate, module, p, inputs)

@@ -18,11 +18,13 @@ export function errorText(data: unknown, fallback: string) {
   return fallback;
 }
 
-export async function submitJob(module: ModuleId, params: Record<string, unknown>, files: Record<string, File | null>, fastaText?: string) {
+export async function submitJob(module: ModuleId, params: Record<string, unknown>, files: Record<string, File | null>, fastaText?: string,
+  texts: Record<string, string> = {}) {
   const form = new FormData();
   form.set("module", module);
   form.set("params", JSON.stringify(params));
   if (fastaText && fastaText.trim()) form.set("fasta_text", fastaText);
+  for (const [key, value] of Object.entries(texts)) if (value.trim()) form.set(key, value);
   for (const [key, file] of Object.entries(files)) if (file) form.set(key, file, file.name);
   const response = await fetch("/api/prrsloom", { method: "POST", body: form });
   const data = await readJson(response);
