@@ -363,10 +363,12 @@ export default function PrrsloomApp() {
                 <GhostButton onClick={cancel}>Cancel analysis</GhostButton>
               )}
             </div>
-            <JobProgress job={job} error={jobError} log={logLines} />
+            {jobError && !job && <Notice tone="error">{jobError}</Notice>}
           </Panel>
 
           <div className="space-y-6">
+            {/* progress + live log get the wide column, so long log lines stay readable */}
+            {job && <JobProgress job={job} error={jobError} log={logLines} />}
             {result && job && result.module === moduleId ? (
               <Panel className="space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
