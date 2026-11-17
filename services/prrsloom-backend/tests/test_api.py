@@ -14,8 +14,9 @@ PAIRS = "seq1,seq2,identity,years\na,b,98.5,1.0\na,c,90,0.5\nb,c,99,\n"
 
 @pytest.fixture()
 def client(data_dir):
-    from prrsloom.api import app
+    from prrsloom.api import _recent, app
 
+    _recent.clear()  # each test starts with an empty per-client submission window (rate limit)
     with TestClient(app) as c:
         yield c
 
