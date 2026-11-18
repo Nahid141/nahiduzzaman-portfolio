@@ -159,7 +159,11 @@ def build_figure(lay: dict, dpi: int) -> tuple:
     #   branch end + label offset + label width + gap + bars  fits inside the axes.
     from matplotlib.font_manager import FontProperties
 
-    renderer = fig.canvas.get_renderer()
+    # A 1x1 renderer at the same dpi measures text exactly like the figure's own renderer, without
+    # allocating the figure-sized canvas (fig.canvas.get_renderer() would: 0.9 GB for 1,173 tips).
+    from matplotlib.backends.backend_agg import RendererAgg
+
+    renderer = RendererAgg(1, 1, dpi)
     font = FontProperties(size=8.5)
     widths = [renderer.get_text_width_height_descent(t["label"], font, ismath=False)[0] for t in tips]
     pt = dpi / 72.0
