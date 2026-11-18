@@ -26,8 +26,8 @@ ReadWritePaths=/srv/prrsloom
 # MemoryHigh makes the kernel reclaim/throttle before the hard limit is reached.
 # On a host shared with other services (e.g. the Oracle box with QI-GeneX-N) lower these
 # (MemoryMax=4G, CPUQuota=150%) and set PRRSLOOM_MAX_WORKERS=1, PRRSLOOM_CPU_THREADS=2.
-MemoryHigh=9G
-MemoryMax=10G
+MemoryHigh=12G
+MemoryMax=13G
 CPUQuota=400%
 TasksMax=512
 KillMode=control-group
