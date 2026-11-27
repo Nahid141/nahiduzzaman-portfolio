@@ -1,45 +1,59 @@
-# Private Connect: Deployment
+# Private Connect: Deployment ($0/month target)
 
-Status: design only. Nothing has been deployed, and no cloud resource, DNS record or firewall rule
-has been created. Each of those needs the owner's explicit approval.
+Adopted 2026-11-27, replacing the GCP VM plan. Nothing here needs Google Cloud or a payment method.
 
-## Placement
+| Part | Service and plan | Free allowance | How the app stays inside it |
+|---|---|---|---|
+| Frontend | Vercel (existing site) | existing | `/connect/*` pages only |
+| Backend | Render Free web service, region Ohio | 750 instance-hours/month, 512 MB RAM, sleeps after 15 idle minutes, no SMTP ports | one instance; wake-up retry in the client |
+| Database | Supabase Free, session pooler | 500 MB, paused after 7 days without activity | pool max 5 |
+| Files | Supabase Storage, private bucket `connect-files` | 1 GB storage, 5 GB egress, 50 MB per file | caps: 900 MB total, 150 MB per member, 4 GB downloads/month |
+| Meetings | LiveKit Cloud Build | 5,000 participant-minutes, 100 concurrent connections | cap 4,500 minutes/month, 10 per meeting |
+| Email | Brevo Free (300/day) or Resend Free (100/day) over HTTPS | provider limits | verification and reset emails only |
 
-- **Do not** run Private Connect on the PRRSLooM VM (`instance-20261114-064217`). PRRSLooM analyses are
-  memory-heavy, and a 10-person SFU needs steady CPU and bandwidth. A separate VM keeps one from starving the other.
-- Proposed: one new VM `connect-1` (e2-standard-4: 4 vCPU, 16 GB) running Nginx, connect-backend,
-  PostgreSQL 16 and Redis 7 under Docker Compose with memory limits; LiveKit on the same VM for a
-  first deployment, or LiveKit Cloud to avoid running TURN.
+Free tiers change; check each provider's pricing page before relying on these numbers.
 
-## Domains (to be created only after approval)
+## One-time setup
 
-- `connect-api.fnunahiduzzaman.com` → Nginx → connect-backend :8020 (HTTPS + WSS)
-- `connect-media.fnunahiduzzaman.com` → LiveKit (Phase 5)
+1. **Database credentials.** On your PC:
+   `powershell -ExecutionPolicy Bypass -File services\connect-backend\scripts\configure-supabase.ps1`
+   It asks for the database password, the downloaded Supabase CA certificate and (optionally) the Storage secret
+   key, LiveKit keys and an email API key, all with hidden input, and writes the git-ignored `.env`.
+2. **Review and migrate** (in `services/connect-backend`):
+   `node --env-file=.env --import tsx scripts/verify-db.ts` (review), then the same with `--migrate`.
+3. **Storage bucket:** `node --env-file=.env --import tsx scripts/setup-storage.ts`.
+4. **Administrator:** `node --env-file=.env --import tsx scripts/bootstrap-admin.ts --email <you>` (hidden prompt).
+5. **Render:** New → Blueprint → this repository (`render.yaml`). Enter the `sync: false` values in the Render
+   form: `DATABASE_URL` (the one from `.env`), `SUPABASE_SECRET_KEY`, `EMAIL_PROVIDER`, `EMAIL_API_KEY`,
+   `MAIL_FROM`, `LIVEKIT_*`.
+6. **DNS (Namecheap):** CNAME `connect-api` → `connect-backend.onrender.com` (the exact target Render shows), then
+   Verify in Render's Custom Domains tab. TLS is issued by Render.
+7. **Vercel:** environment variable `NEXT_PUBLIC_CONNECT_API_URL=https://connect-api.fnunahiduzzaman.com`, then redeploy.
+8. **LiveKit webhook:** in the LiveKit Cloud project settings add `https://connect-api.fnunahiduzzaman.com/api/v1/livekit/webhook`
+   so meeting minutes and connections are counted.
+9. **Supabase hardening (optional):** Dashboard → Integrations → Data API → turn it off. Storage keeps working.
 
-## Ports (self-hosted LiveKit, per LiveKit docs; confirm at deploy time)
+The cookie is first-party because `connect-api.fnunahiduzzaman.com` and `www.fnunahiduzzaman.com` are the same
+site; do not use the bare `onrender.com` URL in production (browsers would block the cookie).
 
-443/tcp (HTTPS, WSS, TURN/TLS), 80/tcp (ACME), 7881/tcp (WebRTC TCP fallback),
-50000–60000/udp (WebRTC media), 3478/udp (TURN/UDP).
+## Environment variables (names only)
 
-## Environment variables (names only; values come from Secret Manager)
+`NODE_ENV`, `HOST`, `PORT` (set by Render), `TRUST_PROXY`, `CONNECT_SITE_ORIGIN`, `CONNECT_DATA_KEY`, `DATABASE_URL`,
+`DATABASE_CA_FILE` or `DATABASE_CA_PEM`, `DB_POOL_MAX`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `STORAGE_BUCKET`,
+`EMAIL_PROVIDER`, `EMAIL_API_KEY`, `MAIL_FROM` (or `SMTP_*` off Render), `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
+`LIVEKIT_API_SECRET`, optional `REDIS_URL`, optional `VIRUSTOTAL_API_KEY`.
 
-`NODE_ENV`, `PORT`, `DATABASE_URL`, `REDIS_URL`, `CONNECT_SITE_ORIGIN`, `CONNECT_DATA_KEY` (32-byte base64),
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, later `GCS_BUCKET`,
-`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. See `services/connect-backend/.env.example`.
+## Operating notes
 
-## Rough monthly cost estimate (unverified list-price approximations; check current GCP and LiveKit pricing)
+- **Cold starts:** the first request after 15 idle minutes waits about a minute; the UI shows "Waking the server".
+- **Supabase pause:** a free project pauses after a week without activity; restore it from the dashboard.
+- **Backups:** Supabase Free has no managed backups. Take a manual dump when it matters:
+  `pg_dump "<DATABASE_URL>" --no-owner -Fc -f connect-YYYYMMDD.dump` (needs a local `pg_dump` 17).
+  Restoring into a fresh project and running `verify-db.ts` is the backup verification.
+- **Data key:** Render generates `CONNECT_DATA_KEY` once. Recreating the Blueprint creates a new key and makes stored
+  MFA secrets unreadable (the administrator would re-enrol MFA via `bootstrap-admin --reset-password`).
 
-| Item | Estimate |
-|---|---|
-| e2-standard-4 VM, us-central1, always on | about $100 |
-| 100 GB balanced persistent disk | about $10 |
-| Static external IP | a few dollars |
-| GCS storage, 100 GB | about $2 |
-| Internet egress for meetings: a 10-person call at ~3 Mbit/s down per person ≈ 13–14 GB/hour; at ~$0.12/GB | about $1.5–2 per meeting-hour |
-| Cloud SQL instead of local Postgres (smallest shared-core) | add roughly $10–30 |
-| LiveKit Cloud instead of self-hosting | depends on its current participant-minute and bandwidth pricing |
+## Self-hosting alternative
 
-## Backups
-
-Nightly `pg_dump` to a separate private GCS bucket with 30-day retention; quarterly restore test
-(procedure to be written and executed in Phase 8).
+`services/connect-backend/deploy/` still installs the backend on any Ubuntu 24.04 server (Postgres, Redis, Nginx,
+systemd). It is optional and no longer the default.

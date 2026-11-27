@@ -10,17 +10,22 @@
 - **Backends:** QI-GeneX-N FastAPI on Oracle (`api.fnunahiduzzaman.com`); PRRSLooM FastAPI on GCP VM
   `instance-20261114-064217` (`prrsloom-api.fnunahiduzzaman.com`, nginx + certbot). Neither is touched.
 
-## Target topology
+## Target topology ($0 stack, adopted 2026-11-27; replaces the earlier GCP VM design)
 
 ```
 Browser ──HTTPS──> www.fnunahiduzzaman.com (Vercel, Next.js)   pages under /connect/*
    │
-   ├─HTTPS / WSS──> connect-api.fnunahiduzzaman.com (new GCP VM, Nginx → Node connect-backend :8020)
-   │                    ├─ PostgreSQL 16 (durable state)
-   │                    ├─ Redis 7 (presence, rate limits, socket adapter, transient state)
-   │                    └─ GCS private bucket (files, via signed URLs)   [Phase 4]
-   └─WebRTC─────> connect-media.fnunahiduzzaman.com (LiveKit SFU + TURN)   [Phase 5]
+   ├─HTTPS / WSS──> connect-api.fnunahiduzzaman.com (Render Free web service, Node connect-backend)
+   │                    ├─ Supabase Postgres (session pooler :5432, verify-full TLS)    durable state
+   │                    ├─ in-process memory (single instance): presence, rate limits   [Redis optional]
+   │                    ├─ Supabase Storage private bucket "connect-files" (secret key server-side only)
+   │                    └─ LiveKit Cloud API (room create/delete, tokens, webhooks)
+   ├─HTTPS PUT/GET──> <ref>.supabase.co/storage  (short-lived signed upload/download URLs only)
+   └─WebRTC─────────> <project>.livekit.cloud  (LiveKit SFU + TURN, Build plan)
 ```
+
+The backend still runs anywhere Node 22 runs: `deploy/install.sh` keeps the self-hosted Ubuntu option
+(local Postgres + Redis + Nginx) for later, but nothing requires Google Cloud.
 
 The Next.js app only renders UI. Every authorization decision is made in `connect-backend`.
 
@@ -92,3 +97,14 @@ Socket.IO on the same service, authenticated from the session cookie during the 
 every event authorized again server-side; Redis adapter for multi-instance; rooms per channel and
 per private conversation; server-authoritative dashboard state with monotonically increasing
 `version`, client acks with event ids for de-duplication, and snapshot recovery on reconnect.
+
+## Phases 4 to 7 (2026-11-27)
+
+| Module | Backend | Notes |
+|---|---|---|
+| Files | `src/files/{types,storage,service,routes}.ts` | Browser uploads straight to Supabase Storage through a signed URL; `/complete` streams the object back, checks size, file signature and SHA-256, optionally a hash-only VirusTotal lookup, then marks it `ready`. A file belongs to one channel or conversation and inherits its access rules. |
+| Quotas | `src/lib/usage.ts`, `src/settings.ts` | Storage (total and per user, counting in-flight uploads under an advisory lock), monthly egress (charged before a download URL is signed), monthly meeting minutes (from LiveKit webhooks). Conditional increments cannot overshoot. |
+| Meetings | `src/meetings/{livekit,service,routes}.ts` | Admission runs in one transaction holding the meeting row lock; seats = connected participants + unexpired 60 s reservations; LiveKit room `maxParticipants` mirrors the cap. Waiting room, lock, invite-only, host transfer, mute (never unmute), remove, screen-share policy (one primary presenter when the host approves). |
+| Shared state | `src/collab/state.ts` | `shared_state` rows with a version; writes are compare-and-set and a conflict returns the current state (HTTP 409) so the client re-applies. Clients refetch `/state` on every reconnect. |
+| Lounge / presentation | `src/collab/service.ts` | Server-authoritative playback (`anchorMs` = server time at which position 0 plays, 1.5 s lead for buffering). Clients estimate clock offset (min-RTT of 5 samples) and correct drift by rate nudges or a seek. Shared files must be in public channels. PDF pages render with pdf.js locally (one download per viewer). |
+| Workspace | `src/collab/routes.ts` | Announcements, activity feed (no private-conversation events), polls (room-scoped), whiteboard strokes, Follow Host Mode (an offer banner, never forced navigation), admin system metrics. |

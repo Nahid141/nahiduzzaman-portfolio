@@ -2,6 +2,30 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-27, Phases 4 to 7 ($0 stack)
+
+`npm test` → **7 files, 89 tests, all passed** on PGlite (new: `files.test.ts` 15, `meetings.test.ts` 9,
+`collab.test.ts` 9, plus one config test). Storage and LiveKit are replaced by in-memory fakes in these tests.
+
+| Spec test (§19) | Result |
+|---|---|
+| 9. File upload validation (type allow-list, extension/MIME pairing, per-kind and 50 MB limits, signature and size verification, malware verdict) | Pass |
+| 10. Private file access (non-participant and admin get 404 on URL, metadata, delete and listing) | Pass |
+| 11. Ten-participant limit with simultaneous joins (11 concurrent → exactly 10 admitted, 11th gets `meeting_full`) | Pass on PGlite (single connection, so concurrency is serialised by the driver; the row lock is what protects real Postgres and is not yet exercised there) |
+| 12. Abandoned reservations free seats; connected participants keep them | Pass |
+| 13. Waiting room, lock, invite-only isolation, host controls, one-way mute | Pass |
+| 14. Music sync state machine (approval, server-timed start, pause/seek positions, stale-version 409, single advance on concurrent "ended") | Pass |
+| 15. Presentation control and pointer limited to controllers; Follow Host gated by settings | Pass |
+| Quotas: storage per user and total (incl. 8 concurrent requests), egress, meeting minutes | Pass |
+| Database lockdown: RLS on every public table | Pass (PGlite); Data API grant revocation only applies where Supabase roles exist |
+| Config: remote DB requires CA, `sslmode` refused, console email refused in production | Pass |
+
+Mutation check: removing the room access check from file downloads made the private-file test fail.
+
+Frontend: `tsc`, `eslint app/connect`, `next build` clean (20 `/connect` routes). Not clicked through in a browser.
+Not yet run: anything against Supabase, Render or LiveKit Cloud (credentials pending), sync accuracy on real devices,
+load tests.
+
 ## 2026-11-27, Phase 3
 
 `npm test` → **4 files, 55 tests, all passed** (12 new in `test/realtime.test.ts`, using a real listening

@@ -38,7 +38,10 @@ operators (VM, database or cloud access).
 ## Encryption
 
 - **In transit:** TLS everywhere (Vercel, Nginx with Let's Encrypt, WSS, LiveKit DTLS-SRTP).
-- **At rest:** managed disk encryption (GCP default) + application-level AES-256-GCM for TOTP secrets.
+- **In transit (database):** node-postgres verifies the Supabase CA chain and host name (`verify-full`
+  equivalent); `sslmode` in the URL is refused so it cannot silently weaken this.
+- **At rest:** provider-managed encryption (Supabase Postgres and Storage) + application-level AES-256-GCM
+  for TOTP secrets.
 - **End-to-end:** NOT implemented in Phase 2/3. The UI must say "private" only in the access-control sense.
   Server-side access control means the application prevents other members from reading a conversation,
   but anyone with database or VM access (the infrastructure operator) technically could. E2EE would remove
@@ -52,9 +55,41 @@ operators (VM, database or cloud access).
 Audit logs record actor, action, target and non-sensitive metadata. Never: passwords, tokens, TOTP secrets,
 recovery codes, cookie values, private message bodies, file contents.
 
+## Supabase-specific controls
+
+- Every table in `public` has row level security enabled and **no policies**, and all privileges are
+  revoked from `anon`, `authenticated` and `service_role` (migration 0002, verified by
+  `scripts/verify-db.ts` and a test). The Data API therefore exposes nothing even if it is enabled;
+  turning the Data API off in the dashboard is recommended as a second layer (Storage keeps working).
+- The backend is the only database client; it connects as the table owner over the session pooler.
+- The Storage secret key exists only in the backend environment. Browsers receive signed URLs: uploads
+  valid ~2 h for one path, downloads 5 minutes. The bucket is private and restricts MIME types and size.
+
+## File-sharing controls (Phase 4)
+
+- Allow-list of extension + MIME pairs; SVG, HTML and executables are refused. The stored bytes are
+  verified (size, signature) before the file becomes visible; mismatches are deleted.
+- Files that are not safe media are always served as attachments (`download=`), from the Supabase origin,
+  never from the site origin. PDFs in the presentation view render through pdf.js as canvas pixels.
+- Malware: there is no free scanner that fits Render Free (ClamAV needs ~1 GB RAM). Files are labelled
+  "not malware-scanned" unless `VIRUSTOTAL_API_KEY` is set, which enables a **hash-only** lookup (file
+  contents never leave Supabase; only known malware is detected). ZIP files are never extracted server-side.
+- Abandoned uploads (2 h) and expired files are deleted every 10 minutes.
+
+## Meetings (Phase 5)
+
+- LiveKit tokens: 10-minute TTL, scoped to one opaque room, identity = user id, publish sources limited by
+  the meeting's policy, no room-admin or recording grants. A webhook (signature-verified) that reports an
+  identity the database never admitted triggers removal from the room.
+- Recording is not implemented (off). Media is encrypted in transit (DTLS-SRTP) but LiveKit Cloud can
+  technically see it; LiveKit E2EE would need per-meeting key distribution through this backend, which
+  would then know the key, so it is not enabled. Background blur is not implemented.
+
 ## Residual risks (current)
 
-- Email delivery not configured; verification and reset depend on choosing a provider.
-- Single-VM deployment has no high availability.
-- E2EE absent (documented above).
-- No dependency vulnerability scanning in CI yet (Phase 8).
+- Render Free restarts or sleeps the single instance; in-memory rate limits and presence reset then.
+- `TRUST_PROXY=1` assumes Render adds exactly one proxy hop; confirm after the first deploy.
+- E2EE absent for messages (documented above) and media.
+- Free-tier caps are enforced by this app's counters, which are estimates (egress is charged per signed
+  URL, not per byte actually transferred).
+- No dependency vulnerability scanning in CI yet.

@@ -2,9 +2,43 @@
 
 Resumable checkpoint for future sessions. Update after every major phase.
 
-## Last verified checkpoint: 2026-11-27, Phase 3 complete, deployment prepared
+## Last verified checkpoint: 2026-11-27, Phases 4 to 7 built on the $0 stack (not yet deployed)
 
-Branch `feature/private-connect` (pushed to GitHub, not merged). Base: `site-redesign` @ 77327ee.
+Owner decision (2026-11-27): target $0/month. Supabase Free (Postgres + Storage), Render Free (backend), LiveKit
+Cloud Build (meetings), Brevo/Resend (email over HTTPS, because Render Free blocks SMTP). The GCP VM plan is dropped;
+`deploy/install.sh` remains only as an optional self-hosting path.
+
+### Done in this round (tested on PGlite; 89 backend tests pass)
+
+- **Supabase readiness:** verify-full TLS with the Supabase CA (`DATABASE_CA_FILE`/`DATABASE_CA_PEM`; `sslmode` in the URL
+  refused), pool size 5, Redis optional, `HOST`/`TRUST_PROXY` for Render. Migration `0002_files_meetings_lounge` adds
+  13 tables and then enables RLS on every public table and revokes all Data API grants (no policies).
+  `scripts/configure-supabase.ps1` (hidden input, percent-encoding, writes git-ignored `.env`, restricts ACL),
+  `scripts/verify-db.ts` (TLS check, migration review, `--migrate`, audit of tables/indexes/checks/RLS/grants),
+  `scripts/setup-storage.ts` (private bucket + signed-URL round trip), guarded real-Postgres test mode
+  (`TEST_DATABASE_URL` must name a `*_test` database).
+- **Phase 4 files:** signed direct uploads, server-side verification (size, signature, SHA-256), optional hash-only
+  VirusTotal lookup, room-scoped access, 5-minute download links, forced attachment for non-media, moderation,
+  folders, expiry, search, cleanup job, storage/egress quotas; Files page (drag and drop, multiple, progress,
+  previews), chat attachments.
+- **Phase 5 meetings:** LiveKit tokens/rooms/webhooks, 10-person cap with transactional admission and seat
+  reservations, waiting room, lock, invite-only, host controls (admit/deny/remove/mute/screen-share policy and
+  grants/transfer/end), raise hand, share requests, minute quota; Meetings page with LiveKit VideoConference
+  (grid/speaker, screen share, device menus, chat), reactions over the data channel.
+- **Phase 6:** versioned shared state with conflict responses, music lounge (requests, admin/DJ approval,
+  server-timed start, pause/seek/next/previous/repeat/shuffle, DJ grants with expiry, clock-offset sync and
+  drift correction, Enable Audio, local volume), synchronised presentations (PDF via pdf.js, video, image,
+  audio, whiteboard) with presenter pointer and leave/follow toggle, Follow Host Mode (offer banner).
+- **Phase 7 (partial):** polls, whiteboard, announcements, activity feed, live dashboard, admin limits/flags/
+  system metrics, PWA manifest without a service worker, cold-start wake banner.
+
+### Not done / honest gaps
+
+- Nothing has run against Supabase, Render or LiveKit yet: waiting for the owner to run `configure-supabase.ps1`.
+- Not built: background blur, picture-in-picture button, music ducking, lyrics, scheduled-meeting calendar UI,
+  shared notes, bookmarks, tasks, reminders, push notifications, QR invites, DND status, light theme,
+  presentation requests from members, profile pictures, malware scanning beyond hash lookup, load testing.
+- Browser click-through of the new pages has not been done.
 
 ### Phase 3 (real-time messaging), done
 
@@ -29,11 +63,8 @@ Branch `feature/private-connect` (pushed to GitHub, not merged). Base: `site-red
 
 ### Deployment status
 
-- Owner approved (2026-11-27): Google Workspace SMTP, new GCP VM + DNS + firewall, pushing the branch.
-- Prepared: `services/connect-backend/deploy/{install.sh,set-smtp.sh,connect-backend.service,nginx-connect-api.conf}`.
-- Waiting on the owner: `gcloud auth login` (token expired), Namecheap A record for
-  `connect-api.fnunahiduzzaman.com`, a Google app password entered via `set-smtp.sh`, Vercel env
-  `NEXT_PUBLIC_CONNECT_API_URL`.
+See PRIVATE_CONNECT_DEPLOYMENT.md (Supabase + Render + LiveKit Cloud). The earlier GCP approval is superseded
+by the $0 decision; no GCP resources were created.
 
 ### Done
 
@@ -63,8 +94,9 @@ Branch `feature/private-connect` (pushed to GitHub, not merged). Base: `site-red
 ### Next steps
 
 1. Finish deployment (see above), then run the smoke test against production.
-2. Phase 4: private GCS bucket, signed uploads, scanning, attachments in chat, profile pictures.
-3. Shared dashboard state with versioning (spec section 4) together with Phase 6 Follow Host Mode.
+2. After `.env` exists: `npm run db:verify`, `npm run db:migrate`, `npm run storage:setup`, run the suite against
+   `connect_test` (`verify-db.ts --create-test-db`, then `TEST_DATABASE_URL=... npm test`), bootstrap the admin.
+3. Render Blueprint, Namecheap CNAME, Vercel env, LiveKit webhook; then browser click-through and a production smoke test.
 
 ### How to run locally
 
