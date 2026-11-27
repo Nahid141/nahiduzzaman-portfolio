@@ -1,10 +1,56 @@
 @import "tailwindcss";
 
+/* Palette taken from the Lake Superior photographs on the home page:
+   deep lake water, birch bark, autumn aspen and shoreline lichen. */
+@theme {
+  --color-lake: #0b2130;
+  --color-deep: #12324a;
+  --color-shoal: #1d4a66;
+  --color-birch: #eef1ec;
+  --color-mist: #a3b6c2;
+  --color-aspen: #e8a93a;
+  --color-lichen: #8db89b;
+  --font-display: var(--font-newsreader), Georgia, serif;
+  --font-sans: var(--font-public-sans), system-ui, sans-serif;
+}
+
 html {
   scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  background: #020617;
+  background: var(--color-lake);
+  color: var(--color-birch);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-aspen);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--color-aspen);
+  color: var(--color-lake);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The one orchestrated entrance on the home hero. */
+.hero-rise > * {
+  animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.hero-rise > *:nth-child(2) { animation-delay: 0.08s; }
+.hero-rise > *:nth-child(3) { animation-delay: 0.16s; }
+.hero-rise > *:nth-child(4) { animation-delay: 0.24s; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

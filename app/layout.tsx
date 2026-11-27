@@ -1,13 +1,28 @@
 import "./globals.css";
-import Link from "next/link";
+import { Newsreader, Public_Sans } from "next/font/google";
+import SiteHeader from "./_components/SiteHeader";
+import { EMAILS, PROFILE_LINKS } from "./_data/profile";
+
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  variable: "--font-newsreader",
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+const publicSans = Public_Sans({
+  subsets: ["latin"],
+  variable: "--font-public-sans",
+  display: "swap",
+});
 
 export const metadata = {
   title: "Nahiduzzaman | Research Portfolio",
   description:
-    "Research, publications, tools, blog, and bioinformatics portfolio of Nahiduzzaman",
+    "Veterinary microbiology, genomics and molecular epidemiology: publications, NCBI data and open research tools by Nahiduzzaman.",
 };
 
-// 🔥 Backend URL (LOCAL + FUTURE DEPLOY)
+// Backend URL (local + deployed)
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -16,74 +31,31 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const navItems = [
-    { name: "Home", href: "/" },
-    { name: "Research", href: "/research" },
-    { name: "Publications", href: "/publications" },
-    { name: "Tools", href: "/tools" },
-    { name: "Blog", href: "/blog" },
-    { name: "About", href: "/about" },
-  ];
-
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-slate-950 text-white flex flex-col">
+    <html lang="en" className={`${newsreader.variable} ${publicSans.variable}`}>
+      <body className="flex min-h-screen flex-col bg-lake font-sans text-birch antialiased">
+        <SiteHeader />
 
-        {/* 🔥 HEADER */}
-        <header className="fixed left-0 top-0 z-50 w-full border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-6">
+        <main className="flex-1 pt-16">{children}</main>
 
-            {/* LOGO */}
-            <Link href="/" className="shrink-0">
-              <div className="text-lg font-black text-cyan-300 md:text-xl">
-                Nahiduzzaman
-              </div>
-              <div className="text-[11px] font-semibold text-slate-300">
-                DVM • Researcher
-              </div>
-            </Link>
-
-            {/* DESKTOP NAV */}
-            <nav className="hidden md:flex gap-8 text-sm font-bold text-white">
-              {navItems.map((item) => (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className="transition hover:text-cyan-300"
-                >
-                  {item.name}
-                </Link>
+        <footer className="border-t border-white/10">
+          <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="font-display text-2xl">Nahiduzzaman</p>
+              <a href={`mailto:${EMAILS[0]}`} className="mt-1 inline-block text-sm text-mist hover:text-aspen">
+                {EMAILS[0]}
+              </a>
+            </div>
+            <nav aria-label="Academic profiles" className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-mist">
+              {PROFILE_LINKS.map((link) => (
+                <a key={link.name} href={link.url} target="_blank" rel="noopener noreferrer" className="hover:text-aspen">
+                  {link.name}
+                </a>
               ))}
             </nav>
+            <p className="text-sm text-mist/70">© {new Date().getFullYear()} Nahiduzzaman</p>
           </div>
-
-          {/* MOBILE NAV */}
-          <nav className="flex md:hidden gap-3 overflow-x-auto border-t border-white/10 px-4 py-3 text-sm font-bold text-slate-200">
-            {navItems.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                className="shrink-0 rounded-full border border-white/10 bg-white/5 px-4 py-2 transition hover:border-cyan-300 hover:text-cyan-300"
-              >
-                {item.name}
-              </Link>
-            ))}
-          </nav>
-        </header>
-
-        {/* CONTENT */}
-        <main className="flex-1 pt-36 md:pt-24">
-          {children}
-        </main>
-
-        {/* FOOTER */}
-        <footer className="border-t border-white/10 py-6 text-center text-sm text-slate-400">
-          <p>© {new Date().getFullYear()} Nahiduzzaman. All rights reserved.</p>
-          <p className="mt-1 font-semibold text-cyan-300">
-            Developed by Nahiduzzaman
-          </p>
         </footer>
-
       </body>
     </html>
   );

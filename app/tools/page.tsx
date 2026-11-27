@@ -2999,11 +2999,13 @@ function RiskCategoryTable({
   rows,
   downloadCSV,
   fileName,
+  emptyMessage,
 }: {
   title: string;
   rows: Record<string, any>[];
   downloadCSV?: (text: string, name: string) => void;
   fileName: string;
+  emptyMessage?: string;
 }) {
   const normalizedRows = Array.isArray(rows) ? rows : [];
   const preferredColumns = [
@@ -3082,7 +3084,7 @@ function RiskCategoryTable({
 
       {normalizedRows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-5 text-sm text-slate-400">
-          No category-level rows returned yet. Run risk factor analysis after selecting outcome, predictors, and reference categories.
+          {emptyMessage || "No category-level rows returned yet. Run risk factor analysis after selecting outcome, predictors, and reference categories."}
         </div>
       ) : (
         <div className="max-h-[520px] overflow-auto rounded-2xl border border-white/10">
@@ -3394,6 +3396,23 @@ function RiskSection(props: any) {
               <ResultCard title="VIF status" value={riskResult.risk?.multicollinearity?.interpretation ?? riskResult.risk?.candidateMulticollinearity?.interpretation ?? "NA"} />
             </div>
 
+            {riskResult.risk?.error && (
+              <div className="mt-6 rounded-2xl border border-rose-300/30 bg-rose-300/10 p-4 text-sm text-rose-100">
+                {riskResult.risk.error}
+              </div>
+            )}
+
+            {Array.isArray(riskResult.risk?.modelSelectionNotes) && riskResult.risk.modelSelectionNotes.length > 0 && (
+              <div className="mt-6 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
+                <p className="font-black">Multivariable model selection</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {riskResult.risk.modelSelectionNotes.map((note: string, index: number) => (
+                    <li key={index}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <LogisticDiagnosticsPanel riskResult={riskResult} />
 
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -3413,6 +3432,13 @@ function RiskSection(props: any) {
                 rows={riskResult.risk?.tables?.multivariable ?? riskResult.risk?.multivariableCategoryTable ?? []}
                 downloadCSV={downloadCSV}
                 fileName="egstat_n_multivariable_category_table.csv"
+                emptyMessage={
+                  riskResult.risk?.outcomeType === "multi-category categorical"
+                    ? `The outcome "${riskResult.risk?.outcome}" has ${riskResult.risk?.outcomeLevels?.length ?? "more than two"} levels. Logistic regression needs exactly two (e.g. Positive/Negative); recode it in the editor above and run again.`
+                    : (riskResult.risk?.excludedPredictors?.length ?? 0) > 0 && (riskResult.risk?.modelablePredictors?.length ?? 0) === 0
+                    ? "Every selected predictor was excluded (see the excluded-predictor table). Choose other predictors and run again."
+                    : "The multivariable model could not be fitted with the current selection. Check the notes above."
+                }
               />
             </div>
 

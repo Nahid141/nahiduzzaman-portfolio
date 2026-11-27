@@ -840,7 +840,17 @@ function isIdLikeColumn(rows: RawRow[], column: string): boolean {
   const uniqueRatio = validCount > 0 ? levels.length / validCount : 0;
 
   if (lower === "id" || lower.endsWith("_id") || lower.includes("seller_id") || lower.includes("sample_id") || lower.includes("animal_id")) return true;
-  return validCount >= 30 && uniqueRatio > 0.8;
+  if (validCount < 30 || uniqueRatio <= 0.8) return false;
+
+  // Continuous measurements (weight, age in days, titres) are naturally unique per row and must stay
+  // in the model. A numeric column is only ID-like when it is a run of consecutive whole numbers.
+  if (isNumericColumn(rows, column)) {
+    const values = rows.map((r) => Number(r[column])).filter((v) => Number.isFinite(v));
+    if (!values.every((v) => Number.isInteger(v))) return false;
+    const span = Math.max(...values) - Math.min(...values) + 1;
+    return uniqueRatio > 0.95 && span <= values.length * 1.1;
+  }
+  return true;
 }
 
 function predictorCompleteness(rows: RawRow[], column: string): number {
@@ -987,10 +997,22 @@ function chooseMultivariablePredictorsByEventCapacity(
   for (const predictor of orderedCandidates) {
     const terms = encodedTermCountForPredictor(rows, predictor, referenceCategories);
     if (terms <= 0) continue;
-    if (usedTerms + terms > maxTerms && selected.length > 0) continue;
-    if (usedTerms + terms > Math.max(1, maxTerms)) continue;
+    if (usedTerms + terms > maxTerms) continue;
     selected.push(predictor);
     usedTerms += terms;
+  }
+
+  // Never return an empty model: if every candidate needs more terms than the events allow,
+  // keep the strongest one so a final-model table is still produced, and say so.
+  if (selected.length === 0) {
+    const strongest = orderedCandidates.find((p) => encodedTermCountForPredictor(rows, p, referenceCategories) > 0);
+    if (strongest) {
+      selected.push(strongest);
+      usedTerms = encodedTermCountForPredictor(rows, strongest, referenceCategories);
+      notes.push(
+        `Only ${counts.events} event(s) and ${counts.nonEvents} non-event(s): the strongest predictor (${strongest}, ${usedTerms} term(s)) exceeds the ~5 events-per-term guideline. Interpret the adjusted odds ratios with caution.`
+      );
+    }
   }
 
   if (orderedCandidates.length && selected.length < orderedCandidates.length) {
@@ -2662,7 +2684,8 @@ function decorateUnivariableRowsWithLogisticModels(tableRows: RawRow[], models: 
 
 function analyzeRisk(rows: RawRow[], outcome: string, predictors: string[], threshold: number, clarifications: RawRow, referenceCategories: RawRow = {}, outcomeEventLevel = "") {
   const profile = describeDataset(rows);
-  const outcomeIsNumeric = isNumericColumn(rows, outcome);
+  // A 0/1 (or 1/2) coded outcome is binary, not continuous: send it to logistic regression.
+  const outcomeIsNumeric = isNumericColumn(rows, outcome) && uniqueValues(rows, outcome).length > 2;
   const validPredictors = predictors.filter((p) => getColumns(rows).includes(p) && p !== outcome);
   const screening = screenRiskPredictorsForModeling(rows, outcome, validPredictors, referenceCategories, outcomeEventLevel);
   const modelablePredictors = screening.usable;
