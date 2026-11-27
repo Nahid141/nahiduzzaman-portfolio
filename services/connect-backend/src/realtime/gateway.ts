@@ -22,7 +22,7 @@ import {
 } from "../chat/service.js";
 import { messages, sessions, users } from "../db/schema.js";
 
-type SocketData = { userId: string; sessionId: string; role: "admin" | "member"; username: string };
+type SocketData = { userId: string; sessionId: string; role: "admin" | "member"; username: string; rooms?: string[] };
 type Ack = (res: { ok: true; data?: unknown } | { ok: false; error: string }) => void;
 
 export type Realtime = {
@@ -60,6 +60,8 @@ export function attachGateway(app: FastifyInstance, deps: AppDeps): Realtime {
     if (!auth) return next(new Error("unauthenticated"));
     if (auth.user.role === "admin" && !auth.session.mfaPassed) return next(new Error("mfa_enrollment_required"));
     const data: SocketData = { userId: auth.user.id, sessionId: auth.session.id, role: auth.user.role, username: auth.user.username };
+    // Rooms are resolved here, before the client sees "connect", so nothing sent right after connecting is missed.
+    data.rooms = [`user:${data.userId}`, `session:${data.sessionId}`, "workspace", ...(await accessibleRooms(deps.db, actor(data)))];
     socket.data = data;
     next();
   });
@@ -109,15 +111,18 @@ export function attachGateway(app: FastifyInstance, deps: AppDeps): Realtime {
   const actor = (d: SocketData) => ({ id: d.userId, role: d.role });
   const broadcastUpdate = (m: MessageDto) => io.to(roomOf(m.target)).emit("chat:updated", m);
 
-  io.on("connection", async (socket) => {
+  io.on("connection", (socket) => {
     const d = socket.data as SocketData;
-    await socket.join([`user:${d.userId}`, `session:${d.sessionId}`, "workspace", ...(await accessibleRooms(deps.db, actor(d)))]);
-    if ((await deps.presence.connect(d.userId)) === 1) {
-      io.to("workspace").emit("presence:update", { userId: d.userId, online: true });
-    }
-    socket.emit("presence:snapshot", await deps.presence.online());
+    // Join and register every handler synchronously: an await here would drop events the client sends at once.
+    void socket.join(d.rooms ?? []);
+    delete d.rooms;
+    const joined = deps.presence.connect(d.userId).then(async (count) => {
+      if (count === 1) io.to("workspace").emit("presence:update", { userId: d.userId, online: true });
+      socket.emit("presence:snapshot", await deps.presence.online());
+    });
 
     socket.on("disconnect", async () => {
+      await joined.catch(() => undefined);
       if ((await deps.presence.disconnect(d.userId)) === 0) {
         io.to("workspace").emit("presence:update", { userId: d.userId, online: false });
       }

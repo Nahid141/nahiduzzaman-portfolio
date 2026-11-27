@@ -35,22 +35,23 @@ services:
         value: connect-files
       - key: SUPABASE_URL
         value: https://pezjgvfjqtkiztgrmeep.supabase.co
-      # Generated once by Render. Changing it later makes stored MFA secrets unreadable.
+      # Must be the same key as services/connect-backend/.env: the administrator is bootstrapped locally and
+      # their MFA secret is encrypted with it. Paste it with scripts/copy-env-value.ps1 CONNECT_DATA_KEY.
       - key: CONNECT_DATA_KEY
-        generateValue: true
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
       # Render Free blocks outbound SMTP (ports 25/465/587), so email goes through an HTTPS API.
       - key: EMAIL_PROVIDER
-        sync: false
+        value: resend
+      - key: MAIL_FROM
+        value: Private Connect <noreply@fnunahiduzzaman.com>
       - key: EMAIL_API_KEY
         sync: false
-      - key: MAIL_FROM
-        sync: false
       - key: LIVEKIT_URL
-        sync: false
+        value: wss://private-connect-utpe3xgu.livekit.cloud
       - key: LIVEKIT_API_KEY
         sync: false
       - key: LIVEKIT_API_SECRET

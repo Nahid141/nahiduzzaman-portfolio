@@ -15,22 +15,32 @@ Free tiers change; check each provider's pricing page before relying on these nu
 
 ## One-time setup
 
-1. **Database credentials.** On your PC:
+Status on 2026-11-27: steps 1 to 3 are done (database migrated through `0003`, bucket `connect-files` created and
+checked). Steps 4 to 9 are still to do.
+
+1. **Credentials.** On your PC:
    `powershell -ExecutionPolicy Bypass -File services\connect-backend\scripts\configure-supabase.ps1`
    It asks for the database password, the downloaded Supabase CA certificate and (optionally) the Storage secret
    key, LiveKit keys and an email API key, all with hidden input, and writes the git-ignored `.env`.
-2. **Review and migrate** (in `services/connect-backend`):
-   `node --env-file=.env --import tsx scripts/verify-db.ts` (review), then the same with `--migrate`.
-3. **Storage bucket:** `node --env-file=.env --import tsx scripts/setup-storage.ts`.
-4. **Administrator:** `node --env-file=.env --import tsx scripts/bootstrap-admin.ts --email <you>` (hidden prompt).
-5. **Render:** New → Blueprint → this repository (`render.yaml`). Enter the `sync: false` values in the Render
-   form: `DATABASE_URL` (the one from `.env`), `SUPABASE_SECRET_KEY`, `EMAIL_PROVIDER`, `EMAIL_API_KEY`,
-   `MAIL_FROM`, `LIVEKIT_*`.
-6. **DNS (Namecheap):** CNAME `connect-api` → `connect-backend.onrender.com` (the exact target Render shows), then
-   Verify in Render's Custom Domains tab. TLS is issued by Render.
-7. **Vercel:** environment variable `NEXT_PUBLIC_CONNECT_API_URL=https://connect-api.fnunahiduzzaman.com`, then redeploy.
-8. **LiveKit webhook:** in the LiveKit Cloud project settings add `https://connect-api.fnunahiduzzaman.com/api/v1/livekit/webhook`
-   so meeting minutes and connections are counted.
+   To replace one value later: `scripts\set-secret.ps1 LIVEKIT_API_SECRET` (hidden input). Both scripts refuse a
+   value made of mask characters (`••••`), which is what a dashboard shows before you reveal or copy a key.
+2. **Review and migrate** (in `services/connect-backend`): `npm run db:verify` (review only), then `npm run db:migrate`.
+3. **Storage bucket and live service checks:** `npm run storage:setup`, then `npm run services:check` (Data API
+   lockdown, email through the provider's test inbox, LiveKit room/token/webhook signature).
+4. **Administrator:** `npm run admin:bootstrap -- --email <your address>` (hidden password prompt, at least 14
+   characters). Then sign in at `/connect/admin/login` and enrol MFA.
+5. **Render:** New → Blueprint → this repository (`render.yaml`, branch `feature/private-connect`). Render asks for the
+   `sync: false` values. Paste each one with
+   `powershell -ExecutionPolicy Bypass -File services\connect-backend\scripts\copy-env-value.ps1 <NAME>`, which
+   copies the value from `.env` to the clipboard without showing it and clears the clipboard after 60 seconds:
+   `CONNECT_DATA_KEY`, `DATABASE_URL`, `SUPABASE_SECRET_KEY`, `EMAIL_API_KEY`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
+   `CONNECT_DATA_KEY` must be the same value as `.env`: the administrator's MFA secret is encrypted with it in step 4.
+6. **DNS (Namecheap):** Advanced DNS → add a CNAME record, host `connect-api`, value = the `onrender.com` target Render
+   shows under Custom Domains. Then click Verify in Render. Render issues the TLS certificate.
+7. **Vercel:** Project → Settings → Environment Variables: `NEXT_PUBLIC_CONNECT_API_URL` =
+   `https://connect-api.fnunahiduzzaman.com` (Production), then redeploy.
+8. **LiveKit webhook:** LiveKit Cloud → project Settings → Webhooks → add
+   `https://connect-api.fnunahiduzzaman.com/api/v1/livekit/webhook` (signed with the project's API key).
 9. **Supabase hardening (optional):** Dashboard → Integrations → Data API → turn it off. Storage keeps working.
 
 The cookie is first-party because `connect-api.fnunahiduzzaman.com` and `www.fnunahiduzzaman.com` are the same
@@ -50,8 +60,9 @@ site; do not use the bare `onrender.com` URL in production (browsers would block
 - **Backups:** Supabase Free has no managed backups. Take a manual dump when it matters:
   `pg_dump "<DATABASE_URL>" --no-owner -Fc -f connect-YYYYMMDD.dump` (needs a local `pg_dump` 17).
   Restoring into a fresh project and running `verify-db.ts` is the backup verification.
-- **Data key:** Render generates `CONNECT_DATA_KEY` once. Recreating the Blueprint creates a new key and makes stored
-  MFA secrets unreadable (the administrator would re-enrol MFA via `bootstrap-admin --reset-password`).
+- **Data key:** `CONNECT_DATA_KEY` encrypts MFA secrets. Keep the `.env` value and the Render value identical, and back
+  it up somewhere private. Losing or changing it makes the stored MFA secret unreadable (the administrator would then run
+  `bootstrap-admin --reset-password` and enrol MFA again).
 
 ## Self-hosting alternative
 

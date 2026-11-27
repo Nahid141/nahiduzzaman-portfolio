@@ -2,6 +2,40 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-27, against the real services (Supabase, Resend; LiveKit pending)
+
+**Automated suite on Supabase PostgreSQL 17.12** (isolated `connect_test` database through the session pooler,
+verify-full TLS; the test helper refuses any database whose name does not end in `_test`):
+
+| Run | Result |
+|---|---|
+| First run (before fixes) | 83/90 passed; 7 realtime tests failed (socket race, timestamp precision) |
+| After the gateway and `0003` fixes, full suite | **90/90 passed** (7 files, 983 s) |
+| Re-run of the files changed afterwards (`admin.test.ts`, `files.test.ts`) | **28/28 passed** |
+| Local PGlite, full suite after all changes (91 tests incl. the new reset test) | **91/91 passed** |
+
+**Live service checks** (`npm run db:verify`, `storage:setup`, `services:check`):
+TLS 1.3 authorised against the Supabase CA; migrations applied; RLS on 28/28 tables, 0 policies, no Data API
+grants; REST reads of users/messages/files with the secret key → `403 42501`; private bucket with 50 MB limit and
+MIME allow-list, text/html refused, public URL refused, signed upload/download/delete work; Resend accepted a
+message from `noreply@fnunahiduzzaman.com` (test inbox `delivered@resend.dev`). LiveKit: **failed**, the secret in
+`.env` is a masked `••••` value; not retested yet.
+
+**Production-mode start** with the real `.env` (`NODE_ENV=production`): config validation passes, health 200,
+foreign origin 403, HSTS/CSP/no-store headers present, resident memory about 104 MB (Render Free allows 512 MB).
+
+**Browser run** (installed Chrome driven headless by playwright-core; `next build` + `next start`; backend on a
+throwaway `connect_e2e` Supabase database with real Storage; admin on a 1280×900 window, member on a 390×844
+mobile viewport): **21/21 steps passed**, with no unexpected console errors: landing; admin login → forced MFA
+enrolment with a real TOTP → recovery codes → console; wrong password 401; member registration; email
+verification link; pending member refused; admin approval; member dashboard; live chat between the two
+browsers; image upload with progress, verification and a signed download URL (200, image/png); HTML disguised
+as PNG rejected (`signature_mismatch`) and its object deleted; audio + PDF attachments in chat; music request →
+admin "Play next" → both see it playing; PDF presentation followed to page 2 on the phone (canvas render);
+whiteboard; conference page without LiveKit; live announcement on the member dashboard; members/messages/
+settings pages; member blocked from admin data (403). Screenshots were reviewed; the music progress bar bug
+was found this way. Not covered: meetings (LiveKit), real audio output, multiple real devices.
+
 ## 2026-11-27, Phases 4 to 7 ($0 stack)
 
 `npm test` → **7 files, 89 tests, all passed** on PGlite (new: `files.test.ts` 15, `meetings.test.ts` 9,

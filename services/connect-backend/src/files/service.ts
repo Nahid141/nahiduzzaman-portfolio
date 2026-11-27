@@ -234,9 +234,9 @@ export async function listFiles(deps: FileDeps, user: Actor, q: z.infer<typeof l
   const rooms = await accessibleRooms(deps.db, user);
   let channelIds = rooms.filter((r) => r.startsWith("ch:")).map((r) => r.slice(3));
   let conversationIds = rooms.filter((r) => r.startsWith("cv:")).map((r) => r.slice(3));
-  if (q.targetKind && q.targetId) {
-    channelIds = q.targetKind === "channel" ? channelIds.filter((x) => x === q.targetId) : [];
-    conversationIds = q.targetKind === "conversation" ? conversationIds.filter((x) => x === q.targetId) : [];
+  if (q.targetKind) {
+    channelIds = q.targetKind === "channel" ? channelIds.filter((x) => !q.targetId || x === q.targetId) : [];
+    conversationIds = q.targetKind === "conversation" ? conversationIds.filter((x) => !q.targetId || x === q.targetId) : [];
   }
   const roomFilter = [
     channelIds.length ? inArray(files.channelId, channelIds) : undefined,

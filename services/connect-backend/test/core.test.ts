@@ -81,6 +81,12 @@ describe("config", () => {
     expect(ok.email.provider).toBe("brevo");
     expect(() => loadConfig({ ...base, DATABASE_URL: remote, DATABASE_CA_PEM: pem, EMAIL_PROVIDER: "console" })).toThrow(/EMAIL_PROVIDER/);
   });
+
+  it("refuses a secret copied from a masked dashboard display", () => {
+    expect(() => loadConfig({ LIVEKIT_URL: "wss://x.livekit.cloud", LIVEKIT_API_KEY: "APIx", LIVEKIT_API_SECRET: "••••••••" })).toThrow(
+      /LIVEKIT_API_SECRET contains non-ASCII/
+    );
+  });
 });
 
 describe("crypto", () => {

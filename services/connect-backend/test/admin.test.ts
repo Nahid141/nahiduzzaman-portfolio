@@ -27,6 +27,17 @@ describe("bootstrap script", () => {
     ).toBe("password_reset");
   });
 
+  it("a password reset also signs the admin out everywhere and requires MFA enrolment again", async () => {
+    const admin = await t.adminSession();
+    expect((await t.call("GET", "/api/v1/auth/me", undefined, { cookie: admin.cookie })).statusCode).toBe(200);
+    const fresh = "a brand new admin password";
+    await bootstrapAdmin(t.db, { username: "nahid007", email: "x", password: fresh, resetPassword: true });
+    expect((await t.call("GET", "/api/v1/auth/me", undefined, { cookie: admin.cookie })).statusCode).toBe(401);
+    expect((await t.db.select().from(users))[0]).toMatchObject({ mfaEnabled: false, totpSecretEnc: null });
+    const login = await t.call("POST", "/api/v1/auth/login/admin", { identifier: "nahid007", password: fresh });
+    expect(login.json()).toEqual({ step: "enroll_mfa" });
+  });
+
   it("rejects short admin passwords", async () => {
     await expect(bootstrapAdmin(t.db, { username: "nahid007", email: "a@b.c", password: "short pw" })).rejects.toThrow(/at least 14/);
   });

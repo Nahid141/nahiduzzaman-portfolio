@@ -76,6 +76,11 @@ function parseTrustProxy(v: string): boolean | number | string {
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const e = schema.parse(env);
   const production = e.NODE_ENV === "production";
+  // A key copied from a dashboard's masked "••••" display is not a key; say so instead of failing at first use.
+  for (const name of ["DATABASE_URL", "SUPABASE_SECRET_KEY", "EMAIL_API_KEY", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "SMTP_PASSWORD"] as const) {
+    const v = (e as Record<string, unknown>)[name];
+    if (typeof v === "string" && /[^\x20-\x7e]/.test(v)) throw new Error(`${name} contains non-ASCII characters (a masked value was probably copied)`);
+  }
 
   let dataKey: Buffer;
   if (e.CONNECT_DATA_KEY) {

@@ -16,6 +16,7 @@
     "db:verify": "node --env-file=.env --import tsx scripts/verify-db.ts",
     "db:migrate": "node --env-file=.env --import tsx scripts/verify-db.ts --migrate",
     "storage:setup": "node --env-file=.env --import tsx scripts/setup-storage.ts",
+    "services:check": "node --env-file=.env --import tsx scripts/check-services.ts",
     "admin:bootstrap": "node --env-file=.env --import tsx scripts/bootstrap-admin.ts"
   },
   "dependencies": {

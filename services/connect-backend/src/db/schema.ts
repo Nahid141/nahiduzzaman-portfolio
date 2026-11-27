@@ -37,13 +37,13 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     role: roleEnum("role").notNull().default("member"),
     status: statusEnum("status").notNull().default("pending_verification"),
-    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
-    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true, precision: 3 }),
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true, precision: 3 }),
     mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     /** AES-256-GCM ciphertext of the TOTP seed (pending or confirmed). */
     totpSecretEnc: text("totp_secret_enc"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`),
@@ -62,10 +62,10 @@ export const sessions = pgTable(
     tokenHash: text("token_hash").notNull(),
     /** False while an admin still has to pass or enroll MFA. */
     mfaPassed: boolean("mfa_passed").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, precision: 3 }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true, precision: 3 }),
     ip: text("ip"),
     userAgent: text("user_agent"),
   },
@@ -81,9 +81,9 @@ export const oneTimeTokens = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     purpose: tokenPurposeEnum("purpose").notNull(),
     tokenHash: text("token_hash").notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    usedAt: timestamp("used_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, precision: 3 }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("one_time_tokens_hash_uq").on(t.tokenHash), index("one_time_tokens_user_idx").on(t.userId)]
 );
@@ -96,7 +96,7 @@ export const recoveryCodes = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     codeHash: text("code_hash").notNull(),
-    usedAt: timestamp("used_at", { withTimezone: true }),
+    usedAt: timestamp("used_at", { withTimezone: true, precision: 3 }),
   },
   (t) => [index("recovery_codes_user_idx").on(t.userId)]
 );
@@ -104,7 +104,7 @@ export const recoveryCodes = pgTable(
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
 });
 
 export const auditLogs = pgTable(
@@ -116,7 +116,7 @@ export const auditLogs = pgTable(
     targetType: text("target_type"),
     targetId: text("target_id"),
     metadata: jsonb("metadata").notNull().default({}),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [index("audit_logs_created_idx").on(t.createdAt)]
 );
@@ -129,7 +129,7 @@ export const securityEvents = pgTable(
     kind: text("kind").notNull(),
     ip: text("ip"),
     metadata: jsonb("metadata").notNull().default({}),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [index("security_events_created_idx").on(t.createdAt)]
 );
@@ -149,8 +149,8 @@ export const channels = pgTable(
     description: text("description"),
     kind: channelKindEnum("kind").notNull().default("public"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("channels_name_lower_uq").on(sql`lower(${t.name})`)]
 );
@@ -165,7 +165,7 @@ export const channelMembers = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    addedAt: timestamp("added_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("channel_members_uq").on(t.channelId, t.userId)]
 );
@@ -177,7 +177,7 @@ export const conversations = pgTable("conversations", {
   /** For 1:1 conversations: "<smallerUserId>:<largerUserId>", so each pair has one conversation. */
   directKey: text("direct_key").unique(),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
 });
 
 export const conversationParticipants = pgTable(
@@ -189,9 +189,9 @@ export const conversationParticipants = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-    mutedAt: timestamp("muted_at", { withTimezone: true }),
-    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true, precision: 3 }),
+    mutedAt: timestamp("muted_at", { withTimezone: true, precision: 3 }),
+    joinedAt: timestamp("joined_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("conversation_participants_uq").on(t.conversationId, t.userId), index("conversation_participants_user_idx").on(t.userId)]
 );
@@ -209,11 +209,11 @@ export const messages = pgTable(
     replyToId: uuid("reply_to_id"),
     forwardedFromId: uuid("forwarded_from_id"),
     mentions: jsonb("mentions").$type<string[]>().notNull().default([]),
-    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true, precision: 3 }),
     pinnedBy: uuid("pinned_by"),
-    editedAt: timestamp("edited_at", { withTimezone: true }),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    editedAt: timestamp("edited_at", { withTimezone: true, precision: 3 }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index("messages_channel_created_idx").on(t.channelId, t.createdAt),
@@ -233,7 +233,7 @@ export const reactions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     emoji: text("emoji").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("reactions_uq").on(t.messageId, t.userId, t.emoji)]
 );
@@ -247,7 +247,7 @@ export const readStates = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     /** "ch:<uuid>" or "cv:<uuid>" */
     target: text("target").notNull(),
-    lastReadAt: timestamp("last_read_at", { withTimezone: true }).notNull(),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true, precision: 3 }).notNull(),
   },
   (t) => [uniqueIndex("read_states_uq").on(t.userId, t.target)]
 );
@@ -261,7 +261,7 @@ export const blocks = pgTable(
     blockedId: uuid("blocked_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("blocks_uq").on(t.blockerId, t.blockedId)]
 );
@@ -275,8 +275,8 @@ export const notifications = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     payload: jsonb("payload").notNull().default({}),
-    readAt: timestamp("read_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [index("notifications_user_created_idx").on(t.userId, t.createdAt)]
 );
@@ -307,10 +307,10 @@ export const files = pgTable(
     rejectReason: text("reject_reason"),
     /** "not_scanned" until a scanner is configured; "hash_clean" or "malware" after a hash lookup. */
     scan: text("scan").notNull().default("not_scanned"),
-    expiresAt: timestamp("expires_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    readyAt: timestamp("ready_at", { withTimezone: true }),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    readyAt: timestamp("ready_at", { withTimezone: true, precision: 3 }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, precision: 3 }),
   },
   (t) => [
     uniqueIndex("files_object_path_uq").on(t.objectPath),
@@ -341,7 +341,7 @@ export const usageCounters = pgTable(
     key: text("key").notNull(),
     period: text("period").notNull(),
     value: bigint("value", { mode: "number" }).notNull().default(0),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.key, t.period] })]
 );
@@ -371,10 +371,10 @@ export const meetings = pgTable(
     screenShare: text("screen_share").notNull().default("all"),
     maxParticipants: integer("max_participants").notNull().default(10),
     status: meetingStatusEnum("status").notNull().default("live"),
-    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
-    startedAt: timestamp("started_at", { withTimezone: true }),
-    endedAt: timestamp("ended_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true, precision: 3 }),
+    startedAt: timestamp("started_at", { withTimezone: true, precision: 3 }),
+    endedAt: timestamp("ended_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("meetings_room_uq").on(t.room), index("meetings_status_idx").on(t.status, t.createdAt)]
 );
@@ -390,13 +390,13 @@ export const meetingParticipants = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     state: participantStateEnum("state").notNull(),
     canScreenShare: boolean("can_screen_share").notNull().default(false),
-    handRaisedAt: timestamp("hand_raised_at", { withTimezone: true }),
-    shareRequestedAt: timestamp("share_requested_at", { withTimezone: true }),
+    handRaisedAt: timestamp("hand_raised_at", { withTimezone: true, precision: 3 }),
+    shareRequestedAt: timestamp("share_requested_at", { withTimezone: true, precision: 3 }),
     /** A join token holds a seat until this time unless LiveKit reports the participant connected. */
-    reservedUntil: timestamp("reserved_until", { withTimezone: true }),
-    connectedAt: timestamp("connected_at", { withTimezone: true }),
-    leftAt: timestamp("left_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    reservedUntil: timestamp("reserved_until", { withTimezone: true, precision: 3 }),
+    connectedAt: timestamp("connected_at", { withTimezone: true, precision: 3 }),
+    leftAt: timestamp("left_at", { withTimezone: true, precision: 3 }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.meetingId, t.userId] }), index("meeting_participants_user_idx").on(t.userId)]
 );
@@ -411,7 +411,7 @@ export const sharedState = pgTable("shared_state", {
   version: integer("version").notNull().default(0),
   state: jsonb("state").notNull().default({}),
   updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
 });
 
 export const musicRequestStatusEnum = pgEnum("music_request_status", ["pending", "queued", "rejected", "played", "removed"]);
@@ -428,8 +428,8 @@ export const musicRequests = pgTable(
     note: text("note").notNull().default(""),
     decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
     position: integer("position"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    decidedAt: timestamp("decided_at", { withTimezone: true, precision: 3 }),
   },
   (t) => [index("music_requests_status_idx").on(t.status, t.position), index("music_requests_file_idx").on(t.fileId)]
 );
@@ -442,9 +442,9 @@ export const djGrants = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     grantedBy: uuid("granted_by").references(() => users.id, { onDelete: "set null" }),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    revokedAt: timestamp("revoked_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, precision: 3 }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [index("dj_grants_user_idx").on(t.userId)]
 );
@@ -455,8 +455,8 @@ export const announcements = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     authorId: uuid("author_id").references(() => users.id, { onDelete: "set null" }),
     body: text("body").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, precision: 3 }),
   },
   (t) => [index("announcements_created_idx").on(t.createdAt)]
 );
@@ -469,7 +469,7 @@ export const activity = pgTable(
     actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
     kind: text("kind").notNull(),
     payload: jsonb("payload").notNull().default({}),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [index("activity_created_idx").on(t.createdAt)]
 );
@@ -488,9 +488,9 @@ export const polls = pgTable(
     options: jsonb("options").$type<string[]>().notNull(),
     multiple: boolean("multiple").notNull().default(false),
     anonymous: boolean("anonymous").notNull().default(false),
-    closesAt: timestamp("closes_at", { withTimezone: true }),
-    closedAt: timestamp("closed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closesAt: timestamp("closes_at", { withTimezone: true, precision: 3 }),
+    closedAt: timestamp("closed_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [index("polls_channel_idx").on(t.channelId, t.createdAt), index("polls_conversation_idx").on(t.conversationId, t.createdAt)]
 );
@@ -505,7 +505,7 @@ export const pollVotes = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     option: integer("option").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.pollId, t.userId, t.option] }), index("poll_votes_user_idx").on(t.userId)]
 );

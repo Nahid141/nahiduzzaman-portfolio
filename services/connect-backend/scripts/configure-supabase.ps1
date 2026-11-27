@@ -24,8 +24,11 @@ $SupabaseUrl = 'https://pezjgvfjqtkiztgrmeep.supabase.co'
 function Read-Secret([string]$Prompt) {
   $secure = Read-Host -Prompt $Prompt -AsSecureString
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-  try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+  try { $v = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
   finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+  # Dashboards display hidden keys as "••••"; copying that display instead of the key is an easy mistake.
+  if ($v -match '[^\x20-\x7E]') { throw 'That value contains non-ASCII characters (often a masked "••••" display). Copy the real value and run the script again.' }
+  return $v
 }
 
 # Existing values are kept unless replaced.

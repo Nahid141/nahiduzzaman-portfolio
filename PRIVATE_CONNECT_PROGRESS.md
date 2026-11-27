@@ -2,13 +2,37 @@
 
 Resumable checkpoint for future sessions. Update after every major phase.
 
-## Last verified checkpoint: 2026-11-27, Phases 4 to 7 built on the $0 stack (not yet deployed)
+## Last verified checkpoint: 2026-11-27, Supabase live; Render, DNS, Vercel and LiveKit webhook not done yet
 
-Owner decision (2026-11-27): target $0/month. Supabase Free (Postgres + Storage), Render Free (backend), LiveKit
-Cloud Build (meetings), Brevo/Resend (email over HTTPS, because Render Free blocks SMTP). The GCP VM plan is dropped;
-`deploy/install.sh` remains only as an optional self-hosting path.
+### Done against the real services (2026-11-27, second session)
 
-### Done in this round (tested on PGlite; 89 backend tests pass)
+- **Supabase database:** TLS 1.3 with the CA chain verified; migrations `0000`–`0003` applied to production
+  (`postgres`); audit passes (28 tables, RLS on all, 0 policies, no grants for anon/authenticated/service_role,
+  6 CHECK constraints, `#general` seeded). Live REST probe with the secret key: `403 42501` on users/messages/files.
+- **Supabase Storage:** private bucket `connect-files` (50 MB, MIME allow-list); signed upload, signed download,
+  public URL refused, text/html refused, delete. Test objects removed (`scripts/purge-orphan-objects.ts`).
+- **Resend:** accepted a message from `noreply@fnunahiduzzaman.com` (Resend test inbox).
+- **LiveKit:** NOT working yet. The `LIVEKIT_API_SECRET` in `.env` is 32 mask characters (`•`) copied from the
+  dashboard's hidden display. Fix: `scripts/set-secret.ps1 LIVEKIT_API_SECRET`, then `npm run services:check`.
+- **Test suite against Supabase** (isolated `connect_test` database): see the test report.
+- **Browser run** (Chrome via playwright-core, production build, local backend on a throwaway `connect_e2e`
+  database, real Supabase Storage): 21/21 steps, see the test report. The database was dropped afterwards.
+
+### Bugs found and fixed by running against the real database
+
+- Socket.IO: rooms were joined and event handlers registered only after awaited database calls in the
+  `connection` handler, so events sent right after connecting were dropped (invisible on PGlite, real over a
+  35 ms network). Rooms are now resolved in the handshake middleware and handlers register synchronously.
+- Timestamps: Postgres stored microseconds but JavaScript keeps milliseconds, so marking the latest message read
+  left it unread. Migration `0003_ms_timestamps` sets every timestamp column to millisecond precision.
+- `render.yaml` generated its own `CONNECT_DATA_KEY`, which would not decrypt the MFA secret of an administrator
+  bootstrapped locally. It is now `sync: false` and pasted from `.env` (`scripts/copy-env-value.ps1`).
+- `bootstrap-admin --reset-password` now also clears MFA and revokes sessions (the recovery path for a lost
+  authenticator or data key; before, a lost key meant a permanent lock-out).
+- Music lounge showed a full progress bar before the track length was known; the file list ignored
+  `targetKind` without `targetId`.
+
+### Phases 4 to 7 built earlier on 2026-11-27 (first tested on PGlite)
 
 - **Supabase readiness:** verify-full TLS with the Supabase CA (`DATABASE_CA_FILE`/`DATABASE_CA_PEM`; `sslmode` in the URL
   refused), pool size 5, Redis optional, `HOST`/`TRUST_PROXY` for Render. Migration `0002_files_meetings_lounge` adds
@@ -34,11 +58,12 @@ Cloud Build (meetings), Brevo/Resend (email over HTTPS, because Render Free bloc
 
 ### Not done / honest gaps
 
-- Nothing has run against Supabase, Render or LiveKit yet: waiting for the owner to run `configure-supabase.ps1`.
+- Not yet run: Render, the custom domain, Vercel production env, LiveKit (secret pending), a real meeting with
+  several devices, music sync accuracy across real devices.
 - Not built: background blur, picture-in-picture button, music ducking, lyrics, scheduled-meeting calendar UI,
   shared notes, bookmarks, tasks, reminders, push notifications, QR invites, DND status, light theme,
   presentation requests from members, profile pictures, malware scanning beyond hash lookup, load testing.
-- Browser click-through of the new pages has not been done.
+- Meetings have not been opened in a browser with a working LiveKit key yet.
 
 ### Phase 3 (real-time messaging), done
 
@@ -93,10 +118,12 @@ by the $0 decision; no GCP resources were created.
 
 ### Next steps
 
-1. Finish deployment (see above), then run the smoke test against production.
-2. After `.env` exists: `npm run db:verify`, `npm run db:migrate`, `npm run storage:setup`, run the suite against
-   `connect_test` (`verify-db.ts --create-test-db`, then `TEST_DATABASE_URL=... npm test`), bootstrap the admin.
-3. Render Blueprint, Namecheap CNAME, Vercel env, LiveKit webhook; then browser click-through and a production smoke test.
+1. Owner: replace the masked LiveKit secret (`scripts/set-secret.ps1 LIVEKIT_API_SECRET`); then `npm run services:check`.
+2. Owner: `npm run admin:bootstrap -- --email <address>` (hidden prompt), sign in, enrol MFA.
+3. Owner: Render Blueprint (paste secrets with `copy-env-value.ps1`), Namecheap CNAME, Vercel env, LiveKit webhook
+   (PRIVATE_CONNECT_DEPLOYMENT.md steps 5 to 8). Then: production smoke test and a multi-device meeting test.
+4. Remaining features (see the gaps list), in order of value: profile pictures, scheduled meetings UI, notes/tasks,
+   push notifications, light theme.
 
 ### How to run locally
 

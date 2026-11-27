@@ -6,12 +6,12 @@
  * The password is read twice from the terminal with echo disabled. It is never printed,
  * logged, written to disk or given a default.
  */
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../src/config.js";
 import { createDb, type Db } from "../src/db/client.js";
-import { users } from "../src/db/schema.js";
+import { recoveryCodes, sessions, users } from "../src/db/schema.js";
 import { hashPassword } from "../src/lib/crypto.js";
 import { audit } from "../src/lib/services.js";
 
@@ -34,8 +34,11 @@ export async function bootstrapAdmin(
     if (!opts.resetPassword) return "unchanged";
     await db
       .update(users)
-      .set({ passwordHash: await hashPassword(opts.password), status: "active", updatedAt: new Date() })
+      .set({ passwordHash: await hashPassword(opts.password), status: "active", mfaEnabled: false, totpSecretEnc: null, updatedAt: new Date() })
       .where(eq(users.id, existing.id));
+    // A reset is also the recovery path for a lost authenticator or data key: MFA is enrolled again at next sign-in.
+    await db.delete(recoveryCodes).where(eq(recoveryCodes.userId, existing.id));
+    await db.update(sessions).set({ revokedAt: new Date() }).where(and(eq(sessions.userId, existing.id), isNull(sessions.revokedAt)));
     await audit(db, { actorId: existing.id, action: "admin.bootstrap_password_reset" });
     return "password_reset";
   }
@@ -100,7 +103,7 @@ async function main() {
   try {
     const [existing] = await handle.db.select().from(users).where(sql`lower(${users.username}) = lower(${username})`).limit(1);
     if (existing && !resetPassword) {
-      console.log(`Administrator ${username} already exists. Nothing changed (use --reset-password to set a new password).`);
+      console.log(`Administrator ${username} already exists. Nothing changed (use --reset-password to set a new password and re-enrol MFA).`);
       return;
     }
     if (!existing && !email) throw new Error("--email is required when creating the administrator");

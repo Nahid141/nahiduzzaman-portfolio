@@ -50,6 +50,16 @@ operators (VM, database or cloud access).
   key backup). Candidate libraries: `vodozemac` (Olm/Megolm, Apache-2.0) or libsignal (AGPL-3.0, licence
   decision required). No custom cryptography will be written.
 
+## Secret handling
+
+- Secrets live only in the git-ignored, user-restricted `services/connect-backend/.env` and in Render's
+  environment. They are entered with hidden input (`configure-supabase.ps1`, `set-secret.ps1`) and moved to
+  Render through the clipboard (`copy-env-value.ps1`, cleared after 60 s); no script prints a secret value.
+- A value made of mask characters (a dashboard's `••••` display) is refused by the scripts and by the server at
+  start-up, so a mis-copied key fails loudly instead of at first use.
+- `bootstrap-admin --reset-password` also clears MFA and recovery codes and revokes every session of the
+  administrator; it is the recovery path for a lost authenticator or a lost `CONNECT_DATA_KEY`.
+
 ## Logging rules
 
 Audit logs record actor, action, target and non-sensitive metadata. Never: passwords, tokens, TOTP secrets,
@@ -61,6 +71,10 @@ recovery codes, cookie values, private message bodies, file contents.
   revoked from `anon`, `authenticated` and `service_role` (migration 0002, verified by
   `scripts/verify-db.ts` and a test). The Data API therefore exposes nothing even if it is enabled;
   turning the Data API off in the dashboard is recommended as a second layer (Storage keeps working).
+  Verified live on 2026-11-27: `npm run services:check` read `users`, `messages` and `files` through the REST
+  Data API with the secret (service_role) key and got `403 42501 permission denied` each time.
+- Verified live on 2026-11-27: TLS 1.3 to the pooler with the CA chain authorised; the bucket is private
+  (public URL refused), enforces 50 MB and the MIME allow-list (text/html refused) and serves signed URLs.
 - The backend is the only database client; it connects as the table owner over the session pooler.
 - The Storage secret key exists only in the backend environment. Browsers receive signed URLs: uploads
   valid ~2 h for one path, downloads 5 minutes. The bucket is private and restricts MIME types and size.

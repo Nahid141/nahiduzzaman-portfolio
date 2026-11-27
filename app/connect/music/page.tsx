@@ -128,16 +128,19 @@ function Lounge({ me }: { me: ConnectUser }) {
         <p className="mt-1 text-2xl font-black text-white">{s?.title || "The queue is empty"}</p>
         {s?.fileId && (
           <div className="mt-4">
-            <input
-              type="range"
-              min={0}
-              max={s.durationMs ?? Math.max(position, 1)}
-              value={Math.min(position, s.durationMs ?? position)}
-              disabled={!control}
-              aria-label="Playback position"
-              onChange={(e) => void run({ action: "seek", positionMs: Number(e.target.value) })}
-              className="w-full accent-cyan-300"
-            />
+            {/* The length is learned when the first listener's browser loads the track; until then show time only. */}
+            {s.durationMs ? (
+              <input
+                type="range"
+                min={0}
+                max={s.durationMs}
+                value={Math.min(position, s.durationMs)}
+                disabled={!control}
+                aria-label="Playback position"
+                onChange={(e) => void run({ action: "seek", positionMs: Number(e.target.value) })}
+                className="w-full accent-cyan-300"
+              />
+            ) : null}
             <div className="flex justify-between text-xs text-slate-400">
               <span>{mmss(position)}</span>
               <span>{s.durationMs ? mmss(s.durationMs) : ""}</span>
