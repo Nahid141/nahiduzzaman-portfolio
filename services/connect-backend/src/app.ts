@@ -12,6 +12,13 @@ import type { AppEvents, PresenceStore } from "./lib/stores.js";
 import { chatRoutes } from "./chat/routes.js";
 import { ChatError } from "./chat/service.js";
 import { attachGateway, type Realtime } from "./realtime/gateway.js";
+import { fileRoutes } from "./files/routes.js";
+import type { HashScanner } from "./files/service.js";
+import type { FileStore } from "./files/storage.js";
+import type { LiveKitApi } from "./meetings/livekit.js";
+import { LIVEKIT_WEBHOOK_PATH, meetingRoutes } from "./meetings/routes.js";
+import { collabRoutes } from "./collab/routes.js";
+import { VersionConflict } from "./collab/state.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -27,14 +34,22 @@ export type AppDeps = {
   now: () => Date;
   events: AppEvents;
   presence: PresenceStore;
+  /** Private object storage; null when not configured (file routes answer 503). */
+  files?: FileStore | null;
+  scanner?: HashScanner;
+  /** LiveKit server API; null when not configured (meeting routes answer 503). */
+  livekit?: LiveKitApi | null;
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
-    // Only the local Nginx may set X-Forwarded-For.
-    trustProxy: deps.config.env === "production" ? "127.0.0.1" : false,
+    // Which proxy may set X-Forwarded-For: "127.0.0.1" behind local Nginx, a hop count on Render.
+    trustProxy:
+      typeof deps.config.trustProxy === "number"
+        ? ((hops: number) => (_addr: string, hop: number) => hop < hops)(deps.config.trustProxy)
+        : deps.config.trustProxy,
     bodyLimit: 64 * 1024,
     logger:
       deps.config.env === "test"
@@ -60,6 +75,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // preflight we refuse) and, when present, an allowed Origin.
   app.addHook("onRequest", async (request, reply) => {
     if (SAFE_METHODS.has(request.method)) return;
+    // Server-to-server webhook authenticated by its own signature (no cookies are read there).
+    if (request.method === "POST" && request.url === LIVEKIT_WEBHOOK_PATH) return;
     const origin = request.headers.origin;
     if (request.headers["x-connect-csrf"] !== "1" || (origin && !deps.config.allowedOrigins.includes(origin))) {
       return reply.code(403).send({ error: "csrf" });
@@ -67,6 +84,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof VersionConflict) return reply.code(409).send({ error: error.code, current: error.current });
     if (error instanceof ChatError) return reply.code(error.status).send({ error: error.code });
     if (error instanceof ZodError) {
       return reply.code(400).send({
@@ -87,5 +105,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const realtime = attachGateway(app, deps);
   app.decorate("realtime", realtime);
   await chatRoutes(app, deps, realtime);
+  await fileRoutes(app, deps, realtime);
+  await meetingRoutes(app, deps, realtime);
+  await collabRoutes(app, deps, realtime);
   return app;
 }

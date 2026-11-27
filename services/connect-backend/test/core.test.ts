@@ -53,12 +53,33 @@ describe("config", () => {
       loadConfig({
         NODE_ENV: "production",
         CONNECT_DATA_KEY: key,
-        DATABASE_URL: "postgres://x",
+        DATABASE_URL: "postgres://u@127.0.0.1/db",
         SMTP_HOST: "smtp",
         MAIL_FROM: "a@b.c",
         CONNECT_SITE_ORIGIN: "http://insecure",
       })
     ).toThrow(/https/);
+  });
+
+  it("requires verified TLS for a remote database and a real mail provider in production", () => {
+    const base = {
+      NODE_ENV: "production",
+      CONNECT_DATA_KEY: Buffer.alloc(32, 1).toString("base64"),
+      MAIL_FROM: "Private Connect <a@b.c>",
+      CONNECT_SITE_ORIGIN: "https://www.example.org",
+      EMAIL_PROVIDER: "brevo",
+      EMAIL_API_KEY: "k",
+    };
+    const remote = "postgresql://postgres.ref:pw@aws-1-us-east-2.pooler.supabase.com:5432/postgres";
+    const pem = "-----BEGIN CERTIFICATE-----\\nAAAA\\n-----END CERTIFICATE-----";
+    expect(() => loadConfig({ ...base, DATABASE_URL: remote })).toThrow(/DATABASE_CA/);
+    expect(() => loadConfig({ ...base, DATABASE_URL: `${remote}?sslmode=require`, DATABASE_CA_PEM: pem })).toThrow(/sslmode/);
+    expect(() => loadConfig({ ...base, DATABASE_URL: remote, DATABASE_CA_PEM: "not a cert" })).toThrow(/PEM/);
+    const ok = loadConfig({ ...base, DATABASE_URL: remote, DATABASE_CA_PEM: pem, TRUST_PROXY: "1" });
+    expect(ok.databaseCa).toContain("\n");
+    expect(ok.trustProxy).toBe(1);
+    expect(ok.email.provider).toBe("brevo");
+    expect(() => loadConfig({ ...base, DATABASE_URL: remote, DATABASE_CA_PEM: pem, EMAIL_PROVIDER: "console" })).toThrow(/EMAIL_PROVIDER/);
   });
 });
 

@@ -1,8 +1,11 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
+  integer,
   jsonb,
+  primaryKey,
   pgEnum,
   pgTable,
   text,
@@ -279,3 +282,230 @@ export const notifications = pgTable(
 );
 
 export type Message = typeof messages.$inferSelect;
+
+/* --------------------------- Phase 4: file sharing --------------------------- */
+
+export const fileKindEnum = pgEnum("file_kind", ["image", "document", "audio", "video", "archive"]);
+export const fileStatusEnum = pgEnum("file_status", ["pending", "ready", "rejected", "deleted"]);
+
+/** Metadata for objects in the private storage bucket. A file always belongs to one room. */
+export const files = pgTable(
+  "files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
+    channelId: uuid("channel_id").references(() => channels.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "cascade" }),
+    objectPath: text("object_path").notNull(),
+    name: text("name").notNull(),
+    mime: text("mime").notNull(),
+    kind: fileKindEnum("kind").notNull(),
+    folder: text("folder").notNull().default(""),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    sha256: text("sha256"),
+    status: fileStatusEnum("status").notNull().default("pending"),
+    rejectReason: text("reject_reason"),
+    /** "not_scanned" until a scanner is configured; "hash_clean" or "malware" after a hash lookup. */
+    scan: text("scan").notNull().default("not_scanned"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("files_object_path_uq").on(t.objectPath),
+    index("files_owner_idx").on(t.ownerId),
+    index("files_channel_created_idx").on(t.channelId, t.createdAt),
+    index("files_conversation_created_idx").on(t.conversationId, t.createdAt),
+    index("files_status_created_idx").on(t.status, t.createdAt),
+  ]
+);
+
+export const messageAttachments = pgTable(
+  "message_attachments",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.fileId] }), index("message_attachments_file_idx").on(t.fileId)]
+);
+
+/** Monthly counters for free-tier quotas (egress bytes, meeting minutes). */
+export const usageCounters = pgTable(
+  "usage_counters",
+  {
+    key: text("key").notNull(),
+    period: text("period").notNull(),
+    value: bigint("value", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.period] })]
+);
+
+export type FileRow = typeof files.$inferSelect;
+
+/* ------------------------- Phase 5: video conferencing ------------------------- */
+
+export const meetingStatusEnum = pgEnum("meeting_status", ["scheduled", "live", "ended"]);
+export const participantStateEnum = pgEnum("participant_state", ["invited", "waiting", "admitted", "denied", "removed"]);
+
+export const meetings = pgTable(
+  "meetings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    hostId: uuid("host_id").references(() => users.id, { onDelete: "set null" }),
+    /** Opaque LiveKit room name (no personal data). */
+    room: text("room").notNull(),
+    audioOnly: boolean("audio_only").notNull().default(false),
+    /** Invite-only meetings admit only invited people; open meetings admit any active member. */
+    inviteOnly: boolean("invite_only").notNull().default(false),
+    waitingRoom: boolean("waiting_room").notNull().default(false),
+    locked: boolean("locked").notNull().default(false),
+    /** "host": only the host shares; "all": anyone; "approved": the host grants it per person. */
+    screenShare: text("screen_share").notNull().default("all"),
+    maxParticipants: integer("max_participants").notNull().default(10),
+    status: meetingStatusEnum("status").notNull().default("live"),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("meetings_room_uq").on(t.room), index("meetings_status_idx").on(t.status, t.createdAt)]
+);
+
+export const meetingParticipants = pgTable(
+  "meeting_participants",
+  {
+    meetingId: uuid("meeting_id")
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    state: participantStateEnum("state").notNull(),
+    canScreenShare: boolean("can_screen_share").notNull().default(false),
+    handRaisedAt: timestamp("hand_raised_at", { withTimezone: true }),
+    shareRequestedAt: timestamp("share_requested_at", { withTimezone: true }),
+    /** A join token holds a seat until this time unless LiveKit reports the participant connected. */
+    reservedUntil: timestamp("reserved_until", { withTimezone: true }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    leftAt: timestamp("left_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.meetingId, t.userId] }), index("meeting_participants_user_idx").on(t.userId)]
+);
+
+export type Meeting = typeof meetings.$inferSelect;
+
+/* ------------------ Phase 6: shared state, lounge, presentations ------------------ */
+
+/** Server-authoritative shared state with a version for optimistic concurrency. */
+export const sharedState = pgTable("shared_state", {
+  key: text("key").primaryKey(),
+  version: integer("version").notNull().default(0),
+  state: jsonb("state").notNull().default({}),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const musicRequestStatusEnum = pgEnum("music_request_status", ["pending", "queued", "rejected", "played", "removed"]);
+
+export const musicRequests = pgTable(
+  "music_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+    status: musicRequestStatusEnum("status").notNull().default("pending"),
+    note: text("note").notNull().default(""),
+    decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+    position: integer("position"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+  },
+  (t) => [index("music_requests_status_idx").on(t.status, t.position), index("music_requests_file_idx").on(t.fileId)]
+);
+
+export const djGrants = pgTable(
+  "dj_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    grantedBy: uuid("granted_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("dj_grants_user_idx").on(t.userId)]
+);
+
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    authorId: uuid("author_id").references(() => users.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("announcements_created_idx").on(t.createdAt)]
+);
+
+/** Workspace-wide activity feed. Never contains private-conversation events. */
+export const activity = pgTable(
+  "activity",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    payload: jsonb("payload").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("activity_created_idx").on(t.createdAt)]
+);
+
+/* ------------------------------ Phase 7: polls ------------------------------ */
+
+/** Polls live in a channel or conversation and inherit its access rules. */
+export const polls = pgTable(
+  "polls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channelId: uuid("channel_id").references(() => channels.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "cascade" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    question: text("question").notNull(),
+    options: jsonb("options").$type<string[]>().notNull(),
+    multiple: boolean("multiple").notNull().default(false),
+    anonymous: boolean("anonymous").notNull().default(false),
+    closesAt: timestamp("closes_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("polls_channel_idx").on(t.channelId, t.createdAt), index("polls_conversation_idx").on(t.conversationId, t.createdAt)]
+);
+
+export const pollVotes = pgTable(
+  "poll_votes",
+  {
+    pollId: uuid("poll_id")
+      .notNull()
+      .references(() => polls.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    option: integer("option").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.pollId, t.userId, t.option] }), index("poll_votes_user_idx").on(t.userId)]
+);

@@ -37,6 +37,7 @@ SQL
   cat > "$ENV_FILE" <<ENV
 NODE_ENV=production
 PORT=8020
+TRUST_PROXY=127.0.0.1
 DATABASE_URL=postgres://connect:${DB_PASS}@127.0.0.1:5432/connect
 REDIS_URL=redis://127.0.0.1:6379
 CONNECT_SITE_ORIGIN=https://www.fnunahiduzzaman.com,https://fnunahiduzzaman.com

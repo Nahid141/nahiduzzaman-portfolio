@@ -16,9 +16,13 @@ export type DbHandle = { db: Db; close: () => Promise<void> };
 const MIGRATIONS = path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations");
 
 /** PostgreSQL via node-postgres (production) or PGlite (tests; dev when DATABASE_URL is empty). */
-export async function createDb(opts: { url: string } | { pglite: true; dataDir?: string }): Promise<DbHandle> {
+export async function createDb(
+  opts: { url: string; ca?: string; max?: number } | { pglite: true; dataDir?: string }
+): Promise<DbHandle> {
   if ("url" in opts) {
-    const pool = new pg.Pool({ connectionString: opts.url, max: 10 });
+    // With a CA the certificate chain and host name are verified (verify-full); never rejectUnauthorized: false.
+    const ssl = opts.ca ? { ca: opts.ca, rejectUnauthorized: true } : undefined;
+    const pool = new pg.Pool({ connectionString: opts.url, max: opts.max ?? 5, ssl, idleTimeoutMillis: 30_000 });
     const db = drizzlePg(pool, { schema });
     await migratePg(db, { migrationsFolder: MIGRATIONS });
     return { db: db as unknown as Db, close: () => pool.end() };

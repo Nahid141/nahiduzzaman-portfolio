@@ -12,7 +12,11 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
+    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "db:verify": "node --env-file=.env --import tsx scripts/verify-db.ts",
+    "db:migrate": "node --env-file=.env --import tsx scripts/verify-db.ts --migrate",
+    "storage:setup": "node --env-file=.env --import tsx scripts/setup-storage.ts",
+    "admin:bootstrap": "node --env-file=.env --import tsx scripts/bootstrap-admin.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.6.1",
@@ -24,6 +28,7 @@
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.8",
     "ioredis": "^5.11.1",
+    "livekit-server-sdk": "^2.20.1",
     "nodemailer": "^10.6.1",
     "otplib": "^13.6.0",
     "pg": "^8.23.1",

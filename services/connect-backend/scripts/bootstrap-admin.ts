@@ -95,7 +95,7 @@ async function main() {
   const resetPassword = args.includes("--reset-password");
   const config = loadConfig(process.env);
   const handle = config.databaseUrl
-    ? await createDb({ url: config.databaseUrl })
+    ? await createDb({ url: config.databaseUrl, ca: config.databaseCa || undefined, max: 1 })
     : await createDb({ pglite: true, dataDir: "./.pglite" });
   try {
     const [existing] = await handle.db.select().from(users).where(sql`lower(${users.username}) = lower(${username})`).limit(1);

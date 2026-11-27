@@ -15,6 +15,13 @@
       "when": 1795800486685,
       "tag": "0001_messaging",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795807074753,
+      "tag": "0002_files_meetings_lounge",
+      "breakpoints": true
     }
   ]
 }

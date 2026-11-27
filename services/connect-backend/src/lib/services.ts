@@ -40,6 +40,42 @@ export class SmtpEmailSender implements EmailSender {
   }
 }
 
+/**
+ * Transactional email over HTTPS (Brevo or Resend). Render Free blocks outbound SMTP ports, so
+ * this is the path for that host. The API key travels only in a request header.
+ */
+export class HttpEmailSender implements EmailSender {
+  constructor(
+    private opts: { provider: "brevo" | "resend"; apiKey: string; from: string },
+    private fetchImpl: typeof fetch = fetch
+  ) {}
+
+  async send(mail: Mail) {
+    const m = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(this.opts.from);
+    const sender = m ? { name: m[1] || undefined, email: m[2]! } : { email: this.opts.from.trim() };
+    const req: { url: string; headers: Record<string, string>; body: unknown } =
+      this.opts.provider === "brevo"
+        ? {
+            url: "https://api.brevo.com/v3/smtp/email",
+            headers: { "api-key": this.opts.apiKey },
+            body: { sender, to: [{ email: mail.to }], subject: mail.subject, textContent: mail.text },
+          }
+        : {
+            url: "https://api.resend.com/emails",
+            headers: { authorization: `Bearer ${this.opts.apiKey}` },
+            body: { from: this.opts.from, to: [mail.to], subject: mail.subject, text: mail.text },
+          };
+    const res = await this.fetchImpl(req.url, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json", ...req.headers },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    // The provider's response body is not logged: it can echo the recipient address.
+    if (!res.ok) throw new Error(`${this.opts.provider} email API returned ${res.status}`);
+  }
+}
+
 /* ------------------------------ Rate limiting ----------------------------- */
 
 export interface RateLimitStore {

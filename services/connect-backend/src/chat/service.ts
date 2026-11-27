@@ -7,6 +7,8 @@ import {
   channels,
   conversationParticipants,
   conversations,
+  files,
+  messageAttachments,
   messages,
   notifications,
   reactions,
@@ -242,6 +244,7 @@ export type MessageDto = {
   deletedAt: Date | null;
   createdAt: Date;
   reactions: { emoji: string; count: number; userIds: string[] }[];
+  attachments: { id: string; name: string; mime: string; kind: string; sizeBytes: number }[];
 };
 
 async function toDtos(db: Db, rows: Message[]): Promise<MessageDto[]> {
@@ -252,6 +255,11 @@ async function toDtos(db: Db, rows: Message[]): Promise<MessageDto[]> {
     ? await db.select({ id: users.id, username: users.username, fullName: users.fullName }).from(users).where(inArray(users.id, authorIds))
     : [];
   const rx = await db.select().from(reactions).where(inArray(reactions.messageId, ids));
+  const att = await db
+    .select({ messageId: messageAttachments.messageId, id: files.id, name: files.name, mime: files.mime, kind: files.kind, sizeBytes: files.sizeBytes })
+    .from(messageAttachments)
+    .innerJoin(files, eq(files.id, messageAttachments.fileId))
+    .where(and(inArray(messageAttachments.messageId, ids), eq(files.status, "ready")));
   return rows.map((m) => {
     const grouped = new Map<string, string[]>();
     for (const r of rx.filter((r) => r.messageId === m.id)) grouped.set(r.emoji, [...(grouped.get(r.emoji) ?? []), r.userId]);
@@ -268,17 +276,33 @@ async function toDtos(db: Db, rows: Message[]): Promise<MessageDto[]> {
       deletedAt: m.deletedAt,
       createdAt: m.createdAt,
       reactions: [...grouped].map(([emoji, userIds]) => ({ emoji, count: userIds.length, userIds })),
+      attachments: m.deletedAt ? [] : att.filter((a) => a.messageId === m.id).map(({ messageId: _m, ...a }) => a),
     };
   });
 }
 
-export const sendSchema = z.object({
-  target: targetSchema,
-  body: z.string().trim().min(1).max(MAX_BODY),
-  clientId: z.string().min(8).max(64),
-  replyToId: z.uuid().optional(),
-  forwardFromId: z.uuid().optional(),
-});
+/** Files attached to a message must be the sender's own, ready, and in the same room. */
+async function assertAttachable(db: Db, user: Actor, target: Target, ids: string[]) {
+  if (!ids.length) return [];
+  const rows = await db.select().from(files).where(inArray(files.id, ids));
+  for (const id of ids) {
+    const f = rows.find((r) => r.id === id);
+    const sameRoom = f && (target.kind === "channel" ? f.channelId === target.id : f.conversationId === target.id);
+    if (!f || f.status !== "ready" || f.ownerId !== user.id || !sameRoom) throw new ChatError("invalid_attachment");
+  }
+  return rows;
+}
+
+export const sendSchema = z
+  .object({
+    target: targetSchema,
+    body: z.string().trim().max(MAX_BODY).default(""),
+    clientId: z.string().min(8).max(64),
+    replyToId: z.uuid().optional(),
+    forwardFromId: z.uuid().optional(),
+    attachments: z.array(z.uuid()).max(10).default([]),
+  })
+  .refine((m) => m.body.length > 0 || m.attachments.length > 0, { message: "empty message", path: ["body"] });
 
 async function messageIn(db: Db, id: string) {
   const [m] = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
@@ -328,6 +352,9 @@ export async function sendMessage(db: Db, user: Actor, input: z.infer<typeof sen
     if (refId === input.replyToId && roomOf(targetOfRow(ref)) !== roomOf(target)) throw new ChatError("invalid_reference");
   }
 
+  const attachments = [...new Set(input.attachments)];
+  await assertAttachable(db, user, target, attachments);
+
   const mentions = await resolveMentions(db, input.body, target);
   const [row] = await db
     .insert(messages)
@@ -342,6 +369,7 @@ export async function sendMessage(db: Db, user: Actor, input: z.infer<typeof sen
       mentions,
     })
     .returning();
+  if (attachments.length) await db.insert(messageAttachments).values(attachments.map((fileId) => ({ messageId: row!.id, fileId })));
   await markRead(db, user, target, row!.createdAt);
 
   // Notify mentioned users, and the other people in a private conversation unless they muted it.

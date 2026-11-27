@@ -1,0 +1,57 @@
+# Render Blueprint: Private Connect backend on the Free plan ($0).
+# Secrets marked `sync: false` are entered once in the Render dashboard when the Blueprint is created;
+# they are never stored in this repository.
+services:
+  - type: web
+    name: connect-backend
+    runtime: node
+    plan: free
+    region: ohio # same region as the Supabase project (us-east-2)
+    branch: feature/private-connect
+    rootDir: services/connect-backend
+    buildCommand: npm ci --omit=dev --no-audit --no-fund
+    startCommand: node --import tsx src/server.ts
+    healthCheckPath: /api/v1/health
+    autoDeployTrigger: commit
+    domains:
+      - connect-api.fnunahiduzzaman.com
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: HOST
+        value: 0.0.0.0
+      # Render's proxy is the one hop allowed to set X-Forwarded-For.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: CONNECT_SITE_ORIGIN
+        value: https://www.fnunahiduzzaman.com,https://fnunahiduzzaman.com
+      - key: DATABASE_CA_FILE
+        value: certs/supabase-ca.crt
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: STORAGE_BUCKET
+        value: connect-files
+      - key: SUPABASE_URL
+        value: https://pezjgvfjqtkiztgrmeep.supabase.co
+      # Generated once by Render. Changing it later makes stored MFA secrets unreadable.
+      - key: CONNECT_DATA_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      # Render Free blocks outbound SMTP (ports 25/465/587), so email goes through an HTTPS API.
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
