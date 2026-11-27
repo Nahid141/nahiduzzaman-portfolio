@@ -9,12 +9,12 @@ import { Skeleton, useMe } from "./ui";
 /* Modules that exist today are links; the rest show which build phase adds them. */
 const NAV: { href: string; label: string; phase?: number; adminOnly?: boolean }[] = [
   { href: "/connect/dashboard", label: "Dashboard" },
-  { href: "/connect/chat", label: "General chat", phase: 3 },
-  { href: "/connect/messages", label: "Direct messages", phase: 3 },
+  { href: "/connect/chat", label: "General chat" },
+  { href: "/connect/messages", label: "Direct messages" },
   { href: "/connect/conference", label: "Meetings", phase: 5 },
   { href: "/connect/files", label: "Files", phase: 4 },
   { href: "/connect/music", label: "Music lounge", phase: 6 },
-  { href: "/connect/members", label: "Members", phase: 3 },
+  { href: "/connect/members", label: "Members" },
   { href: "/connect/settings", label: "Settings" },
   { href: "/connect/admin", label: "Admin console", adminOnly: true },
 ];
@@ -118,7 +118,7 @@ function DefaultAside() {
     <div>
       <h2 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-300">Activity</h2>
       <p className="mt-3 text-sm leading-6 text-slate-400">
-        Live activity, online members and notifications appear here once real-time messaging (phase 3) is built.
+        Open General chat or Direct messages to see live conversations here.
       </p>
     </div>
   );

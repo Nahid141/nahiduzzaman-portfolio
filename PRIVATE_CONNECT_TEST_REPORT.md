@@ -2,6 +2,26 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-27, Phase 3
+
+`npm test` → **4 files, 55 tests, all passed** (12 new in `test/realtime.test.ts`, using a real listening
+server and real socket.io clients).
+
+| Spec test (§19) | Result |
+|---|---|
+| 7. Live messaging between multiple sessions | Pass (delivery, dedupe by clientId, history) |
+| 8. Private message isolation incl. WebSocket subscriptions and direct API | Pass: non-participant and admin get no live event, 404 on history/receipts, empty search, subscribe and send refused |
+| 19. WebSocket reconnection and state recovery | Partial: reconnect after revocation is refused; connection-state recovery is configured but not tested |
+| 21. Suspended user revocation across API and WebSocket | Pass (socket disconnected, reconnect refused; logout cuts the session's socket) |
+| Rate limiting of message floods | Pass (16th message in 10 s refused) |
+| Restricted channels | Pass (invisible to non-members, send/subscribe refused) |
+| Mentions only notify people who can see the message | Pass |
+
+Mutation check: giving admins access to private conversations made the isolation test fail.
+
+Frontend: `tsc`, `eslint app/connect`, `next build` clean. The chat UI was **not** clicked through in a
+real browser yet.
+
 ## 2026-11-27, Phase 2
 
 ### Automated (Vitest, PGlite = real PostgreSQL in WASM)

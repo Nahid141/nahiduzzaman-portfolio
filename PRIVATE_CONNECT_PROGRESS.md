@@ -2,9 +2,38 @@
 
 Resumable checkpoint for future sessions. Update after every major phase.
 
-## Last verified checkpoint: 2026-11-27, Phase 2 complete locally
+## Last verified checkpoint: 2026-11-27, Phase 3 complete, deployment prepared
 
-Branch `feature/private-connect` (local only, not pushed). Base: `site-redesign` @ 77327ee.
+Branch `feature/private-connect` (pushed to GitHub, not merged). Base: `site-redesign` @ 77327ee.
+
+### Phase 3 (real-time messaging), done
+
+- Schema `0001_messaging`: channels (public/restricted) + members, conversations (1:1 unique per pair via
+  `direct_key`, invitation-only groups) + participants (archive, mute), messages (one-target CHECK, clientId
+  de-duplication, replies, forwards, mentions, pins, edit/delete), reactions (fixed emoji set), read states,
+  blocks, notifications; `#general` seeded.
+- Socket.IO gateway at `/api/v1/socket`: Origin allow-list + session-cookie handshake, admin must have
+  passed MFA, every event re-checks the session and account, per-user event and message rate limits,
+  zod payload validation, acknowledgements, typing, read receipts (by message id), presence, explicit
+  subscribe authorization, connection-state recovery. Suspend/ban/role change/password reset disconnect
+  all of the user's sockets; logout and session revoke disconnect that session's sockets.
+- REST: channels (+ admin create), history pagination, conversations, receipts, archive/mute, full-text
+  search limited to accessible rooms, members with presence, blocks, notifications.
+- Admins have **no** implicit access to private conversations (tested); admins may delete messages in
+  shared channels (moderation).
+- Production: Redis rate limiting, presence and the socket.io Redis adapter; `REDIS_URL` required.
+- Frontend: `/connect/chat` (channels, unread badges, search, connection status), `/connect/messages`
+  (1:1 and group, archive, mute, block, seen-up-to receipts), `/connect/members` (online status, message).
+- Deferred to later phases with reasons: attachments and voice messages (Phase 4 file pipeline), link
+  previews (needs SSRF-safe fetcher), E2EE (see SECURITY).
+
+### Deployment status
+
+- Owner approved (2026-11-27): Google Workspace SMTP, new GCP VM + DNS + firewall, pushing the branch.
+- Prepared: `services/connect-backend/deploy/{install.sh,set-smtp.sh,connect-backend.service,nginx-connect-api.conf}`.
+- Waiting on the owner: `gcloud auth login` (token expired), Namecheap A record for
+  `connect-api.fnunahiduzzaman.com`, a Google app password entered via `set-smtp.sh`, Vercel env
+  `NEXT_PUBLIC_CONNECT_API_URL`.
 
 ### Done
 
@@ -38,19 +67,18 @@ Branch `feature/private-connect` (local only, not pushed). Base: `site-redesign`
 3. PostgreSQL: Cloud SQL vs local on the VM. Redis for multi-instance rate limiting (Phase 3).
 4. `NEXT_PUBLIC_CONNECT_API_URL` must be set in Vercel once the API host exists.
 
-### Next steps (Phase 3)
+### Next steps
 
-Write `docs/superpowers/plans/<date>-private-connect-phase3-realtime.md`, then: Redis-backed
-RateLimitStore and presence; Socket.IO gateway authenticated from the session cookie; channels,
-messages, reactions, receipts, search; private conversations with per-room authorization;
-notifications; versioned shared dashboard state.
+1. Finish deployment (see above), then run the smoke test against production.
+2. Phase 4: private GCS bucket, signed uploads, scanning, attachments in chat, profile pictures.
+3. Shared dashboard state with versioning (spec section 4) together with Phase 6 Follow Host Mode.
 
 ### How to run locally
 
 ```bash
 cd services/connect-backend
 npm install
-npm test                                  # 43 tests on PGlite
+npm test                                  # 55 tests on PGlite
 npm run bootstrap-admin -- --email you@example.org   # prompts for a password (hidden)
 npm run dev                               # http://127.0.0.1:8020, dev mail printed to console
 # in the repo root
