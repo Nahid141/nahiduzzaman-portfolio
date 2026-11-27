@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import { api, type ConnectUser } from "../_lib/api";
+import { useEffect, useState } from "react";
+import { api, onWaking, type ConnectUser } from "../_lib/api";
+import { useSharedState } from "../_lib/sync";
 import { Skeleton, useMe } from "./ui";
 
 /* Modules that exist today are links; the rest show which build phase adds them. */
@@ -11,9 +12,10 @@ const NAV: { href: string; label: string; phase?: number; adminOnly?: boolean }[
   { href: "/connect/dashboard", label: "Dashboard" },
   { href: "/connect/chat", label: "General chat" },
   { href: "/connect/messages", label: "Direct messages" },
-  { href: "/connect/conference", label: "Meetings", phase: 5 },
-  { href: "/connect/files", label: "Files", phase: 4 },
-  { href: "/connect/music", label: "Music lounge", phase: 6 },
+  { href: "/connect/conference", label: "Meetings" },
+  { href: "/connect/files", label: "Files" },
+  { href: "/connect/music", label: "Music lounge" },
+  { href: "/connect/present", label: "Presentation" },
   { href: "/connect/members", label: "Members" },
   { href: "/connect/settings", label: "Settings" },
   { href: "/connect/admin", label: "Admin console", adminOnly: true },
@@ -32,6 +34,8 @@ export default function Workspace({
   const pathname = usePathname();
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
+  const [waking, setWaking] = useState(false);
+  useEffect(() => onWaking(setWaking), []);
 
   async function signOut() {
     await api("/auth/logout", { body: {} }).catch(() => undefined);
@@ -102,6 +106,12 @@ export default function Workspace({
 
       {/* Center: the current module */}
       <main className="min-w-0 rounded-3xl border border-white/10 bg-slate-950/80 p-5 backdrop-blur-xl md:p-7">
+        {waking && (
+          <p role="status" className="mb-4 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100">
+            Waking the server up. The free hosting plan sleeps when nobody is using it; this takes about a minute.
+          </p>
+        )}
+        {me && <FollowHost pathname={pathname} meId={me.id} />}
         {me ? children(me) : <Skeleton className="h-64" />}
       </main>
 
@@ -109,6 +119,31 @@ export default function Workspace({
       <aside className="space-y-4 rounded-3xl border border-white/10 bg-slate-950/80 p-4 backdrop-blur-xl lg:sticky lg:top-28 lg:h-[calc(100vh-8rem)] lg:overflow-y-auto">
         {me ? aside?.(me) ?? <DefaultAside /> : <Skeleton className="h-40" />}
       </aside>
+    </div>
+  );
+}
+
+const PANEL_HREF: Record<string, string> = {
+  dashboard: "/connect/dashboard",
+  chat: "/connect/chat",
+  files: "/connect/files",
+  meetings: "/connect/conference",
+  lounge: "/connect/music",
+  presentation: "/connect/present",
+};
+
+/** Follow Host Mode: offers (never forces) a move to what the administrator is showing. */
+function FollowHost({ pathname, meId }: { pathname: string; meId: string }) {
+  const { value } = useSharedState<{ enabled: boolean; panel: string; hostId: string | null }>("follow");
+  const f = value?.state;
+  const href = f ? PANEL_HREF[f.panel] : undefined;
+  if (!f?.enabled || !href || href === pathname || f.hostId === meId) return null;
+  return (
+    <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-50">
+      <span>The host is showing the {f.panel} panel.</span>
+      <Link href={href} className="rounded-lg bg-cyan-300 px-3 py-1 font-black text-slate-950">
+        Follow the host
+      </Link>
     </div>
   );
 }

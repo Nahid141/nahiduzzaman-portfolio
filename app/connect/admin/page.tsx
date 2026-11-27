@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import AdminOps from "../_components/AdminOps";
 import { Alert } from "../_components/ui";
 import Workspace from "../_components/Workspace";
 import { api, errorMessage, type ConnectUser } from "../_lib/api";
@@ -194,6 +195,7 @@ function Console({ me }: { me: ConnectUser }) {
           ))}
         </ul>
       </section>
+      <AdminOps />
     </div>
   );
 }

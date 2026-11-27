@@ -19,6 +19,7 @@ export type ChatMessage = {
   deletedAt: string | null;
   createdAt: string;
   reactions: { emoji: string; count: number; userIds: string[] }[];
+  attachments?: { id: string; name: string; mime: string; kind: string; sizeBytes: number }[];
 };
 
 export type Ack<T = unknown> = { ok: true; data: T } | { ok: false; error: string };

@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage, type ConnectUser } from "../_lib/api";
 import { emit, getSocket, newClientId, REACTIONS, sameTarget, type ChatMessage, type Target } from "../_lib/realtime";
+import { ACCEPT, uploadFile, type SharedFile } from "../_lib/files";
+import { AttachmentChip, FilePreview } from "./FileBits";
+import Polls from "./Polls";
 
 const ERRORS: Record<string, string> = {
   rate_limited: "You are sending messages too fast. Wait a few seconds.",
@@ -36,6 +39,11 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [draft, setDraft] = useState("");
+  const [attached, setAttached] = useState<SharedFile[]>([]);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [preview, setPreview] = useState<SharedFile | null>(null);
+  const [showPolls, setShowPolls] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [showPinned, setShowPinned] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
@@ -124,7 +132,7 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
 
   async function submit() {
     const body = draft.trim();
-    if (!body) return;
+    if (!body && !attached.length) return;
     setError("");
     if (editing) {
       const r = await emit<ChatMessage>("chat:edit", { id: editing.id, body });
@@ -147,13 +155,16 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
       deletedAt: null,
       createdAt: new Date().toISOString(),
       reactions: [],
+      attachments: attached.map(({ id, name, mime, kind, sizeBytes }) => ({ id, name, mime, kind, sizeBytes })),
     };
+    const attachmentIds = attached.map((f) => f.id);
     setMessages((prev) => [...prev, pending]);
     setDraft("");
+    setAttached([]);
     setReplyTo(null);
     scrollToEnd();
     void emit("chat:typing", { target, typing: false });
-    const r = await emit<ChatMessage>("chat:send", { target, body, clientId, replyToId: pending.replyToId ?? undefined });
+    const r = await emit<ChatMessage>("chat:send", { target, body, clientId, replyToId: pending.replyToId ?? undefined, attachments: attachmentIds });
     setMessages((prev) => {
       const without = prev.filter((m) => m.id !== pending.id);
       return r.ok ? (without.some((m) => m.id === r.data.id) ? without : [...without, r.data]) : without;
@@ -161,7 +172,22 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
     if (!r.ok) {
       setError(ERRORS[r.error] ?? "The message was not sent.");
       setDraft(body);
+      setAttached(pending.attachments as SharedFile[]);
     }
+  }
+
+  async function attach(list: FileList) {
+    setError("");
+    for (const f of [...list].slice(0, 10 - attached.length)) {
+      setUploading(f.name);
+      try {
+        const file = await uploadFile(target, f);
+        setAttached((a) => [...a, file]);
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    }
+    setUploading(null);
   }
 
   function onDraftChange(v: string) {
@@ -189,6 +215,15 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
           <h1 className="text-xl font-black text-white">{title}</h1>
           {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}
         </div>
+        <div className="flex gap-2">
+        <button
+          type="button"
+          aria-pressed={showPolls}
+          onClick={() => setShowPolls((v) => !v)}
+          className={`rounded-full px-3 py-1 text-xs font-bold ${showPolls ? "bg-cyan-300 text-slate-950" : "bg-white/5 text-slate-300"}`}
+        >
+          Polls
+        </button>
         <button
           type="button"
           aria-pressed={showPinned}
@@ -197,7 +232,9 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
         >
           Pinned
         </button>
+        </div>
       </header>
+      {showPolls && <Polls target={target} me={me} />}
 
       <div ref={listRef} className="flex-1 space-y-1 overflow-y-auto py-4 pr-1" aria-live="polite">
         <div ref={topRef} />
@@ -226,7 +263,11 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
                 {m.pinned && <span className="text-xs font-bold text-amber-300">pinned</span>}
                 {pending && <span className="text-xs text-slate-500">sending…</span>}
               </div>
-              {m.deletedAt ? <p className="italic text-slate-600">Message deleted</p> : <Body text={m.body} />}
+              {m.deletedAt ? <p className="italic text-slate-600">Message deleted</p> : m.body ? <Body text={m.body} /> : null}
+              {!m.deletedAt &&
+                m.attachments?.map((a) => (
+                  <AttachmentChip key={a.id} file={a as SharedFile} onOpen={() => !pending && setPreview({ ...(a as SharedFile), preview: ["image", "audio", "video"].includes(a.kind) || a.mime === "application/pdf", scan: "" })} />
+                ))}
               {m.reactions.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {m.reactions.map((r) => {
@@ -301,6 +342,20 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
           </button>
         </div>
       )}
+      {(attached.length > 0 || uploading) && (
+        <div className="mb-2 flex flex-wrap gap-2 text-xs">
+          {attached.map((f) => (
+            <span key={f.id} className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-1.5 text-slate-200">
+              📎 {f.name}
+              <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setAttached((a) => a.filter((x) => x.id !== f.id))} className="font-bold text-slate-400 hover:text-white">
+                ×
+              </button>
+            </span>
+          ))}
+          {uploading && <span className="rounded-xl bg-white/5 px-3 py-1.5 text-slate-400">Uploading {uploading}…</span>}
+        </div>
+      )}
+      {preview && <FilePreview file={preview} onClose={() => setPreview(null)} />}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -308,6 +363,16 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
         }}
         className="flex items-end gap-2"
       >
+        <button
+          type="button"
+          onClick={() => fileInput.current?.click()}
+          disabled={Boolean(editing) || Boolean(uploading) || attached.length >= 10}
+          aria-label="Attach files"
+          className="rounded-2xl border border-white/10 px-4 py-3 font-black text-slate-300 transition hover:border-cyan-300/50 hover:text-white disabled:opacity-40"
+        >
+          +
+        </button>
+        <input ref={fileInput} type="file" multiple hidden accept={ACCEPT} onChange={(e) => e.target.files && void attach(e.target.files).then(() => (e.target.value = ""))} />
         <label className="sr-only" htmlFor="composer">
           Message
         </label>
@@ -326,7 +391,7 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
           placeholder="Write a message. Use @username to mention someone."
           className="max-h-40 min-h-12 flex-1 resize-y rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-300"
         />
-        <button type="submit" disabled={!draft.trim()} className="rounded-2xl bg-cyan-300 px-5 py-3 font-black text-slate-950 transition hover:bg-white disabled:opacity-40">
+        <button type="submit" disabled={(!draft.trim() && !attached.length) || Boolean(uploading)} className="rounded-2xl bg-cyan-300 px-5 py-3 font-black text-slate-950 transition hover:bg-white disabled:opacity-40">
           {editing ? "Save" : "Send"}
         </button>
       </form>

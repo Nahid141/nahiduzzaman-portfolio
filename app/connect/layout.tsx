@@ -5,6 +5,8 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Private Connect",
   robots: { index: false, follow: false, nocache: true },
+  // Installable app shell. There is deliberately no service worker: private data is never cached offline.
+  manifest: "/connect.webmanifest",
 };
 
 export default function ConnectLayout({ children }: { children: React.ReactNode }) {
