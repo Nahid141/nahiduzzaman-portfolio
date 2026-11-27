@@ -19,7 +19,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: "22"
+        value: "24"
       - key: HOST
         value: 0.0.0.0
       # Render's proxy is the one hop allowed to set X-Forwarded-For.

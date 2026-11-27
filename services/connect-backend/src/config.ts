@@ -85,7 +85,10 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   let dataKey: Buffer;
   if (e.CONNECT_DATA_KEY) {
     dataKey = Buffer.from(e.CONNECT_DATA_KEY, "base64");
-    if (dataKey.length !== 32) throw new Error("CONNECT_DATA_KEY must be 32 bytes, base64-encoded");
+    // The lengths are not secret and make a truncated or mangled paste obvious in the deploy log.
+    if (dataKey.length !== 32) {
+      throw new Error(`CONNECT_DATA_KEY must be 32 bytes, base64-encoded (got ${e.CONNECT_DATA_KEY.length} characters decoding to ${dataKey.length} bytes)`);
+    }
   } else if (production) {
     throw new Error("CONNECT_DATA_KEY is required in production");
   } else {

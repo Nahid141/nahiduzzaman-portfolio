@@ -29,12 +29,16 @@ checked). Steps 4 to 9 are still to do.
    lockdown, email through the provider's test inbox, LiveKit room/token/webhook signature).
 4. **Administrator:** `npm run admin:bootstrap -- --email <your address>` (hidden password prompt, at least 14
    characters). Then sign in at `/connect/admin/login` and enrol MFA.
-5. **Render:** New → Blueprint → this repository (`render.yaml`, branch `feature/private-connect`). Render asks for the
-   `sync: false` values. Paste each one with
-   `powershell -ExecutionPolicy Bypass -File services\connect-backend\scripts\copy-env-value.ps1 <NAME>`, which
-   copies the value from `.env` to the clipboard without showing it and clears the clipboard after 60 seconds:
-   `CONNECT_DATA_KEY`, `DATABASE_URL`, `SUPABASE_SECRET_KEY`, `EMAIL_API_KEY`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
-   `CONNECT_DATA_KEY` must be the same value as `.env`: the administrator's MFA secret is encrypted with it in step 4.
+5. **Render:** New → Blueprint → this repository (`render.yaml`, branch `feature/private-connect`). Service
+   `connect-backend` = `srv-dc50uvsipgvc73egqs00`, URL `https://connect-backend-x15t.onrender.com`. Then copy the six
+   secrets from `.env` to Render, verify them and deploy, with one command (asks for a Render API key, hidden):
+   `powershell -ExecutionPolicy Bypass -File services\connect-backend\scripts\sync-render-env.ps1`
+   It validates the local values (the data key must decode to 32 bytes), updates only `CONNECT_DATA_KEY`,
+   `DATABASE_URL`, `SUPABASE_SECRET_KEY`, `EMAIL_API_KEY`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` one by one,
+   compares each remote value with `.env` by SHA-256 (nothing is displayed), checks that every other Render
+   variable is unchanged, deploys, follows the deploy (printing redacted logs if it fails) and calls the health
+   endpoint. API key permissions needed: Services read, Environment variables read & write, Deploys read and
+   run, Monitoring read (for logs). Use `-NoDeploy` to sync only.
 6. **DNS (Namecheap):** Advanced DNS → add a CNAME record, host `connect-api`, value = the `onrender.com` target Render
    shows under Custom Domains. Then click Verify in Render. Render issues the TLS certificate.
 7. **Vercel:** Project → Settings → Environment Variables: `NEXT_PUBLIC_CONNECT_API_URL` =
@@ -60,6 +64,10 @@ site; do not use the bare `onrender.com` URL in production (browsers would block
 - **Backups:** Supabase Free has no managed backups. Take a manual dump when it matters:
   `pg_dump "<DATABASE_URL>" --no-owner -Fc -f connect-YYYYMMDD.dump` (needs a local `pg_dump` 17).
   Restoring into a fresh project and running `verify-db.ts` is the backup verification.
+- **Data key rotation:** `node --env-file=.env --import tsx scripts/rotate-data-key.ts` lists
+  what depends on the key, `--rotate` re-encrypts it in one transaction and updates `.env` (crash-safe; rerun to
+  resume). Then run `sync-render-env.ps1`. Rotated on 2026-11-27 after the previous key was exposed (no records
+  depended on it yet).
 - **Data key:** `CONNECT_DATA_KEY` encrypts MFA secrets. Keep the `.env` value and the Render value identical, and back
   it up somewhere private. Losing or changing it makes the stored MFA secret unreadable (the administrator would then run
   `bootstrap-admin --reset-password` and enrol MFA again).
