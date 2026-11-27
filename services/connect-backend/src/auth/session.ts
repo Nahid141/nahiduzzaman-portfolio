@@ -46,6 +46,8 @@ export async function revokeUserSessions(deps: AppDeps, userId: string, exceptSe
     ? and(eq(sessions.userId, userId), isNull(sessions.revokedAt), ne(sessions.id, exceptSessionId))
     : and(eq(sessions.userId, userId), isNull(sessions.revokedAt));
   await deps.db.update(sessions).set({ revokedAt: deps.now() }).where(where);
+  // Live sockets: drop all of the user's connections (they reconnect with a still-valid cookie).
+  deps.events.emit("user:revoked", userId);
 }
 
 declare module "fastify" {
@@ -56,7 +58,10 @@ declare module "fastify" {
 
 /** Resolves the session cookie. Rejects revoked, expired, idle sessions and non-active accounts. */
 export async function loadAuth(deps: AppDeps, request: FastifyRequest) {
-  const token = request.cookies[cookieName(deps)];
+  return loadAuthByToken(deps, request.cookies[cookieName(deps)]);
+}
+
+export async function loadAuthByToken(deps: AppDeps, token: string | undefined) {
   if (!token) return null;
   const rows = await deps.db
     .select({ session: sessions, user: users })

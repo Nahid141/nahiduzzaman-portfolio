@@ -82,7 +82,7 @@ describe("crypto", () => {
 
   it("accepts a current TOTP code and rejects one from far away", () => {
     const secret = generateTotpSecret();
-    const now = new Date("2026-11-27T12:00:00Z");
+    const now = t.clock.now;
     expect(verifyTotp(secret, t.totp(secret), now)).toBe(true);
     expect(verifyTotp(secret, t.totp(secret), new Date(now.getTime() + 10 * 60 * 1000))).toBe(false);
     expect(verifyTotp(secret, "12ab56", now)).toBe(false);

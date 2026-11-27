@@ -3,6 +3,7 @@ import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { createDb } from "../src/db/client.js";
 import { MemoryEmailSender, MemoryRateLimitStore } from "../src/lib/services.js";
+import { createEvents, MemoryPresenceStore } from "../src/lib/stores.js";
 import { bootstrapAdmin } from "../scripts/bootstrap-admin.js";
 
 export const ORIGIN = "http://localhost:3000";
@@ -10,7 +11,7 @@ export const ORIGIN = "http://localhost:3000";
 export async function testApp() {
   const handle = await createDb({ pglite: true });
   const email = new MemoryEmailSender();
-  const clock = { now: new Date("2026-11-27T12:00:00Z") };
+  const clock = { now: new Date() };
   const config = loadConfig({ NODE_ENV: "test", CONNECT_SITE_ORIGIN: ORIGIN });
   const app = await buildApp({
     config,
@@ -18,6 +19,8 @@ export async function testApp() {
     rateLimit: new MemoryRateLimitStore(),
     email,
     now: () => clock.now,
+    events: createEvents(),
+    presence: new MemoryPresenceStore(),
   });
 
   type Opts = { cookie?: string; csrf?: boolean; origin?: string; ip?: string };

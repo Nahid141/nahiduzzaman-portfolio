@@ -322,6 +322,7 @@ export async function authRoutes(app: FastifyInstance, deps: AppDeps) {
     const auth = await loadAuth(deps, request);
     if (auth) {
       await db.update(sessions).set({ revokedAt: now() }).where(eq(sessions.id, auth.session.id));
+      deps.events.emit("session:revoked", auth.session.id);
       await audit(db, { actorId: auth.user.id, action: "auth.logout" });
     }
     reply.clearCookie(cookieName(deps), cookieOptions(deps));
@@ -353,6 +354,7 @@ export async function authRoutes(app: FastifyInstance, deps: AppDeps) {
       .where(and(eq(sessions.id, id), eq(sessions.userId, request.auth!.user.id)))
       .returning({ id: sessions.id });
     if (!rows.length) return reply.code(404).send({ error: "not_found" });
+    deps.events.emit("session:revoked", id);
     return { status: "revoked" };
   });
 

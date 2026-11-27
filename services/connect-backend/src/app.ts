@@ -8,6 +8,16 @@ import { authRoutes } from "./auth/routes.js";
 import type { Config } from "./config.js";
 import type { Db } from "./db/client.js";
 import type { EmailSender, RateLimitStore } from "./lib/services.js";
+import type { AppEvents, PresenceStore } from "./lib/stores.js";
+import { chatRoutes } from "./chat/routes.js";
+import { ChatError } from "./chat/service.js";
+import { attachGateway, type Realtime } from "./realtime/gateway.js";
+
+declare module "fastify" {
+  interface FastifyInstance {
+    realtime: Realtime;
+  }
+}
 
 export type AppDeps = {
   config: Config;
@@ -15,6 +25,8 @@ export type AppDeps = {
   rateLimit: RateLimitStore;
   email: EmailSender;
   now: () => Date;
+  events: AppEvents;
+  presence: PresenceStore;
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -55,6 +67,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ChatError) return reply.code(error.status).send({ error: error.code });
     if (error instanceof ZodError) {
       return reply.code(400).send({
         error: "invalid_input",
@@ -71,5 +84,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/api/v1/health", async () => ({ status: "ok" }));
   await authRoutes(app, deps);
   await adminRoutes(app, deps);
+  const realtime = attachGateway(app, deps);
+  app.decorate("realtime", realtime);
+  await chatRoutes(app, deps, realtime);
   return app;
 }
