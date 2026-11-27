@@ -38,25 +38,21 @@ export default function RootLayout({
         <Backdrop />
         <SiteHeader />
 
-        <main className="relative z-10 flex-1 pt-16">{children}</main>
+        <main className="relative z-10 flex-1 pt-36 md:pt-24">{children}</main>
 
-        <footer className="relative z-10 border-t border-aspen/15 bg-lake/80 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="font-display text-2xl">Nahiduzzaman</p>
-              <a href={`mailto:${EMAILS[0]}`} className="mt-1 inline-block text-sm text-mist hover:text-aspen">
-                {EMAILS[0]}
+        <footer className="relative z-10 border-t border-white/10 bg-slate-950/80 py-6 text-center text-sm text-slate-400 backdrop-blur-xl">
+          <nav aria-label="Academic profiles" className="mb-3 flex flex-wrap justify-center gap-x-5 gap-y-2 px-4">
+            {PROFILE_LINKS.map((link) => (
+              <a key={link.name} href={link.url} target="_blank" rel="noopener noreferrer" className="transition hover:text-cyan-300">
+                {link.name}
               </a>
-            </div>
-            <nav aria-label="Academic profiles" className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-mist">
-              {PROFILE_LINKS.map((link) => (
-                <a key={link.name} href={link.url} target="_blank" rel="noopener noreferrer" className="hover:text-aspen">
-                  {link.name}
-                </a>
-              ))}
-            </nav>
-            <p className="text-sm text-mist/70">© {new Date().getFullYear()} Nahiduzzaman</p>
-          </div>
+            ))}
+            <a href={`mailto:${EMAILS[0]}`} className="transition hover:text-cyan-300">
+              {EMAILS[0]}
+            </a>
+          </nav>
+          <p>© {new Date().getFullYear()} Nahiduzzaman. All rights reserved.</p>
+          <p className="mt-1 font-semibold text-cyan-300">Developed by Nahiduzzaman</p>
         </footer>
       </body>
     </html>

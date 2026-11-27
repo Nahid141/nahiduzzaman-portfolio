@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import ProfileReveal from "./_components/ProfileReveal";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   H_INDEX,
@@ -205,7 +206,7 @@ function Hero() {
 
   return (
     <section className="px-4 sm:px-6">
-      <div className="mx-auto grid min-h-[min(calc(100svh-4rem),860px)] max-w-7xl items-center gap-14 py-16 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="mx-auto grid min-h-[min(calc(100svh-6rem),860px)] max-w-7xl items-center gap-14 py-16 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="hero-rise">
           <p className="text-sm font-bold tracking-[0.3em] text-aspen">MICROBIOLOGY • GENOMICS • EPIDEMIOLOGY</p>
           <h1 className="mt-6 font-display text-[clamp(3rem,8vw,6.5rem)] font-bold leading-[0.95] tracking-tight text-white">
@@ -913,6 +914,7 @@ export default function Home() {
   return (
     <>
       <Hero />
+      <ProfileReveal />
       <ResearchTree />
       <ToolsSection />
       <LatestWork />
