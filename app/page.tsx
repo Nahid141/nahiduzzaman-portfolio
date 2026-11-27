@@ -1,7 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import PhotoDeck from "./_components/PhotoDeck";
+import { EmailButton } from "./_components/ProtectedEmail";
 import ProfileReveal from "./_components/ProfileReveal";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
@@ -118,72 +119,6 @@ function RotatingFocus() {
   );
 }
 
-const PHOTOS = [
-  { src: "/nahid-lighthouse.jpg", alt: "Nahiduzzaman in front of Split Rock Lighthouse in autumn" },
-  { src: "/nahid-shore.jpg", alt: "Nahiduzzaman on the rocky Lake Superior shore below Split Rock Lighthouse" },
-];
-
-function PhotoPair() {
-  const [front, setFront] = useState(0);
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const reduced = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
-
-  const onMove = (e: React.PointerEvent) => {
-    if (reduced || e.pointerType !== "mouse" || !ref.current) return;
-    const box = ref.current.getBoundingClientRect();
-    setTilt({
-      x: ((e.clientX - box.left) / box.width - 0.5) * 2,
-      y: ((e.clientY - box.top) / box.height - 0.5) * 2,
-    });
-  };
-
-  return (
-    <figure className="relative mx-auto w-full max-w-[480px] lg:max-w-none">
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[420px] w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400/15 blur-3xl" />
-      <div
-        ref={ref}
-        onPointerMove={onMove}
-        onPointerLeave={() => setTilt({ x: 0, y: 0 })}
-        className="relative aspect-[5/6] w-full"
-      >
-        {PHOTOS.map((photo, i) => {
-          const isFront = i === front;
-          const depth = isFront ? 12 : -7;
-          const place = isFront ? "left-0 top-[8%] z-20 w-[76%] -rotate-2" : "right-0 top-0 z-10 w-[60%] rotate-3 opacity-80 hover:opacity-100";
-          return (
-            <button
-              key={photo.src}
-              type="button"
-              onClick={() => setFront(i)}
-              aria-label={isFront ? photo.alt : `Bring forward: ${photo.alt}`}
-              aria-pressed={isFront}
-              disabled={isFront}
-              className={`glass absolute p-3 shadow-2xl shadow-cyan-950/50 transition-[left,right,top,width,transform,opacity,border-color] duration-700 ease-[cubic-bezier(.2,.7,.2,1)] hover:border-aspen/60 ${place} ${
-                isFront ? "cursor-default" : "cursor-pointer"
-              }`}
-              style={{ translate: `${tilt.x * depth}px ${tilt.y * depth}px` }}
-            >
-              <Image
-                src={photo.src}
-                alt=""
-                width={700}
-                height={933}
-                priority
-                sizes="(min-width: 1024px) 34vw, 80vw"
-                className="aspect-[3/4] w-full object-cover"
-              />
-            </button>
-          );
-        })}
-      </div>
-      <figcaption className="mt-3 text-right text-sm text-mist">
-        Split Rock Lighthouse, Lake Superior. Tap the back photo to swap.
-      </figcaption>
-    </figure>
-  );
-}
-
 function StatCard({ value, label, run, reduced }: { value: number; label: string; run: boolean; reduced: boolean }) {
   const n = useCountUp(value, run, reduced);
   return (
@@ -217,6 +152,10 @@ function Hero() {
             <br />
             <RotatingFocus />
           </p>
+          <p className="mt-6 inline-flex items-center gap-2 border border-aspen/25 bg-aspen/10 px-4 py-2 text-sm font-bold text-cyan-100 backdrop-blur">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+            PhD student, College of Veterinary Medicine, University of Minnesota
+          </p>
           <div className="mt-10 flex flex-wrap gap-3">
             <Link
               href="/research"
@@ -249,7 +188,7 @@ function Hero() {
             ))}
           </div>
         </div>
-        <PhotoPair />
+        <PhotoDeck />
       </div>
     </section>
   );
@@ -393,7 +332,7 @@ const TREE: Clade = {
     {
       id: "tools",
       label: "Software",
-      blurb: "Free browser tools for the analyses I run myself.",
+      blurb: "Browser tools: EGStat-N and QI-GeneX-N are mine; PRRSLooM is the V-EPI Lab's tool, which I converted to Python.",
       children: TOOLS.map(tool),
     },
   ],
@@ -814,7 +753,8 @@ function ToolsSection() {
     <section className="px-4 pb-24 sm:px-6">
       <div className="mx-auto max-w-7xl">
         <p className="text-sm font-bold tracking-[0.3em] text-aspen">OPEN TOOLS</p>
-        <h2 className="mt-3 font-display text-4xl font-bold md:text-5xl">Analysis software I build</h2>
+        <h2 className="mt-3 font-display text-4xl font-bold md:text-5xl">Analysis software</h2>
+        <p className="mt-3 max-w-2xl text-mist">EGStat-N and QI-GeneX-N are tools I built. PRRSLooM was developed by the V-EPI Lab at the University of Minnesota; I converted it to Python.</p>
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           {TOOLS.map((t) => (
             <Link
@@ -886,7 +826,19 @@ function LatestWork() {
 function ContactBand() {
   return (
     <section className="px-4 pb-24 sm:px-6">
-      <div className="glass relative mx-auto max-w-7xl overflow-hidden px-6 py-14 text-center md:px-12">
+      <div className="glass group relative mx-auto max-w-7xl overflow-hidden px-6 py-14 text-center md:px-12">
+        <video
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30 transition duration-1000 group-hover:scale-105 group-hover:opacity-45"
+          src="/waterfall.mp4"
+          poster="/waterfall-poster.jpg"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+        />
+        <div className="pointer-events-none absolute inset-0 bg-slate-950/55" />
         <div className="pointer-events-none absolute left-1/2 top-0 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-aspen/70 to-transparent" />
         <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-cyan-300/15 blur-3xl" />
         <h2 className="relative font-display text-3xl font-bold md:text-5xl">Let&rsquo;s work together</h2>
@@ -894,9 +846,9 @@ function ContactBand() {
           Open to collaborations on AMR, pathogen genomics and epidemiological modelling.
         </p>
         <div className="relative mt-8 flex flex-wrap justify-center gap-3">
-          <a href="mailto:nahid007@umn.edu" className="border border-aspen bg-aspen px-7 py-4 font-bold text-lake transition hover:bg-white">
+          <EmailButton className="border border-aspen bg-aspen px-7 py-4 font-bold text-lake transition hover:bg-white">
             Email me
-          </a>
+          </EmailButton>
           <Link href="/about" className="border border-white/20 bg-white/5 px-7 py-4 font-bold transition hover:border-aspen hover:text-cyan-200">
             About me
           </Link>

@@ -7,6 +7,8 @@ export const PHOTOS = [
   { src: "/nahid-lighthouse.jpg", alt: "In front of Split Rock Lighthouse", caption: "Split Rock Lighthouse, Lake Superior" },
   { src: "/nahid-shore.jpg", alt: "On the rocky shore below Split Rock Lighthouse", caption: "The shore below the lighthouse" },
   { src: "/nahid-overlook.jpg", alt: "At an overlook above Lake Superior in autumn", caption: "Autumn on the North Shore" },
+  { src: "/nahid-duluth.jpg", alt: "On the Duluth pier with the harbor lighthouse behind", caption: "Duluth harbor, Lake Superior" },
+  { src: "/nahid-grass.jpg", alt: "Lying in the grass looking up at an evening sky", caption: "An autumn evening, looking up" },
 ];
 
 /** Photo grid with a keyboard-navigable lightbox. */

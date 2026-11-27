@@ -66,3 +66,13 @@ body {
   0% { r: 6; opacity: 0.9; }
   100% { r: 18; opacity: 0; }
 }
+
+/* Home photo deck: slow zoom on the front print and the dot's timer bar. */
+@keyframes kenburns {
+  from { transform: scale(1.02) translate(0, 0); }
+  to { transform: scale(1.14) translate(-2%, -2%); }
+}
+@keyframes deckprogress {
+  from { width: 0%; }
+  to { width: 100%; }
+}

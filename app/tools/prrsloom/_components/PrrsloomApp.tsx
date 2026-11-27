@@ -259,6 +259,11 @@ export default function PrrsloomApp() {
                 sequences. A Python implementation of the PRRSLoom Shiny tools from the V-EPI Lab, University of Minnesota, using the
                 same PRRSV-2 variant classifier and reference set.
               </p>
+              <p className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm font-semibold leading-6 text-amber-100">
+                <span className="font-black">Note on authorship:</span> PRRSLooM was developed by the V-EPI Lab (Veterinary
+                Epidemiology &amp; Pathogen Informatics), Department of Veterinary Population Medicine, University of Minnesota.
+                I did not develop the original tool; I converted it from R Shiny into this Python web version.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm sm:max-w-sm">
               {["4 analysis modules", "Live classifier model", "R-validated results", "Results kept 72 h"].map((x) => (

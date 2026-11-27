@@ -205,7 +205,7 @@ export const TOOLS = [
   {
     name: "PRRSLooM",
     href: "/tools/prrsloom",
-    summary: "PRRSV-2 variant classification, NJ trees, TIMER molecular-clock audits and haplotype networks.",
+    summary: "PRRSV-2 variant classification, NJ trees, TIMER molecular-clock audits and haplotype networks. Developed by the V-EPI Lab (UMN); I converted it to Python.",
     glyph: "tree",
   },
 ] as const;
@@ -218,4 +218,10 @@ export const PROFILE_LINKS = [
   { name: "LinkedIn", url: "https://www.linkedin.com/in/fnu-nahiduzzaman-20195419b" },
 ];
 
-export const EMAILS = ["nahid007@umn.edu", "nahiduzzaman.2001055@bau.edu.bd"];
+/* Email addresses are stored reversed + base64 so they never appear as plain
+   text in the HTML or JS bundle; ProtectedEmail decodes them only after a
+   human check. Decode: atob(value.split("").reverse().join("")). */
+export const ENCODED_EMAILS = [
+  { label: "UMN", value: "==QdkVmLu1WdAdDMwQWaoFmb" },
+  { label: "BAU", value: "==AZi5SdkVmL1FmYAVTNwEDMwIjLuFWbhpne1RWaoFmb" },
+];

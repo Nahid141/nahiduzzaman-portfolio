@@ -2,7 +2,8 @@ import "./globals.css";
 import { Newsreader, Public_Sans } from "next/font/google";
 import Backdrop from "./_components/Backdrop";
 import SiteHeader from "./_components/SiteHeader";
-import { EMAILS, PROFILE_LINKS } from "./_data/profile";
+import ProtectedEmail from "./_components/ProtectedEmail";
+import { PROFILE_LINKS } from "./_data/profile";
 
 const newsreader = Newsreader({
   subsets: ["latin"],
@@ -47,10 +48,10 @@ export default function RootLayout({
                 {link.name}
               </a>
             ))}
-            <a href={`mailto:${EMAILS[0]}`} className="transition hover:text-cyan-300">
-              {EMAILS[0]}
-            </a>
           </nav>
+          <div className="mb-3 flex justify-center px-4">
+            <ProtectedEmail index={0} />
+          </div>
           <p>© {new Date().getFullYear()} Nahiduzzaman. All rights reserved.</p>
           <p className="mt-1 font-semibold text-cyan-300">Developed by Nahiduzzaman</p>
         </footer>

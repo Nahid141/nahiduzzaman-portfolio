@@ -20,7 +20,7 @@ export default function ProfileReveal() {
           </h2>
         </div>
 
-        <div className="relative hidden h-[360px] overflow-hidden border border-cyan-300/20 bg-slate-950 shadow-2xl shadow-cyan-950/30 lg:block">
+        <div className="relative hidden h-[430px] overflow-hidden border border-cyan-300/20 bg-slate-950 shadow-2xl shadow-cyan-950/30 lg:block">
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(8,47,73,0.55),rgba(2,6,23,1)_45%,rgba(8,47,73,0.55))]" />
           <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-cyan-300/15" />
 
@@ -49,7 +49,7 @@ export default function ProfileReveal() {
               <div className="flex h-full translate-x-10 items-center border-l border-cyan-300/20 bg-slate-950 p-8 opacity-0 transition-all duration-700 ease-out group-hover:translate-x-0 group-hover:opacity-100 xl:p-10">
                 <div className="max-w-4xl">
                   <p className="font-serif text-base leading-8 text-slate-300 xl:text-lg xl:leading-9">
-                    Nahiduzzaman began his DVM at the Faculty of Veterinary Science, Bangladesh Agricultural University, in 2020 and completed the degree on 31 March 2026. From September 2023 to March 2026, he worked as an Undergraduate Research Assistant in the Department of Microbiology and Hygiene under Prof. Dr. Ariful Islam, where he began his research journey through vaccine development, foodborne pathogen investigation, and public health-related studies. During this period, he contributed to more than 12 research projects, developing expertise in microbiology, epidemiology, public health, bioinformatics, genomics, vaccinology, and related laboratory, molecular, programming, and biological data analysis skills.
+                    Nahiduzzaman began his DVM at the Faculty of Veterinary Science, Bangladesh Agricultural University, in 2020 and completed the degree on 31 March 2026. From September 2023 to March 2026, he worked as an Undergraduate Research Assistant in the Department of Microbiology and Hygiene under Prof. Dr. Ariful Islam, where he began his research journey through vaccine development, foodborne pathogen investigation, and public health-related studies. During this period, he contributed to more than 12 research projects, developing expertise in microbiology, epidemiology, public health, bioinformatics, genomics, vaccinology, and related laboratory, molecular, programming, and biological data analysis skills. He is now pursuing his PhD in the College of Veterinary Medicine, University of Minnesota, Twin Cities, as a member of the V-EPI Lab in the Department of Veterinary Population Medicine.
                   </p>
 
                   <div className="mt-6 grid grid-cols-3 gap-3">
@@ -137,7 +137,7 @@ export default function ProfileReveal() {
               Academic profile
             </h3>
             <p className="mt-5 font-serif text-base leading-8 text-slate-300">
-              Nahiduzzaman began his DVM at the Faculty of Veterinary Science, Bangladesh Agricultural University, in 2020 and completed the degree on 31 March 2026. From September 2023 to March 2026, he worked as an Undergraduate Research Assistant in the Department of Microbiology and Hygiene under Prof. Dr. Ariful Islam, where he began his research journey through vaccine development, foodborne pathogen investigation, and public health-related studies. During this period, he contributed to more than 12 research projects and developed expertise in microbiology, epidemiology, public health, bioinformatics, genomics, vaccinology, and related analytical skills.
+              Nahiduzzaman began his DVM at the Faculty of Veterinary Science, Bangladesh Agricultural University, in 2020 and completed the degree on 31 March 2026. From September 2023 to March 2026, he worked as an Undergraduate Research Assistant in the Department of Microbiology and Hygiene under Prof. Dr. Ariful Islam, where he began his research journey through vaccine development, foodborne pathogen investigation, and public health-related studies. During this period, he contributed to more than 12 research projects and developed expertise in microbiology, epidemiology, public health, bioinformatics, genomics, vaccinology, and related analytical skills. He is now pursuing his PhD in the College of Veterinary Medicine, University of Minnesota, Twin Cities, as a member of the V-EPI Lab.
             </p>
           </article>
 

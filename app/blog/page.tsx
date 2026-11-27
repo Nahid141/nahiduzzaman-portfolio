@@ -1027,6 +1027,9 @@ function ThreeBuilding({
   return <div ref={mountRef} className="h-[840px] w-full rounded-b-[2rem] cursor-grab active:cursor-grabbing" />;
 }
 
+/* "My Goal" is kept in the code but hidden from the published site. */
+const SHOW_GOAL_SECTION = false;
+
 function GoalSection() {
   const [open, setOpen] = useState(true);
   const [selectedRoomId, setSelectedRoomId] = useState("bsl3");
@@ -1232,7 +1235,8 @@ export default function Blog() {
         </p>
       </section>
 
-      <GoalSection />
+      {/* Unpublished for now: set SHOW_GOAL_SECTION to true to bring "My Goal" back. */}
+      {SHOW_GOAL_SECTION && <GoalSection />}
 
       <ExpandableSection
         title="Photography Gallery"

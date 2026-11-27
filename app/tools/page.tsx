@@ -555,7 +555,8 @@ const EGSTAT_N_VERSION = "1.6.4";
 const QIGENEX_N_VERSION = "1.6.1";
 // frontend patch: qigenex_frontend_https_fasta_field_fix_v23
 const TOOL_DEVELOPER = "FNU Nahiduzzaman";
-const TOOL_RIGHTS_NOTICE = "These tools are developed by FNU Nahiduzzaman. All rights reserved.";
+const TOOL_RIGHTS_NOTICE =
+  "EGStat-N and QI-GeneX-N are developed by FNU Nahiduzzaman. All rights reserved. PRRSLooM was developed by the V-EPI Lab, University of Minnesota; this site hosts a Python port by FNU Nahiduzzaman.";
 const TOOL_WELCOME_MESSAGE =
   "Welcome to the integrated EGStat-N and QI-GeneX-N research workspace. Select a tool, upload your dataset or genome file, run the selected analysis, and download publication-ready outputs.";
 
@@ -1829,6 +1830,9 @@ export default function Tools() {
             <h2 className="text-4xl font-black text-white">PRRSLooM</h2>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
               Variant-classified NJ trees, tree labeling, TIMER pairwise molecular-clock audits and haplotype networks for PRRSV-2 ORF5 sequences.
+            </p>
+            <p className="mt-3 inline-block rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
+              Note: PRRSLooM was developed by the V-EPI Lab, University of Minnesota. I converted it from R Shiny to Python.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {["NJ Tree Builder", "Tree Labeling", "TIMER clock audit", "Haplotype Network"].map((item) => (

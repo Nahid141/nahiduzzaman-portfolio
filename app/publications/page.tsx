@@ -57,7 +57,8 @@ function PublicationRow({
   onTag: (tag: string) => void;
 }) {
   return (
-    <li className="grid gap-4 border-b border-white/10 py-8 md:grid-cols-[5rem_1fr_9rem] md:gap-8">
+    <li className="group relative grid gap-4 border-b border-aspen/10 px-5 py-8 transition duration-300 last:border-b-0 hover:bg-aspen/[0.06] md:grid-cols-[5rem_1fr_9rem] md:gap-8 md:px-8">
+      <span className="absolute inset-y-0 left-0 w-0.5 scale-y-0 bg-aspen shadow-[0_0_12px_rgba(103,232,249,0.9)] transition-transform duration-300 group-hover:scale-y-100" />
       <p className="font-display text-3xl text-mist">{pub.year}</p>
 
       <div>
@@ -134,7 +135,7 @@ function Accession({ label, id, href }: { label: string; id: string; href: strin
 
 function NcbiRow({ record }: { record: NcbiRecord }) {
   return (
-    <li className="grid gap-3 border-b border-white/10 py-6 md:grid-cols-[1fr_1.3fr] md:gap-8">
+    <li className="grid gap-3 border-b border-aspen/10 px-5 py-6 transition hover:bg-aspen/[0.05] md:grid-cols-[1fr_1.3fr] md:gap-8">
       <div>
         <p className="font-display text-xl italic">{record.organism}</p>
         <p className="mt-1 text-sm text-mist">
@@ -251,7 +252,7 @@ export default function Publications() {
             </button>
           </div>
         ) : (
-          <ol>
+          <ol className="glass mt-6">
             {shown.map((pub) => (
               <PublicationRow key={pub.title} pub={pub} query={query} onCopy={copy} onTag={setQuery} />
             ))}
@@ -291,7 +292,7 @@ export default function Publications() {
         {groups.map((group) => (
           <div key={group.key} className="mt-10">
             <h3 className="border-b border-white/20 pb-3 text-sm font-semibold text-lichen">{group.label}</h3>
-            <ul>
+            <ul className="glass mt-3">
               {group.records.map((r) => (
                 <NcbiRow key={`${r.organism}-${r.source}`} record={r} />
               ))}

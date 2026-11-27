@@ -2,13 +2,13 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { EMAILS, H_INDEX, PUBLICATIONS, TOTAL_CITATIONS } from "../_data/profile";
+import { H_INDEX, PUBLICATIONS, TOTAL_CITATIONS } from "../_data/profile";
+import ProtectedEmail, { EMAIL_COUNT } from "../_components/ProtectedEmail";
 
 /* -------------------------------------------------------------------------- */
 /*  Data                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const emails = EMAILS;
 
 const profileLinks = [
   { name: "Google Scholar", short: "GS", url: "https://scholar.google.com/citations?user=37f5LKUAAAAJ&hl=en" },
@@ -142,6 +142,13 @@ const researchAreas = [
 ];
 
 const educationData = [
+  {
+    degree: "Doctor of Philosophy (PhD), in progress",
+    session: "Current",
+    result: "V-EPI Lab, Department of Veterinary Population Medicine",
+    institution: "College of Veterinary Medicine, University of Minnesota",
+    location: "Twin Cities, Minnesota, USA",
+  },
   {
     degree: "Doctor of Veterinary Medicine (DVM)",
     session: "2020–2026",
@@ -328,7 +335,7 @@ function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
   const heroActions = [
     { label: "Education", onClick: onEducationClick },
     { label: "ORCID", href: "https://orcid.org/0009-0000-1970-9480" },
-    { label: "Email", href: `mailto:${emails[0]}` },
+    { label: "Email", href: "#contact" },
   ];
 
   return (
@@ -373,6 +380,10 @@ function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
         <h1 className="mx-auto mt-4 max-w-3xl text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl">
           Microbiology researcher connecting laboratory evidence with computational biology.
         </h1>
+        <p className="mx-auto mt-5 inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-bold text-cyan-100">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+          PhD student, College of Veterinary Medicine, University of Minnesota Twin Cities
+        </p>
         <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
           His work brings together veterinary microbiology, infectious disease investigation, molecular
           epidemiology, microbial genomics, public health, and data-driven research.
@@ -419,6 +430,66 @@ function WaterfallVideo({ className }: { className: string }) {
       preload="metadata"
       aria-label="Waterfall in an autumn forest"
     />
+  );
+}
+
+function CurrentPosition() {
+  const [ref, inView] = useInView<HTMLDivElement>(0.2);
+  return (
+    <section className="mt-16">
+      <SectionHeading
+        eyebrow="Now"
+        title="PhD research at the University of Minnesota"
+        subtitle="College of Veterinary Medicine, University of Minnesota Twin Cities, Minnesota, USA"
+      />
+      <div
+        ref={ref}
+        className="group relative overflow-hidden rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-10"
+      >
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl transition duration-700 group-hover:bg-cyan-300/20" />
+        <div className="relative grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <p className="text-base leading-8 text-slate-300 md:text-lg md:leading-9">
+              I am currently pursuing my PhD in the College of Veterinary Medicine at the University of Minnesota,
+              Twin Cities. I am a member of the{" "}
+              <span className="font-bold text-cyan-200">V-EPI Lab (Veterinary Epidemiology &amp; Pathogen Informatics)</span>{" "}
+              in the Department of Veterinary Population Medicine, where I work on swine pathogen epidemiology,
+              genomics and data-driven disease surveillance.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {["Veterinary Population Medicine", "Swine health", "Pathogen informatics", "Molecular epidemiology"].map((tag, i) => (
+                <span
+                  key={tag}
+                  style={{ transitionDelay: `${i * 80}ms` }}
+                  className={`rounded-full border border-cyan-300/20 bg-cyan-300/5 px-4 py-2 text-sm font-bold text-slate-200 transition-all duration-500 hover:-translate-y-1 hover:border-cyan-300/60 ${
+                    inView ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+                  }`}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            {[
+              { src: "/vepi-lab-logo.jpg", alt: "V-EPI Lab: Veterinary Epidemiology and Pathogen Informatics", w: 922, h: 477, note: "Member, V-EPI Lab" },
+              { src: "/umn-swine-group-logo.png", alt: "Swine Group, University of Minnesota", w: 1807, h: 709, note: "Swine Group, University of Minnesota" },
+            ].map((logo, i) => (
+              <figure
+                key={logo.src}
+                style={{ transitionDelay: `${150 + i * 150}ms` }}
+                className={`rounded-2xl border border-cyan-300/20 bg-white p-4 shadow-xl shadow-cyan-950/30 transition-all duration-700 hover:-translate-y-1 hover:shadow-cyan-500/20 ${
+                  inView ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
+                }`}
+              >
+                <Image src={logo.src} alt={logo.alt} width={logo.w} height={logo.h} className="mx-auto h-24 w-auto object-contain md:h-28" />
+                <figcaption className="mt-2 text-center text-xs font-bold text-slate-600">{logo.note}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -861,7 +932,7 @@ function MetricsSection() {
 
 function ContactSection() {
   return (
-    <section className="mt-24">
+    <section id="contact" className="mt-24 scroll-mt-40">
       <SectionHeading
         eyebrow="Connect"
         title="Academic profiles and contact"
@@ -891,14 +962,13 @@ function ContactSection() {
         <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-8">
           <h3 className="text-2xl font-black text-white">Email</h3>
           <div className="mt-6 space-y-3">
-            {emails.map((email) => (
-              <a
-                key={email}
-                href={`mailto:${email}`}
-                className="group flex items-center gap-3 rounded-xl border border-cyan-300/12 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
+            {Array.from({ length: EMAIL_COUNT }, (_, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 rounded-xl border border-cyan-300/12 bg-white/[0.035] p-4 text-sm font-bold text-slate-200"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -906,12 +976,12 @@ function ContactSection() {
                     />
                   </svg>
                 </span>
-                <span className="break-all text-sm font-bold text-slate-200 group-hover:text-white">{email}</span>
-              </a>
+                <ProtectedEmail index={i} withButton={i === 0} />
+              </div>
             ))}
           </div>
           <p className="mt-6 text-sm leading-7 text-slate-400">
-            Open to academic collaboration, research discussion, and computational biology projects.
+            Hold the button to show my email addresses. This keeps them away from spam bots.
           </p>
         </div>
       </div>
@@ -941,6 +1011,7 @@ export default function About() {
 
       <div className="relative z-10 mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-20">
         <HeroSection onEducationClick={() => setShowEducation(true)} />
+        <CurrentPosition />
         <MotivationSection />
         <ResearchAreaBand />
         <ResearchPipeline />
