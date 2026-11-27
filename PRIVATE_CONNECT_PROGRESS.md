@@ -60,13 +60,6 @@ Branch `feature/private-connect` (pushed to GitHub, not merged). Base: `site-red
 - Profile pictures are deferred to Phase 4 (needs the private file pipeline).
 - `maintenanceMode` is stored but not enforced until there is something to put in maintenance.
 
-### Blockers / owner decisions needed before deployment
-
-1. Email provider (SMTP) for verification and reset mail.
-2. Approval to create the GCP VM, static IP, DNS `connect-api.fnunahiduzzaman.com`, firewall rules.
-3. PostgreSQL: Cloud SQL vs local on the VM. Redis for multi-instance rate limiting (Phase 3).
-4. `NEXT_PUBLIC_CONNECT_API_URL` must be set in Vercel once the API host exists.
-
 ### Next steps
 
 1. Finish deployment (see above), then run the smoke test against production.
