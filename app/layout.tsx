@@ -54,6 +54,9 @@ export default function RootLayout({
           </div>
           <p>© {new Date().getFullYear()} Nahiduzzaman. All rights reserved.</p>
           <p className="mt-1 font-semibold text-cyan-300">Developed by Nahiduzzaman</p>
+          <a href="/connect" className="mt-2 inline-block text-xs text-slate-600 transition hover:text-cyan-300">
+            Private Connect
+          </a>
         </footer>
       </body>
     </html>
