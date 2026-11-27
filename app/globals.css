@@ -1,15 +1,14 @@
 @import "tailwindcss";
 
-/* Palette taken from the Lake Superior photographs on the home page:
-   deep lake water, birch bark, autumn aspen and shoreline lichen. */
+/* Original portfolio palette: deep slate night with cyan bioluminescence. */
 @theme {
-  --color-lake: #0b2130;
-  --color-deep: #12324a;
-  --color-shoal: #1d4a66;
-  --color-birch: #eef1ec;
-  --color-mist: #a3b6c2;
-  --color-aspen: #e8a93a;
-  --color-lichen: #8db89b;
+  --color-lake: #020617;
+  --color-deep: #0f172a;
+  --color-shoal: #1e293b;
+  --color-birch: #f1f5f9;
+  --color-mist: #94a3b8;
+  --color-aspen: #67e8f9;
+  --color-lichen: #5eead4;
   --font-display: var(--font-newsreader), Georgia, serif;
   --font-sans: var(--font-public-sans), system-ui, sans-serif;
 }
@@ -53,4 +52,17 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Glass panel used over the animated background. */
+.glass {
+  border: 1px solid rgba(103, 232, 249, 0.16);
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+@keyframes pulse-ring {
+  0% { r: 6; opacity: 0.9; }
+  100% { r: 18; opacity: 0; }
 }

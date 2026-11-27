@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Newsreader, Public_Sans } from "next/font/google";
+import Backdrop from "./_components/Backdrop";
 import SiteHeader from "./_components/SiteHeader";
 import { EMAILS, PROFILE_LINKS } from "./_data/profile";
 
@@ -34,11 +35,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${newsreader.variable} ${publicSans.variable}`}>
       <body className="flex min-h-screen flex-col bg-lake font-sans text-birch antialiased">
+        <Backdrop />
         <SiteHeader />
 
-        <main className="flex-1 pt-16">{children}</main>
+        <main className="relative z-10 flex-1 pt-16">{children}</main>
 
-        <footer className="border-t border-white/10">
+        <footer className="relative z-10 border-t border-aspen/15 bg-lake/80 backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="font-display text-2xl">Nahiduzzaman</p>

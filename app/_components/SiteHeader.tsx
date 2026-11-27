@@ -29,12 +29,15 @@ export default function SiteHeader() {
   return (
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 ${
-        scrolled || open ? "border-b border-white/10 bg-lake/90 backdrop-blur-lg" : "bg-transparent"
+        scrolled || open ? "border-b border-aspen/15 bg-lake/85 backdrop-blur-xl" : "border-b border-transparent bg-lake/30 backdrop-blur-sm"
       }`}
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="font-display text-xl tracking-tight text-birch">
-          Nahiduzzaman
+        <Link href="/" className="group leading-tight">
+          <span className="block font-display text-xl font-semibold text-aspen transition-colors group-hover:text-birch">
+            Nahiduzzaman
+          </span>
+          <span className="block text-[11px] font-medium text-mist">DVM · Researcher</span>
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
@@ -44,7 +47,7 @@ export default function SiteHeader() {
               href={item.href}
               aria-current={isActive(item.href) ? "page" : undefined}
               className={`relative rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                isActive(item.href) ? "bg-white/10 text-birch" : "text-mist hover:text-birch"
+                isActive(item.href) ? "bg-aspen/10 text-aspen" : "text-birch/80 hover:text-aspen"
               }`}
             >
               {item.name}
