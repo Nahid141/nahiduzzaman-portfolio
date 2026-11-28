@@ -28,10 +28,10 @@ async function members(n: number) {
 }
 
 describe("meetings", () => {
-  it("creates a LiveKit room capped at 10 and issues scoped, short-lived tokens", async () => {
+  it("creates a LiveKit room capped at 15 and issues scoped, short-lived tokens", async () => {
     const [h] = await members(1);
     const m = (await create(h!.cookie)).json();
-    expect(t.livekit.calls.find((c) => c.op === "createRoom")!.args[1]).toBe(10);
+    expect(t.livekit.calls.find((c) => c.op === "createRoom")!.args[1]).toBe(15);
     const j = (await join(h!.cookie, m.id)).json();
     expect(j.state).toBe("admitted");
     const grant = decode(j.token);
@@ -40,11 +40,11 @@ describe("meetings", () => {
     expect(grant.sources).toContain("screen_share");
   });
 
-  it("admits exactly ten of eleven simultaneous join attempts and tells the eleventh it is full", async () => {
-    const ms = await members(11);
+  it("admits exactly fifteen of sixteen simultaneous join attempts and tells the sixteenth it is full", async () => {
+    const ms = await members(16);
     const m = (await create(ms[0]!.cookie)).json();
     const results = await Promise.all(ms.map((x) => join(x.cookie, m.id)));
-    expect(results.filter((r) => r.statusCode === 200)).toHaveLength(10);
+    expect(results.filter((r) => r.statusCode === 200)).toHaveLength(15);
     const refused = results.filter((r) => r.statusCode !== 200);
     expect(refused).toHaveLength(1);
     expect(refused[0]!.json().error).toBe("meeting_full");

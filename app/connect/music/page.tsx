@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Workspace from "../_components/Workspace";
+import YouTubeSync from "../_components/YouTubeSync";
 import { api, errorMessage, type ConnectUser } from "../_lib/api";
 import { fileUrl, type SharedFile } from "../_lib/files";
 import { getSocket } from "../_lib/realtime";
@@ -10,6 +11,7 @@ import { serverNow, syncClock, targetPosition, useMediaSync, useSharedState } fr
 type Lounge = {
   requestId: string | null;
   fileId: string | null;
+  youtubeId: string | null;
   title: string;
   status: "stopped" | "playing" | "paused";
   anchorMs: number | null;
@@ -20,7 +22,7 @@ type Lounge = {
   durationMs: number | null;
   history: string[];
 };
-type Req = { id: string; status: string; title: string; requestedBy: string | null; note: string; fileId: string };
+type Req = { id: string; status: string; title: string; requestedBy: string | null; note: string; fileId: string | null; youtubeId: string | null };
 type Info = {
   queue: { pending: Req[]; queued: Req[]; recent: Req[] };
   djs: { userId: string; username: string; expiresAt: string }[];
@@ -119,14 +121,14 @@ function Lounge({ me }: { me: ConnectUser }) {
       <div>
         <h1 className="text-3xl font-black text-white">Music lounge</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-400">
-          Everyone hears the same track at the same moment. Request audio you have the right to share; the administrator or a DJ approves it.
+          Everyone hears the same track at the same moment. Paste a YouTube link or pick uploaded audio; the administrator or a DJ approves requests.
         </p>
       </div>
 
       <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-cyan-300/10 to-transparent p-6">
         <p className="text-xs font-bold text-cyan-300">{s?.status === "playing" ? "Now playing" : s?.status === "paused" ? "Paused" : "Nothing playing"}</p>
         <p className="mt-1 text-2xl font-black text-white">{s?.title || "The queue is empty"}</p>
-        {s?.fileId && (
+        {(s?.fileId || s?.youtubeId) && (
           <div className="mt-4">
             {/* The length is learned when the first listener's browser loads the track; until then show time only. */}
             {s.durationMs ? (
@@ -148,7 +150,19 @@ function Lounge({ me }: { me: ConnectUser }) {
           </div>
         )}
 
-        {!enabled ? (
+        {s?.youtubeId && (
+          <div className="mt-4 max-w-2xl">
+            <YouTubeSync
+              videoId={s.youtubeId}
+              title={s.title}
+              state={s}
+              onDuration={(ms) => s.requestId && s.durationMs === null && void run({ action: "duration", requestId: s.requestId, durationMs: ms })}
+              onEnded={() => s.requestId && void run({ action: "ended", requestId: s.requestId })}
+            />
+          </div>
+        )}
+
+        {s?.youtubeId ? null : !enabled ? (
           <button type="button" onClick={() => setEnabled(true)} className="mt-5 rounded-2xl bg-cyan-300 px-6 py-3 font-black text-slate-950 hover:bg-cyan-200">
             Enable audio
           </button>
@@ -240,7 +254,8 @@ function Queue({ info, control, onChange, setError }: { info: Info | null; contr
           {info?.queue.queued.map((r, i) => (
             <li key={r.id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
               <span className="text-slate-200">
-                {i + 1}. {r.title} <span className="text-xs text-slate-500">from @{r.requestedBy}</span>
+                {i + 1}. {r.youtubeId && <span className="mr-1 rounded bg-rose-500/20 px-1.5 text-[10px] font-black text-rose-200">YouTube</span>}
+                {r.title} <span className="text-xs text-slate-500">from @{r.requestedBy}</span>
               </span>
               {control && (
                 <button type="button" onClick={() => remove(r.id)} className="text-xs font-bold text-slate-400 hover:text-rose-300">Remove</button>
@@ -264,43 +279,80 @@ function Queue({ info, control, onChange, setError }: { info: Info | null; contr
 }
 
 function RequestTrack({ enabled, onDone }: { enabled: boolean; onDone: () => void }) {
+  const [mode, setMode] = useState<"youtube" | "file">("youtube");
   const [tracks, setTracks] = useState<SharedFile[]>([]);
   const [fileId, setFileId] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     api<SharedFile[]>("/files?kind=audio&targetKind=channel&limit=100")
       .then((f) => setTracks(f))
       .catch(() => undefined);
   }, []);
+  const tab = (m: "youtube" | "file", label: string) => (
+    <button
+      type="button"
+      onClick={() => setMode(m)}
+      aria-pressed={mode === m}
+      className={`rounded-full px-3 py-1 text-xs font-black ${mode === m ? "bg-cyan-300 text-slate-950" : "bg-white/5 text-slate-300"}`}
+    >
+      {label}
+    </button>
+  );
   return (
     <form
       className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.03] p-5"
       onSubmit={async (e) => {
         e.preventDefault();
+        setBusy(true);
         try {
-          await api("/lounge/requests", { body: { fileId, note } });
+          await api("/lounge/requests", { body: mode === "youtube" ? { youtubeUrl, note } : { fileId, note } });
           setMsg("Requested. The administrator has been notified.");
           setNote("");
+          setYoutubeUrl("");
           onDone();
         } catch (err) {
           setMsg(errorMessage(err));
         }
+        setBusy(false);
       }}
     >
       <h2 className="font-black text-white">Request a track</h2>
       {!enabled && <p className="text-sm text-amber-100">Requests are turned off right now.</p>}
-      <p className="text-xs text-slate-500">Upload audio to a public channel on the Files page first; only those can be played for everyone.</p>
-      <select value={fileId} onChange={(e) => setFileId(e.target.value)} required aria-label="Track" className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white">
-        <option value="">Choose an audio file</option>
-        {tracks.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-          </option>
-        ))}
-      </select>
+      <div className="flex gap-2">
+        {tab("youtube", "YouTube link")}
+        {tab("file", "Uploaded audio")}
+      </div>
+      {mode === "youtube" ? (
+        <input
+          value={youtubeUrl}
+          onChange={(e) => setYoutubeUrl(e.target.value)}
+          required
+          maxLength={300}
+          inputMode="url"
+          placeholder="https://www.youtube.com/watch?v=…"
+          aria-label="YouTube link"
+          className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white"
+        />
+      ) : (
+        <>
+          <p className="text-xs text-slate-500">Audio uploaded to a public channel (files are kept for 5 days).</p>
+          <select value={fileId} onChange={(e) => setFileId(e.target.value)} required aria-label="Track" className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white">
+            <option value="">Choose an audio file</option>
+            {tracks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
       <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder="Note (optional)" aria-label="Note" className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white" />
-      <button type="submit" disabled={!enabled || !fileId} className="rounded-xl bg-cyan-300 px-4 py-2 font-black text-slate-950 disabled:opacity-40">Send request</button>
+      <button type="submit" disabled={!enabled || busy || (mode === "youtube" ? !youtubeUrl.trim() : !fileId)} className="rounded-xl bg-cyan-300 px-4 py-2 font-black text-slate-950 disabled:opacity-40">
+        {busy ? "Checking the link…" : "Send request"}
+      </button>
       {msg && <p className="text-sm text-slate-300">{msg}</p>}
     </form>
   );

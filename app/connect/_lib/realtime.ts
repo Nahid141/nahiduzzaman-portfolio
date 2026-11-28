@@ -9,7 +9,7 @@ export type Target = { kind: "channel"; id: string } | { kind: "conversation"; i
 export type ChatMessage = {
   id: string;
   target: Target;
-  author: { id: string; username: string; fullName: string } | null;
+  author: { id: string; username: string; fullName: string; avatarKey: string | null } | null;
   body: string;
   replyToId: string | null;
   forwardedFromId: string | null;

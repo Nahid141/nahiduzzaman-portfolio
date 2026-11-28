@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { AppDeps } from "../app.js";
 import { requireAdmin, requireUser } from "../auth/session.js";
-import { roomOf, targetSchema } from "../chat/service.js";
+import { ChatError, roomOf, targetSchema } from "../chat/service.js";
 import { activity, announcements, meetings, securityEvents, users } from "../db/schema.js";
 import { storageSummary } from "../files/service.js";
 import { getUsage } from "../lib/usage.js";
@@ -30,7 +30,10 @@ import {
   requestTrack,
   revokeDj,
   vote,
+  watchControl,
+  watchControlSchema,
 } from "./service.js";
+import { oembedLookup, parseYoutubeId } from "./youtube.js";
 import { followStateSchema, readState, strokeSchema, writeState, type StateKey, type Versioned } from "./state.js";
 
 const idParam = z.object({ id: z.uuid() });
@@ -57,6 +60,7 @@ export async function collabRoutes(app: FastifyInstance, deps: AppDeps, rt: Real
     lounge: await readState(db, "lounge"),
     presentation: await readState(db, "presentation"),
     follow: await readState(db, "follow"),
+    watch: await readState(db, "watch"),
     canControl: await canControl(db, me(request), now()),
   }));
 
@@ -72,8 +76,12 @@ export async function collabRoutes(app: FastifyInstance, deps: AppDeps, rt: Real
   }));
 
   app.post("/api/v1/lounge/requests", guard, async (request, reply) => {
-    const { fileId, note } = z.object({ fileId: z.uuid(), note: z.string().trim().max(200).default("") }).parse(request.body);
-    const r = await requestTrack(db, me(request), fileId, note, now());
+    const body = z
+      .object({ fileId: z.uuid().optional(), youtubeUrl: z.string().trim().max(300).optional(), note: z.string().trim().max(200).default("") })
+      .refine((b) => Boolean(b.fileId) !== Boolean(b.youtubeUrl), "Choose an uploaded file or paste a YouTube link")
+      .parse(request.body);
+    const source = body.fileId ? { fileId: body.fileId } : await youtubeSource(body.youtubeUrl!);
+    const r = await requestTrack(db, me(request), source, body.note, now());
     const admins = await db.select({ id: users.id }).from(users).where(and(eq(users.role, "admin"), eq(users.status, "active")));
     for (const a of admins) rt.emit(`user:${a.id}`, "notification:new", { kind: "music_request", requestId: r.id });
     rt.emit("workspace", "lounge:queue", {});
@@ -115,6 +123,35 @@ export async function collabRoutes(app: FastifyInstance, deps: AppDeps, rt: Real
     await revokeDj(db, me(request), id, now());
     await audit(db, { actorId: me(request).id, action: "dj.revoked", targetType: "user", targetId: id });
     rt.emit("workspace", "lounge:queue", {});
+    return { ok: true };
+  });
+
+  /* --------------------------- Watch Together --------------------------- */
+
+  async function youtubeSource(url: string) {
+    const youtubeId = parseYoutubeId(url);
+    if (!youtubeId) throw new ChatError("invalid_youtube_link", 422);
+    const info = await (deps.youtube ?? oembedLookup)(youtubeId);
+    if (!info) throw new ChatError("youtube_unavailable", 422);
+    return { youtubeId, title: info.title };
+  }
+
+  app.post("/api/v1/watch/control", guard, async (request) => {
+    const raw = z.object({ action: z.string(), url: z.string().max(300).optional() }).passthrough().parse(request.body);
+    const input = watchControlSchema.parse(raw.action === "start" ? { ...raw, ...(await youtubeSource(raw.url ?? "")) } : raw);
+    const before = await readState(db, "watch");
+    const v = await watchControl(db, me(request), input, now());
+    if (v.version !== before.version) broadcast(v);
+    if (input.action === "start") await log(me(request).id, "watch.started", { title: v.state.title });
+    return { serverNow: Date.now(), state: v };
+  });
+
+  /** Floating emoji reactions over the shared video; relayed, never stored. */
+  const REACTIONS = ["❤️", "😂", "😮", "👏", "🔥", "🎉", "😢", "🍿"];
+  app.post("/api/v1/watch/react", guard, async (request, reply) => {
+    const { emoji } = z.object({ emoji: z.enum(REACTIONS as [string, ...string[]]) }).parse(request.body);
+    if ((await deps.rateLimit.hit(`react:${me(request).id}`, 60_000, now().getTime())) > 30) return reply.code(429).send({ error: "rate_limited" });
+    rt.emit("workspace", "watch:reaction", { emoji, userId: me(request).id });
     return { ok: true };
   });
 

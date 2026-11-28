@@ -89,7 +89,7 @@ function CreateMeeting({ me, onCreated }: { me: ConnectUser; onCreated: (m: Meet
       )}
       {error && <p className="text-sm text-rose-200">{error}</p>}
       <button type="submit" className="rounded-xl bg-cyan-300 px-4 py-2 font-black text-slate-950 hover:bg-cyan-200">Start meeting</button>
-      <p className="text-xs text-slate-500">Up to 10 people. Audio and video go through LiveKit Cloud and are encrypted in transit; recording is off.</p>
+      <p className="text-xs text-slate-500">Up to 15 people, with screen sharing. Audio and video go through LiveKit Cloud and are encrypted in transit; recording is off.</p>
     </form>
   );
 }
@@ -293,7 +293,7 @@ function Conference({ me }: { me: ConnectUser }) {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-black text-white">Meetings</h1>
-        <p className="mt-2 text-sm text-slate-400">Video and audio calls for up to 10 people, with screen sharing, a waiting room and host controls.</p>
+        <p className="mt-2 text-sm text-slate-400">Video and audio calls for up to 15 people, with screen sharing (use the Share screen button in the call), a waiting room and host controls.</p>
       </div>
       {list && !list.configured && <p className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 py-2 text-sm text-amber-100">Meetings are not configured on the server yet (LiveKit keys missing).</p>}
       {notice && <p role="alert" className="rounded-xl bg-rose-400/10 px-4 py-2 text-sm text-rose-200">{notice}</p>}

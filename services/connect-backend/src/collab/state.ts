@@ -13,6 +13,8 @@ import { ChatError } from "../chat/service.js";
 export const loungeStateSchema = z.object({
   requestId: z.uuid().nullable(),
   fileId: z.uuid().nullable(),
+  /** Set instead of fileId when the track is a YouTube video. */
+  youtubeId: z.string().regex(/^[A-Za-z0-9_-]{11}$/).nullable().default(null),
   title: z.string().max(200).default(""),
   status: z.enum(["stopped", "playing", "paused"]),
   /** Server epoch ms at which playback position 0 would have played (valid while playing). */
@@ -41,6 +43,17 @@ export const presentationStateSchema = z.object({
 });
 export type PresentationState = z.infer<typeof presentationStateSchema>;
 
+/** Watch Together: one shared YouTube video, started by a member, controlled by them or an admin/DJ. */
+export const watchStateSchema = z.object({
+  youtubeId: z.string().regex(/^[A-Za-z0-9_-]{11}$/).nullable(),
+  title: z.string().max(200),
+  status: z.enum(["stopped", "playing", "paused"]),
+  anchorMs: z.number().nullable(),
+  positionMs: z.number().min(0),
+  hostId: z.uuid().nullable(),
+});
+export type WatchState = z.infer<typeof watchStateSchema>;
+
 export const followStateSchema = z.object({
   enabled: z.boolean(),
   panel: z.enum(["dashboard", "chat", "files", "meetings", "lounge", "presentation"]),
@@ -63,15 +76,17 @@ export const STATE_SCHEMAS = {
   presentation: presentationStateSchema,
   follow: followStateSchema,
   whiteboard: whiteboardStateSchema,
+  watch: watchStateSchema,
 } as const;
 export type StateKey = keyof typeof STATE_SCHEMAS;
 export type StateOf<K extends StateKey> = z.infer<(typeof STATE_SCHEMAS)[K]>;
 
 export const DEFAULT_STATE: { [K in StateKey]: StateOf<K> } = {
-  lounge: { requestId: null, fileId: null, title: "", status: "stopped", anchorMs: null, positionMs: 0, repeat: false, shuffle: false, controllerId: null, durationMs: null, history: [] },
+  lounge: { requestId: null, fileId: null, youtubeId: null, title: "", status: "stopped", anchorMs: null, positionMs: 0, repeat: false, shuffle: false, controllerId: null, durationMs: null, history: [] },
   presentation: { active: false, fileId: null, kind: null, title: "", page: 1, status: "paused", anchorMs: null, positionMs: 0, presenterId: null },
   follow: { enabled: false, panel: "dashboard", hostId: null },
   whiteboard: { strokes: [] },
+  watch: { youtubeId: null, title: "", status: "stopped", anchorMs: null, positionMs: 0, hostId: null },
 };
 
 export type Versioned<K extends StateKey> = { key: K; version: number; state: StateOf<K>; updatedAt: Date | null };

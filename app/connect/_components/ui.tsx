@@ -13,10 +13,19 @@ export function ConnectionNotice() {
   const slow = useSyncExternalStore(subscribeSlow, () => slowNow, () => false);
   const problem = useSyncExternalStore(() => () => undefined, connectConfigProblem, () => null);
   if (problem) {
+    // On a Vercel deployment address, offer the same page on the real domain.
+    const official = window.location.hostname.endsWith(".vercel.app")
+      ? `https://www.fnunahiduzzaman.com${window.location.pathname}`
+      : null;
     return (
-      <p role="alert" className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm text-amber-100">
-        {problem}
-      </p>
+      <div role="alert" className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+        <p>{official ? "Sign-in works only on www.fnunahiduzzaman.com, not on Vercel deployment addresses." : problem}</p>
+        {official && (
+          <a href={official} className="mt-2 inline-block rounded-lg bg-amber-200 px-3 py-1.5 font-black text-slate-950 hover:bg-white">
+            Open this page on www.fnunahiduzzaman.com
+          </a>
+        )}
+      </div>
     );
   }
   if (!slow) return null;
@@ -110,13 +119,20 @@ export function useMe(opts: { admin?: boolean } = {}) {
         if (e instanceof ApiError && e.status === 401) router.replace(opts.admin ? "/connect/admin/login" : "/connect/login");
         else setError("Cannot reach Private Connect right now.");
       });
+    // The profile page announces edits so the sidebar shows the new name, status and photo at once.
+    const onChanged = (e: Event) => setMe((e as CustomEvent<ConnectUser>).detail);
+    window.addEventListener(ME_CHANGED, onChanged);
     return () => {
       alive = false;
+      window.removeEventListener(ME_CHANGED, onChanged);
     };
   }, [router, opts.admin]);
 
   return { me, error };
 }
+
+const ME_CHANGED = "connect:me-changed";
+export const announceMe = (u: ConnectUser) => window.dispatchEvent(new CustomEvent(ME_CHANGED, { detail: u }));
 
 export function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-white/5 ${className}`} />;

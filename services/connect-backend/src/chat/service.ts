@@ -1,6 +1,7 @@
-import { and, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client.js";
+import { getSettings } from "../settings.js";
 import {
   blocks,
   channelMembers,
@@ -77,7 +78,7 @@ export async function accessibleRooms(db: Db, user: Actor): Promise<string[]> {
   return [...chs.map((c) => `ch:${c.id}`), ...cvs.map((c) => `cv:${c.id}`)];
 }
 
-const isBlockedBetween = async (db: Db, a: string, b: string) =>
+export const isBlockedBetween = async (db: Db, a: string, b: string) =>
   (
     await db
       .select()
@@ -234,7 +235,7 @@ export async function setConversationFlag(db: Db, user: Actor, id: string, flag:
 export type MessageDto = {
   id: string;
   target: Target;
-  author: { id: string; username: string; fullName: string } | null;
+  author: { id: string; username: string; fullName: string; avatarKey: string | null } | null;
   body: string;
   replyToId: string | null;
   forwardedFromId: string | null;
@@ -252,7 +253,10 @@ async function toDtos(db: Db, rows: Message[]): Promise<MessageDto[]> {
   const ids = rows.map((r) => r.id);
   const authorIds = [...new Set(rows.map((r) => r.authorId).filter(Boolean))] as string[];
   const authors = authorIds.length
-    ? await db.select({ id: users.id, username: users.username, fullName: users.fullName }).from(users).where(inArray(users.id, authorIds))
+    ? await db
+        .select({ id: users.id, username: users.username, fullName: users.fullName, avatarKey: users.avatarKey })
+        .from(users)
+        .where(inArray(users.id, authorIds))
     : [];
   const rx = await db.select().from(reactions).where(inArray(reactions.messageId, ids));
   const att = await db
@@ -497,7 +501,16 @@ export async function setBlock(db: Db, user: Actor, otherId: string, on: boolean
 
 export async function listMembers(db: Db) {
   return db
-    .select({ id: users.id, username: users.username, fullName: users.fullName, bio: users.bio, role: users.role })
+    .select({
+      id: users.id,
+      username: users.username,
+      fullName: users.fullName,
+      bio: users.bio,
+      role: users.role,
+      avatarKey: users.avatarKey,
+      statusEmoji: users.statusEmoji,
+      statusText: users.statusText,
+    })
     .from(users)
     .where(eq(users.status, "active"))
     .orderBy(users.fullName);
@@ -512,4 +525,15 @@ export async function markNotificationsRead(db: Db, user: Actor) {
     .update(notifications)
     .set({ readAt: new Date() })
     .where(and(eq(notifications.userId, user.id), isNull(notifications.readAt)));
+}
+
+/** Deletes public channel messages older than the retention period (direct messages are kept). */
+export async function cleanupChannelMessages(db: Db, now: Date) {
+  const { channelMessageRetentionDays } = await getSettings(db);
+  const cutoff = new Date(now.getTime() - channelMessageRetentionDays * 86_400_000);
+  const gone = await db
+    .delete(messages)
+    .where(and(isNotNull(messages.channelId), lt(messages.createdAt, cutoff)))
+    .returning({ id: messages.id });
+  return { removed: gone.length };
 }

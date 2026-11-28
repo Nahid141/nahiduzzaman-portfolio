@@ -76,3 +76,29 @@ body {
   from { width: 0%; }
   to { width: 100%; }
 }
+
+/* Private Connect: watch-party reactions, buzz alert, task confetti */
+@keyframes watch-float {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(-260px) scale(1.25); opacity: 0; }
+}
+.watch-float { animation: watch-float 2.5s ease-out forwards; }
+
+@keyframes buzz-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10%, 50%, 90% { transform: translate(-6px, 2px) rotate(-0.6deg); }
+  30%, 70% { transform: translate(6px, -2px) rotate(0.6deg); }
+}
+.buzz-shake { animation: buzz-shake 0.6s ease-in-out 2; }
+
+@keyframes confetti-fall {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--dx), 220px) rotate(540deg); opacity: 0; }
+}
+.confetti-bit { animation: confetti-fall 1.2s ease-out forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .watch-float, .buzz-shake, .confetti-bit { animation: none; }
+  .watch-float, .confetti-bit { display: none; }
+}

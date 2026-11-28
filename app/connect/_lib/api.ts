@@ -25,6 +25,9 @@ export type ConnectUser = {
   email: string;
   fullName: string;
   bio: string | null;
+  avatarKey: string | null;
+  statusEmoji: string | null;
+  statusText: string | null;
   role: "admin" | "member";
   status: "pending_verification" | "pending" | "active" | "rejected" | "suspended" | "banned";
   mfaEnabled: boolean;
@@ -57,7 +60,7 @@ const MESSAGES: Record<string, string> = {
   csrf: "The request was blocked for security reasons. Reload the page and try again.",
   server_error: "Something went wrong on the server. Try again in a moment.",
   network: "Cannot reach the Private Connect server. Check your internet connection and try again.",
-  blocked: `The browser blocked the request to the Private Connect server. Open Private Connect at ${CONNECT_HOME} and turn off extensions that block requests on this site.`,
+  request_blocked: `The browser blocked the request to the Private Connect server. Open Private Connect at ${CONNECT_HOME} and turn off extensions that block requests on this site.`,
   timeout: "The Private Connect server did not answer in time. Try again.",
   not_found: "That item does not exist or you do not have access to it.",
   storage_unavailable: "File storage is not configured yet.",
@@ -74,7 +77,21 @@ const MESSAGES: Record<string, string> = {
   invalid_attachment: "One of the attachments is not available.",
   meetings_unavailable: "Video meetings are not configured yet.",
   meetings_disabled: "Meetings are turned off by the administrator.",
-  meeting_full: "This meeting is full (10 people). Try again when someone leaves.",
+  meeting_full: "This meeting is full (15 people). Try again when someone leaves.",
+  invalid_youtube_link: "That is not a YouTube video link. Paste a link like https://www.youtube.com/watch?v=…",
+  youtube_unavailable: "That video is private, removed or does not allow embedding. Try another one.",
+  avatar_too_large: "The photo is still larger than 200 KB after compression. Try a smaller picture.",
+  avatar_not_image: "Choose a JPEG, PNG or WebP photo.",
+  buzz_cooldown: "You just buzzed them. Wait a few seconds before buzzing again.",
+  invalid_target: "You cannot buzz yourself.",
+  blocked: "You cannot contact this member.",
+  too_many_tasks: "The to-do list is full (500 open items). Finish or delete some first.",
+  request_too_soon: "Pick a time at least 30 minutes from now.",
+  request_too_far: "Pick a time within the next 120 days.",
+  slot_taken: "Another approved meeting overlaps that time.",
+  not_pending: "This request has already been decided.",
+  not_cancellable: "This request can no longer be cancelled.",
+  invalid_range: "Choose a shorter date range.",
   meeting_locked: "The host has locked this meeting.",
   meeting_ended: "This meeting has ended.",
   meeting_not_started: "This meeting has not started yet.",
@@ -91,7 +108,8 @@ const MESSAGES: Record<string, string> = {
 
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.code === "config") return connectConfigProblem() ?? MESSAGES.network;
+    // The notice at the top of the page already explains the problem and links to the right address.
+    if (err.code === "config") return "Sign-in is not available at this address. Use the link above.";
     if (err.code === "invalid_input" && err.issues?.length) return err.issues.map((i) => i.message).join(" ");
     return MESSAGES[err.code] ?? "Something went wrong. Try again.";
   }
@@ -146,7 +164,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
       break;
     } catch (err) {
       if (err instanceof DOMException && err.name === "TimeoutError") throw new ApiError(0, "timeout");
-      if (await serverAnswers()) throw new ApiError(0, "blocked");
+      if (await serverAnswers()) throw new ApiError(0, "request_blocked");
       if (attempt >= RETRY_DELAYS.length) throw new ApiError(0, "network");
       await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
     } finally {

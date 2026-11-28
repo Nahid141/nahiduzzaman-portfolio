@@ -2,11 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Avatar, BuzzButton } from "../_components/Social";
 import Workspace from "../_components/Workspace";
 import { api, errorMessage } from "../_lib/api";
 import { getSocket } from "../_lib/realtime";
 
-type Member = { id: string; username: string; fullName: string; bio: string | null; role: "admin" | "member"; online: boolean };
+type Member = {
+  id: string;
+  username: string;
+  fullName: string;
+  bio: string | null;
+  role: "admin" | "member";
+  online: boolean;
+  avatarKey: string | null;
+  statusEmoji: string | null;
+  statusText: string | null;
+};
 
 export default function MembersPage() {
   const router = useRouter();
@@ -15,15 +26,19 @@ export default function MembersPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api<Member[]>("/members")
-      .then(setMembers)
-      .catch((e) => setError(errorMessage(e)));
+    const load = () =>
+      api<Member[]>("/members")
+        .then(setMembers)
+        .catch((e) => setError(errorMessage(e)));
+    void load();
     const s = getSocket();
+    s.on("members:changed", load);
     const onPresence = (p: { userId: string; online: boolean }) =>
       setMembers((prev) => prev.map((m) => (m.id === p.userId ? { ...m, online: p.online } : m)));
     s.on("presence:update", onPresence);
     return () => {
       s.off("presence:update", onPresence);
+      s.off("members:changed", load);
     };
   }, []);
 
@@ -65,8 +80,8 @@ export default function MembersPage() {
           <ul className="mt-6 grid gap-3 sm:grid-cols-2">
             {shown.map((m) => (
               <li key={m.id} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-300/15 font-black text-cyan-200">
-                  {m.fullName.slice(0, 1).toUpperCase()}
+                <span className="relative shrink-0">
+                  <Avatar user={m} />
                   <span
                     className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-950 ${m.online ? "bg-emerald-400" : "bg-slate-600"}`}
                     aria-label={m.online ? "online" : "offline"}
@@ -77,16 +92,24 @@ export default function MembersPage() {
                     {m.fullName} {m.role === "admin" && <span className="text-xs text-cyan-300">admin</span>}
                   </p>
                   <p className="text-xs text-slate-400">@{m.username}</p>
+                  {(m.statusEmoji || m.statusText) && (
+                    <p className="mt-1 text-sm text-slate-200">
+                      {m.statusEmoji} {m.statusText}
+                    </p>
+                  )}
                   {m.bio && <p className="mt-1 line-clamp-2 text-sm text-slate-300">{m.bio}</p>}
                 </div>
                 {m.id !== me.id && (
-                  <button
-                    type="button"
-                    onClick={() => message(m.id)}
-                    className="rounded-xl bg-cyan-300/15 px-3 py-1.5 text-xs font-black text-cyan-100 hover:bg-cyan-300/25"
-                  >
-                    Message
-                  </button>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => message(m.id)}
+                      className="rounded-xl bg-cyan-300/15 px-3 py-1.5 text-xs font-black text-cyan-100 hover:bg-cyan-300/25"
+                    >
+                      Message
+                    </button>
+                    <BuzzButton userId={m.id} />
+                  </div>
                 )}
               </li>
             ))}
