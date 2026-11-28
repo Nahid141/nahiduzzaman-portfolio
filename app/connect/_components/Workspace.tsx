@@ -17,8 +17,7 @@ const NAV: { href: string; label: string; phase?: number; adminOnly?: boolean }[
   { href: "/connect/files", label: "Files" },
   { href: "/connect/tasks", label: "To-do list" },
   { href: "/connect/calendar", label: "Calendar & coffee" },
-  { href: "/connect/music", label: "Music lounge" },
-  { href: "/connect/watch", label: "Watch together" },
+  { href: "/connect/play", label: "Play together" },
   { href: "/connect/present", label: "Presentation" },
   { href: "/connect/members", label: "Members" },
   { href: "/connect/settings", label: "Settings" },
@@ -137,9 +136,9 @@ const PANEL_HREF: Record<string, string> = {
   chat: "/connect/chat",
   files: "/connect/files",
   meetings: "/connect/conference",
-  lounge: "/connect/music",
+  lounge: "/connect/play",
   presentation: "/connect/present",
-  watch: "/connect/watch",
+  watch: "/connect/play",
 };
 
 /** Follow Host Mode: offers (never forces) a move to what the administrator is showing. */
