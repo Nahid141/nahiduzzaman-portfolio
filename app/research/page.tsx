@@ -1,16 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-
-type NetworkNode = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
-};
-
-type NetworkEdge = [number, number];
+import { useState } from "react";
 
 type ProjectStatus = "completed" | "running";
 
@@ -69,170 +59,6 @@ const fruitImages: FruitImageData[] = [
     lineColorClass: "stroke-purple-400",
   },
 ];
-
-function NetworkBackground() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animRef = useRef<number>(0);
-  const mouseRef = useRef({ x: -500, y: -500 });
-  const dimsRef = useRef({ width: 0, height: 0 });
-  const nodesRef = useRef<NetworkNode[]>([]);
-  const edgesRef = useRef<NetworkEdge[]>([]);
-
-  const buildNetwork = useCallback((w: number, h: number) => {
-    const nodeCount = 22;
-    const nodes: NetworkNode[] = [];
-    const edges: NetworkEdge[] = [];
-
-    for (let i = 0; i < nodeCount; i++) {
-      nodes.push({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.22,
-        vy: (Math.random() - 0.5) * 0.22,
-        radius: 2 + Math.random() * 3,
-      });
-    }
-
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[i].x - nodes[j].x;
-        const dy = nodes[i].y - nodes[j].y;
-
-        if (Math.sqrt(dx * dx + dy * dy) < w * 0.25) {
-          edges.push([i, j]);
-        }
-      }
-    }
-
-    return { nodes, edges };
-  }, []);
-
-  const resize = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
-    canvas.width = w;
-    canvas.height = h;
-
-    dimsRef.current = { width: w, height: h };
-
-    const network = buildNetwork(w, h);
-    nodesRef.current = network.nodes;
-    edgesRef.current = network.edges;
-  }, [buildNetwork]);
-
-  useEffect(() => {
-    resize();
-    window.addEventListener("resize", resize);
-
-    return () => {
-      window.removeEventListener("resize", resize);
-    };
-  }, [resize]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current = { x: e.clientX, y: e.clientY };
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-    };
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const animate = () => {
-      const { width, height } = dimsRef.current;
-      const nodes = nodesRef.current;
-      const edges = edgesRef.current;
-      const mouse = mouseRef.current;
-
-      ctx.clearRect(0, 0, width, height);
-
-      for (const node of nodes) {
-        node.x += node.vx;
-        node.y += node.vy;
-
-        if (node.x < -20) node.x = width + 20;
-        if (node.x > width + 20) node.x = -20;
-        if (node.y < -20) node.y = height + 20;
-        if (node.y > width + 20) node.y = -20;
-      }
-
-      ctx.lineWidth = 0.8;
-
-      for (const [sourceIndex, targetIndex] of edges) {
-        const source = nodes[sourceIndex];
-        const target = nodes[targetIndex];
-
-        if (!source || !target) continue;
-
-        ctx.strokeStyle = "rgba(99, 179, 237, 0.22)";
-        ctx.beginPath();
-        ctx.moveTo(source.x, source.y);
-        ctx.lineTo(target.x, target.y);
-        ctx.stroke();
-      }
-
-      for (const node of nodes) {
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(99, 179, 237, 0.55)";
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius + 2, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(99, 179, 237, 0.12)";
-        ctx.fill();
-      }
-
-      ctx.lineWidth = 0.6;
-
-      for (const node of nodes) {
-        const dx = node.x - mouse.x;
-        const dy = node.y - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < 200) {
-          const alpha = 0.2 * (1 - dist / 200);
-
-          ctx.strokeStyle = `rgba(99,179,237,${alpha})`;
-          ctx.beginPath();
-          ctx.moveTo(node.x, node.y);
-          ctx.lineTo(mouse.x, mouse.y);
-          ctx.stroke();
-        }
-      }
-
-      animRef.current = requestAnimationFrame(animate);
-    };
-
-    animRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      cancelAnimationFrame(animRef.current);
-    };
-  }, []);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none fixed inset-0 z-0"
-      aria-hidden="true"
-    />
-  );
-}
 
 function FruitCircle({ fruit }: { fruit: FruitImageData }) {
   return (
@@ -997,139 +823,168 @@ export default function Research() {
     setExpandedId((currentId) => (currentId === id ? null : id));
   };
 
+  const counts = {
+    all: projects.length,
+    completed: projects.filter((p) => p.status === "completed").length,
+    running: projects.filter((p) => p.status === "running").length,
+  };
+  const leadCount = projects.filter((p) => p.lead).length;
+
   return (
-    <>
-      <NetworkBackground />
+    <main className="relative z-10 mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+      <p className="text-sm font-bold uppercase tracking-[0.34em] text-cyan-300">Research projects</p>
+      <h1 className="mt-4 font-serif text-5xl font-bold text-white md:text-7xl">Research</h1>
+      <p className="mt-6 max-w-3xl font-serif text-lg leading-8 text-slate-300">
+        Infectious diseases, zoonoses, vaccine development, microbial genomics, antimicrobial resistance and
+        epidemiology, across several laboratories. Click a project to read more.
+      </p>
 
-      <main className="relative z-10 mx-auto max-w-6xl px-6 py-20">
-        <h1 className="mb-4 text-4xl font-bold text-blue-400">Research</h1>
+      <div className="mt-10 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[
+          { label: "Projects", value: counts.all, filter: "all" as const },
+          { label: "Completed", value: counts.completed, filter: "completed" as const },
+          { label: "Running", value: counts.running, filter: "running" as const },
+          { label: "As lead researcher", value: leadCount, filter: null },
+        ].map((stat) => (
+          <button
+            key={stat.label}
+            type="button"
+            disabled={!stat.filter}
+            onClick={() => stat.filter && setStatusFilter(stat.filter)}
+            aria-pressed={stat.filter ? statusFilter === stat.filter : undefined}
+            className={`group relative overflow-hidden border p-5 text-left backdrop-blur-xl transition duration-300 ${
+              stat.filter && statusFilter === stat.filter
+                ? "border-cyan-300/70 bg-cyan-300/12"
+                : "border-cyan-300/15 bg-slate-900/70 enabled:hover:-translate-y-1 enabled:hover:border-cyan-300/50"
+            }`}
+          >
+            <span className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-cyan-300 to-blue-500 opacity-60" />
+            <span className="block font-serif text-4xl font-bold tabular-nums text-cyan-200">{stat.value}</span>
+            <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{stat.label}</span>
+          </button>
+        ))}
+      </div>
 
-        <p className="mb-10 leading-relaxed text-gray-300">
-          My research focuses on infectious diseases, zoonoses, vaccine
-          development, microbial genomics, antimicrobial resistance, and
-          epidemiology. I have been actively involved in interdisciplinary
-          projects across multiple laboratories.
-        </p>
-
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {(["all", "completed", "running"] as const).map((status) => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium capitalize transition ${
-                  statusFilter === status
-                    ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-                    : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                }`}
-              >
-                {status}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search projects..."
-              className="w-full rounded-lg bg-gray-800 py-2 pl-10 pr-4 text-gray-200 outline-none placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 sm:w-72"
-            />
-
-            <svg
-              className="absolute left-3 top-2.5 h-4 w-4 text-gray-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
+      <div className="sticky top-[8.5rem] z-20 -mx-4 mt-10 flex flex-col gap-4 border-y border-cyan-300/10 bg-slate-950/85 px-4 py-4 backdrop-blur-xl sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 md:top-[4.6rem]">
+        <div className="flex flex-wrap gap-2">
+          {(["all", "completed", "running"] as const).map((status) => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              aria-pressed={statusFilter === status}
+              className={`rounded-full border px-4 py-1.5 text-sm font-bold capitalize transition ${
+                statusFilter === status
+                  ? "border-cyan-300 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-500/30"
+                  : "border-white/10 bg-white/5 text-slate-300 hover:border-cyan-300/50 hover:text-cyan-200"
+              }`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"
-              />
-            </svg>
-          </div>
+              {status} <span className="opacity-70">{counts[status]}</span>
+            </button>
+          ))}
         </div>
 
-        {filteredProjects.length === 0 ? (
-          <div className="py-10 text-center text-gray-400">
-            No projects match your current filters. Try adjusting them.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredProjects.map((project) => (
-              <div
-                key={project.id}
-                className="cursor-pointer overflow-hidden rounded-xl border border-gray-700 bg-gray-800/50 transition hover:bg-gray-800"
-                onClick={() => handleToggle(project.id)}
-              >
-                <div className="flex items-start justify-between p-5">
-                  <div className="flex-1">
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-semibold text-white">
-                        {project.title}
-                      </h3>
+        <label className="relative">
+          <span className="sr-only">Search projects</span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search projects or labs"
+            className="w-full rounded-full border border-cyan-300/20 bg-slate-900/80 py-2 pl-10 pr-4 text-slate-200 outline-none placeholder:text-slate-500 focus:border-cyan-300 sm:w-72"
+          />
+          <svg className="absolute left-3.5 top-2.5 h-4 w-4 text-cyan-300/70" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+          </svg>
+        </label>
+      </div>
 
+      {filteredProjects.length === 0 ? (
+        <div className="py-16 text-center text-slate-400">
+          No projects match these filters.{" "}
+          <button
+            type="button"
+            className="font-bold text-cyan-300 hover:underline"
+            onClick={() => {
+              setStatusFilter("all");
+              setSearchQuery("");
+            }}
+          >
+            Show all projects
+          </button>
+        </div>
+      ) : (
+        <ol className="mt-8 space-y-4">
+          {filteredProjects.map((project, index) => {
+            const open = expandedId === project.id;
+            return (
+              <li
+                key={project.id}
+                style={{ animationDelay: `${index * 45}ms` }}
+                className={`group relative overflow-hidden border backdrop-blur-xl transition duration-300 motion-safe:animate-[fadeUp_0.5s_ease_both] ${
+                  open
+                    ? "border-cyan-300/60 bg-slate-900/85 shadow-2xl shadow-cyan-950/30"
+                    : "border-cyan-300/12 bg-slate-900/65 hover:border-cyan-300/45 hover:bg-slate-900/80"
+                }`}
+              >
+                <span
+                  className={`absolute inset-y-0 left-0 w-1 ${project.status === "completed" ? "bg-emerald-400" : "bg-amber-400"} ${
+                    open ? "opacity-100" : "opacity-50 group-hover:opacity-100"
+                  }`}
+                />
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => handleToggle(project.id)}
+                  className="flex w-full items-start gap-4 p-5 text-left md:p-6"
+                >
+                  <span className="font-serif text-2xl font-bold tabular-nums text-cyan-300/60">
+                    {String(project.id).padStart(2, "0")}
+                  </span>
+                  <span className="flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-serif text-lg font-bold text-white md:text-xl">{project.title}</span>
                       {project.lead && (
-                        <span className="inline-block rounded-full bg-yellow-600 px-2 py-0.5 text-xs font-medium text-yellow-100">
-                          Lead Researcher
+                        <span className="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-2 py-0.5 text-xs font-bold text-cyan-200">
+                          Lead researcher
                         </span>
                       )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-400">
+                    </span>
+                    <span className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-400">
                       <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                          project.status === "completed"
-                            ? "bg-green-900 text-green-300"
-                            : "bg-amber-900 text-amber-300"
+                        className={`rounded-full px-2 py-0.5 text-xs font-bold capitalize ${
+                          project.status === "completed" ? "bg-emerald-400/15 text-emerald-300" : "bg-amber-400/15 text-amber-300"
                         }`}
                       >
                         {project.status}
                       </span>
-
-                      <span>·</span>
-
                       <span>{project.lab}</span>
-                    </div>
-                  </div>
-
-                  <svg
-                    className={`mt-1 h-5 w-5 text-gray-400 transition-transform ${
-                      expandedId === project.id ? "rotate-180" : ""
+                    </span>
+                  </span>
+                  <span
+                    className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 text-xl text-cyan-200 transition duration-300 ${
+                      open ? "rotate-45 bg-cyan-300 text-slate-950" : "group-hover:border-cyan-300"
                     }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
                     aria-hidden="true"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
+                    +
+                  </span>
+                </button>
 
-                {expandedId === project.id && (
-                  <div
-                    className="border-t border-gray-700 px-5 pb-5 pt-4 text-sm text-gray-300"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <p>{project.description}</p>
-
-                    {project.id === 4 && <FruitRCTVisual />}
+                <div className={`grid transition-[grid-template-rows] duration-500 ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+                  <div className="overflow-hidden">
+                    <div className="border-t border-cyan-300/10 px-5 pb-6 pt-4 text-sm leading-7 text-slate-300 md:px-6 md:pl-16">
+                      <p>{project.description}</p>
+                      {open && project.id === 4 && <FruitRCTVisual />}
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
-    </>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <style>{`@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }`}</style>
+    </main>
   );
 }

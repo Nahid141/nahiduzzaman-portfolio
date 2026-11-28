@@ -1,0 +1,10 @@
+{
+  "name": "Private Connect",
+  "short_name": "Connect",
+  "start_url": "/connect/dashboard",
+  "scope": "/connect/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [{ "src": "/profile.png", "sizes": "512x512", "type": "image/png" }]
+}

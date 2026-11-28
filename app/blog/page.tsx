@@ -1,5 +1,6 @@
 "use client";
 
+import { PhotoGallery, WaterfallStory } from "../_components/MediaGallery";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Room = {
@@ -1026,6 +1027,9 @@ function ThreeBuilding({
   return <div ref={mountRef} className="h-[840px] w-full rounded-b-[2rem] cursor-grab active:cursor-grabbing" />;
 }
 
+/* "My Goal" is kept in the code but hidden from the published site. */
+const SHOW_GOAL_SECTION = false;
+
 function GoalSection() {
   const [open, setOpen] = useState(true);
   const [selectedRoomId, setSelectedRoomId] = useState("bsl3");
@@ -1160,28 +1164,39 @@ function ExpandableSection({
   title,
   subtitle,
   children,
+  defaultOpen = false,
 }: {
   title: string;
   subtitle: string;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="mx-auto mt-10 max-w-7xl">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="group flex w-full items-center justify-between rounded-[2rem] border border-slate-700 bg-slate-900 p-6 text-left shadow-xl transition hover:-translate-y-1 hover:border-cyan-300/60"
+        aria-expanded={open}
+        className="group flex w-full items-center justify-between rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 backdrop-blur-xl text-left shadow-xl transition hover:-translate-y-1 hover:border-cyan-300/60"
       >
         <div>
-          <p className="mb-2 text-xs font-black uppercase tracking-[0.3em] text-cyan-300">Click to Open</p>
+          <p className="mb-2 text-xs font-black uppercase tracking-[0.3em] text-cyan-300">{open ? "Click to close" : "Click to open"}</p>
           <h2 className="text-3xl font-black text-white">{title}</h2>
           <p className="mt-2 text-sm leading-7 text-slate-300">{subtitle}</p>
         </div>
-        <div className="ml-4 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-600 bg-slate-950 text-2xl font-black text-cyan-200 transition group-hover:bg-cyan-300 group-hover:text-slate-950">
-          {open ? "−" : "+"}
+        <div
+          className={`ml-4 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-600 bg-slate-950 text-2xl font-black text-cyan-200 transition duration-300 group-hover:bg-cyan-300 group-hover:text-slate-950 ${
+            open ? "rotate-45" : ""
+          }`}
+        >
+          +
         </div>
       </button>
-      {open && <div className="mt-5 rounded-[2rem] border border-cyan-400/20 bg-slate-950 p-6 shadow-xl">{children}</div>}
+      <div className={`grid transition-[grid-template-rows,opacity] duration-500 ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+        <div className="overflow-hidden">
+          <div className="mt-5 rounded-[2rem] border border-cyan-400/20 bg-slate-950/80 p-6 shadow-xl backdrop-blur-xl">{children}</div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -1207,7 +1222,7 @@ function PlaceholderGrid({ items }: { items: { title: string; text: string; icon
 
 export default function Blog() {
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-12 text-white">
+    <main className="min-h-screen px-4 py-12 text-white sm:px-6">
       <section className="mx-auto mb-12 max-w-7xl text-center">
         <p className="mb-4 text-sm font-black uppercase tracking-[0.35em] text-cyan-300">
           Personal Vision & Life Archive
@@ -1220,19 +1235,15 @@ export default function Blog() {
         </p>
       </section>
 
-      <GoalSection />
+      {/* Unpublished for now: set SHOW_GOAL_SECTION to true to bring "My Goal" back. */}
+      {SHOW_GOAL_SECTION && <GoalSection />}
 
       <ExpandableSection
         title="Photography Gallery"
-        subtitle="Selected photographs, visual collections, field moments and creative frames from personal and academic life."
+        subtitle="Selected photographs and field moments. Click a photo to open it full size."
+        defaultOpen
       >
-        <PlaceholderGrid
-          items={[
-            { icon: "📷", title: "Field Photography", text: "Photos from research visits, farms, laboratories, nature and field-level observations." },
-            { icon: "🌿", title: "Nature Frames", text: "Landscape, animals, rural life, campus environment and natural scenes." },
-            { icon: "🧪", title: "Research Moments", text: "Visual memories from laboratory work, training, projects and scientific activities." },
-          ]}
-        />
+        <PhotoGallery />
       </ExpandableSection>
 
       <ExpandableSection
@@ -1250,15 +1261,10 @@ export default function Blog() {
 
       <ExpandableSection
         title="Video Stories"
-        subtitle="A personal video section for short clips, documentary-style visuals, academic videos and life moments."
+        subtitle="Short clips from travel and field visits."
+        defaultOpen
       >
-        <PlaceholderGrid
-          items={[
-            { icon: "🎥", title: "Personal Clips", text: "Short videos from daily life, events, campus, field visits and travel memories." },
-            { icon: "🎬", title: "Research Videos", text: "Scientific demonstrations, project highlights, tool demos and academic video records." },
-            { icon: "🌐", title: "Visual Stories", text: "Edited storytelling videos combining photography, travel, research and reflections." },
-          ]}
-        />
+        <WaterfallStory />
       </ExpandableSection>
 
       <ExpandableSection

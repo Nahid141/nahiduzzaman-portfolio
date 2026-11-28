@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { H_INDEX, PUBLICATIONS, TOTAL_CITATIONS } from "../_data/profile";
+import ProtectedEmail, { EMAIL_COUNT } from "../_components/ProtectedEmail";
 
 /* -------------------------------------------------------------------------- */
 /*  Data                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const emails = ["nahiduzzaman.2001055@bau.edu.bd", "nahid007@umn.edu"];
 
 const profileLinks = [
   { name: "Google Scholar", short: "GS", url: "https://scholar.google.com/citations?user=37f5LKUAAAAJ&hl=en" },
@@ -17,17 +18,29 @@ const profileLinks = [
   { name: "ORCID", short: "iD", url: "https://orcid.org/0009-0000-1970-9480" },
 ];
 
-const yearlyCitations = [
-  { year: "2025", citations: 4 },
-  { year: "2026", citations: 13 },
-];
+const q1Count = PUBLICATIONS.filter((p) => p.quartile === "Q1").length;
+const i10 = PUBLICATIONS.filter((p) => p.citations >= 10).length;
 
 const researchStats = [
-  { label: "Citations", value: 17, suffix: "", note: "Current citation count", glow: "from-cyan-300 to-blue-500" },
-  { label: "h-index", value: 2, suffix: "", note: "Research influence index", glow: "from-emerald-300 to-cyan-500" },
-  { label: "i10-index", value: 1, suffix: "", note: "Papers with ≥10 citations", glow: "from-purple-300 to-pink-500" },
-  { label: "Q1 papers", value: 60, suffix: "%", note: "High-ranking journal share", glow: "from-amber-300 to-orange-500" },
+  { label: "Citations", value: TOTAL_CITATIONS, suffix: "", note: "Google Scholar citations to date", glow: "from-cyan-300 to-blue-500" },
+  { label: "h-index", value: H_INDEX, suffix: "", note: "Research influence index", glow: "from-emerald-300 to-cyan-500" },
+  { label: "i10-index", value: i10, suffix: "", note: "Papers with 10 or more citations", glow: "from-purple-300 to-pink-500" },
+  { label: "Q1 papers", value: q1Count, suffix: `/${PUBLICATIONS.length}`, note: "Publications in Q1 journals (SJR)", glow: "from-amber-300 to-orange-500" },
 ];
+
+const paperBars = [...PUBLICATIONS]
+  .sort((a, b) => b.citations - a.citations)
+  .map((p) => ({ title: p.title, venue: p.venue, year: p.year, citations: p.citations, url: p.url }));
+
+const rankingSplit = (() => {
+  const n = PUBLICATIONS.length;
+  const groups = [
+    { label: "Q1", count: PUBLICATIONS.filter((p) => p.quartile === "Q1").length },
+    { label: "Q3", count: PUBLICATIONS.filter((p) => p.quartile === "Q3").length },
+    { label: "Not ranked (chapter, preprint)", count: PUBLICATIONS.filter((p) => !p.quartile).length },
+  ];
+  return groups.filter((g) => g.count).map((g) => ({ ...g, value: Math.round((g.count / n) * 100) }));
+})();
 
 const skillDomains = [
   {
@@ -130,6 +143,13 @@ const researchAreas = [
 
 const educationData = [
   {
+    degree: "Doctor of Philosophy (PhD), in progress",
+    session: "Current",
+    result: "V-EPI Lab, Department of Veterinary Population Medicine",
+    institution: "College of Veterinary Medicine, University of Minnesota",
+    location: "Twin Cities, Minnesota, USA",
+  },
+  {
     degree: "Doctor of Veterinary Medicine (DVM)",
     session: "2020–2026",
     result: "CGPA: 3.155",
@@ -152,20 +172,21 @@ const educationData = [
   },
 ];
 
-/* -------------------------------------------------------------------------- */
 /*  Hooks                                                                     */
 /* -------------------------------------------------------------------------- */
 
+const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
+
 function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const handler = () => setReduced(mq.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return reduced;
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(REDUCED_QUERY);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(REDUCED_QUERY).matches,
+    () => false
+  );
 }
 
 /** Reveal an element once it scrolls into view. Returns [ref, inView]. */
@@ -195,11 +216,7 @@ function useCountUp(target: number, start: boolean, duration = 1100) {
   const reduced = usePrefersReducedMotion();
   const [value, setValue] = useState(0);
   useEffect(() => {
-    if (!start) return;
-    if (reduced) {
-      setValue(target);
-      return;
-    }
+    if (!start || reduced) return;
     let raf = 0;
     const t0 = performance.now();
     const tick = (now: number) => {
@@ -211,338 +228,7 @@ function useCountUp(target: number, start: boolean, duration = 1100) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [target, start, duration, reduced]);
-  return value;
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Dynamic Background                                                        */
-/* -------------------------------------------------------------------------- */
-
-type Particle = { x: number; y: number; vx: number; vy: number; r: number; glow: number };
-type Microbe = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  size: number;
-  rotation: number;
-  speed: number;
-  type: "virus" | "dna" | "cell";
-};
-
-function EnhancedResearchBackground() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const frameRef = useRef<number>(0);
-  const particlesRef = useRef<Particle[]>([]);
-  const microbesRef = useRef<Microbe[]>([]);
-  const sizeRef = useRef({ width: 0, height: 0 });
-  const mouseRef = useRef({ x: -9999, y: -9999, active: false });
-  const reduced = usePrefersReducedMotion();
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const build = () => {
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-
-      canvas.width = Math.floor(width * ratio);
-      canvas.height = Math.floor(height * ratio);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-
-      const ctx = canvas.getContext("2d");
-      if (ctx) ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-
-      sizeRef.current = { width, height };
-
-      const particleCount = width < 768 ? 40 : 88;
-      particlesRef.current = Array.from({ length: particleCount }, () => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.34,
-        vy: (Math.random() - 0.5) * 0.34,
-        r: 1.2 + Math.random() * 2.8,
-        glow: 0.45 + Math.random() * 0.55,
-      }));
-
-      const microbeCount = width < 768 ? 9 : 18;
-      microbesRef.current = Array.from({ length: microbeCount }, (_, i) => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.22,
-        vy: (Math.random() - 0.5) * 0.22,
-        size: 9 + Math.random() * 18,
-        rotation: Math.random() * Math.PI * 2,
-        speed: (Math.random() - 0.5) * 0.018,
-        type: i % 3 === 0 ? "dna" : i % 3 === 1 ? "virus" : "cell",
-      }));
-    };
-
-    build();
-
-    const handleMove = (event: MouseEvent) => {
-      mouseRef.current = { x: event.clientX, y: event.clientY, active: true };
-    };
-    const handleLeave = () => {
-      mouseRef.current.active = false;
-    };
-
-    window.addEventListener("resize", build);
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseleave", handleLeave);
-
-    return () => {
-      window.removeEventListener("resize", build);
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseleave", handleLeave);
-      cancelAnimationFrame(frameRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-
-    let last = performance.now();
-
-    const paintStaticBackdrop = () => {
-      const { width, height } = sizeRef.current;
-      ctx.clearRect(0, 0, width, height);
-      const bg = ctx.createRadialGradient(
-        width * 0.3,
-        height * 0.08,
-        0,
-        width * 0.56,
-        height * 0.55,
-        Math.max(width, height)
-      );
-      bg.addColorStop(0, "rgba(14,165,233,0.16)");
-      bg.addColorStop(0.38, "rgba(15,23,42,0.32)");
-      bg.addColorStop(1, "rgba(2,6,23,0.97)");
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, width, height);
-    };
-
-    // Honor reduced motion: paint one calm frame, no animation loop.
-    if (reduced) {
-      const onResize = () => paintStaticBackdrop();
-      paintStaticBackdrop();
-      window.addEventListener("resize", onResize);
-      return () => window.removeEventListener("resize", onResize);
-    }
-
-    const drawGrid = (width: number, height: number) => {
-      ctx.save();
-      ctx.strokeStyle = "rgba(56,189,248,0.05)";
-      ctx.lineWidth = 1;
-      const spacing = 80;
-      for (let x = 0; x <= width; x += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= height; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-      ctx.restore();
-    };
-
-    const drawGenomeArc = (time: number, width: number, height: number) => {
-      ctx.save();
-      ctx.strokeStyle = "rgba(34,211,238,0.1)";
-      ctx.lineWidth = 1.25;
-      for (let i = 0; i < 7; i += 1) {
-        const baseY = height * (0.16 + i * 0.105);
-        ctx.beginPath();
-        for (let x = -50; x <= width + 50; x += 18) {
-          const y = baseY + Math.sin((x + time * 0.035) * 0.012 + i) * 18;
-          if (x === -50) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-      ctx.restore();
-    };
-
-    const drawPhylogeneticField = (time: number, width: number, height: number) => {
-      const rootX = width * 0.045;
-      const rootY = height * 0.54;
-      const endX = width * 0.98;
-      const tips = width < 768 ? 18 : 44;
-      const top = height * 0.09;
-      const span = height * 0.78;
-      ctx.save();
-      for (let i = 0; i < tips; i += 1) {
-        const y = top + (i * span) / Math.max(tips - 1, 1);
-        const bend = i < tips / 2 ? -1 : 1;
-        const alpha = i % 4 === 0 ? 0.12 : 0.06;
-        ctx.beginPath();
-        ctx.lineWidth = i % 5 === 0 ? 1.35 : 0.9;
-        ctx.strokeStyle = `rgba(56,189,248,${alpha})`;
-        ctx.moveTo(rootX, rootY);
-        ctx.bezierCurveTo(width * 0.17, rootY + bend * height * 0.15, width * 0.32, y, width * 0.5, y);
-        ctx.bezierCurveTo(width * 0.66, y, width * 0.78, y + Math.sin(i * 1.8) * 18, endX, y);
-        ctx.stroke();
-        if (i % 3 === Math.floor(time / 900) % 3) {
-          const p = (time * 0.00018 + i * 0.026) % 1;
-          const x = rootX + (endX - rootX) * p;
-          const py = rootY + (y - rootY) * p + Math.sin(p * Math.PI) * bend * height * 0.08;
-          const pulse = ctx.createRadialGradient(x, py, 0, x, py, 18);
-          pulse.addColorStop(0, "rgba(125,211,252,0.42)");
-          pulse.addColorStop(1, "rgba(125,211,252,0)");
-          ctx.fillStyle = pulse;
-          ctx.beginPath();
-          ctx.arc(x, py, 18, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "rgba(125,211,252,0.86)";
-          ctx.beginPath();
-          ctx.arc(x, py, 2.8, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      ctx.restore();
-    };
-
-    const drawMicrobes = (time: number, width: number, height: number) => {
-      for (const m of microbesRef.current) {
-        m.x += m.vx;
-        m.y += m.vy;
-        m.rotation += m.speed;
-        if (m.x < -80) m.x = width + 80;
-        if (m.x > width + 80) m.x = -80;
-        if (m.y < -80) m.y = height + 80;
-        if (m.y > height + 80) m.y = -80;
-
-        ctx.save();
-        ctx.translate(m.x, m.y);
-        ctx.rotate(m.rotation);
-        ctx.strokeStyle = "rgba(34,211,238,0.2)";
-        ctx.fillStyle = "rgba(34,211,238,0.045)";
-        ctx.lineWidth = 1.1;
-
-        if (m.type === "virus") {
-          ctx.beginPath();
-          ctx.arc(0, 0, m.size, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          for (let s = 0; s < 12; s += 1) {
-            const a = (s / 12) * Math.PI * 2;
-            ctx.beginPath();
-            ctx.moveTo(Math.cos(a) * m.size * 0.72, Math.sin(a) * m.size * 0.72);
-            ctx.lineTo(Math.cos(a) * m.size * 1.35, Math.sin(a) * m.size * 1.35);
-            ctx.stroke();
-          }
-        }
-
-        if (m.type === "dna") {
-          for (const phase of [0, Math.PI]) {
-            ctx.beginPath();
-            for (let i = 0; i <= 34; i += 1) {
-              const t = i / 34;
-              const x = (t - 0.5) * m.size * 4.2;
-              const y = Math.sin(t * Math.PI * 5 + phase + time * 0.002) * m.size * 0.45;
-              if (i === 0) ctx.moveTo(x, y);
-              else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-          }
-        }
-
-        if (m.type === "cell") {
-          ctx.beginPath();
-          ctx.ellipse(0, 0, m.size * 1.4, m.size * 0.9, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(m.size * 0.2, 0, m.size * 0.28, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-    };
-
-    const animate = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 0.1);
-      last = now;
-      const { width, height } = sizeRef.current;
-      const particles = particlesRef.current;
-      const mouse = mouseRef.current;
-
-      paintStaticBackdrop();
-      drawGrid(width, height);
-      drawGenomeArc(now, width, height);
-      drawPhylogeneticField(now, width, height);
-      drawMicrobes(now, width, height);
-
-      for (const p of particles) {
-        if (mouse.active) {
-          const dx = p.x - mouse.x;
-          const dy = p.y - mouse.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
-          if (dist < 170) {
-            const force = 24 / dist;
-            p.vx += (dx / dist) * force * dt;
-            p.vy += (dy / dist) * force * dt;
-          }
-        }
-        p.vx *= 0.977;
-        p.vy *= 0.977;
-        p.x += p.vx * dt * 30;
-        p.y += p.vy * dt * 30;
-        if (p.x < 0 || p.x > width) p.vx *= -0.6;
-        if (p.y < 0 || p.y > height) p.vy *= -0.6;
-        p.x = Math.max(0, Math.min(width, p.x));
-        p.y = Math.max(0, Math.min(height, p.y));
-      }
-
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(56,189,248,0.085)";
-      ctx.lineWidth = 0.8;
-      for (let i = 0; i < particles.length; i += 1) {
-        for (let j = i + 1; j < particles.length; j += 1) {
-          const a = particles[i];
-          const b = particles[j];
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 145) {
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-          }
-        }
-      }
-      ctx.stroke();
-
-      for (const p of particles) {
-        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 4.2);
-        glow.addColorStop(0, `rgba(125,211,252,${0.55 * p.glow})`);
-        glow.addColorStop(1, "rgba(14,165,233,0)");
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r * 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(186,230,253,0.94)";
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      frameRef.current = requestAnimationFrame(animate);
-    };
-
-    frameRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frameRef.current);
-  }, [reduced]);
-
-  return <canvas ref={canvasRef} className="fixed inset-0 z-0 bg-slate-950" />;
+  return reduced && start ? target : value;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -638,11 +324,18 @@ function EducationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 /*  Page Sections                                                             */
 /* -------------------------------------------------------------------------- */
 
+const PORTRAITS = [
+  { src: "/Me1.jpg", alt: "Nahiduzzaman portrait", pos: "object-center" },
+  { src: "/nahid-overlook.jpg", alt: "Nahiduzzaman at a Lake Superior overlook in autumn", pos: "object-[70%_55%]" },
+];
+
 function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
+  const [main, setMain] = useState(1);
+  const other = 1 - main;
   const heroActions = [
     { label: "Education", onClick: onEducationClick },
     { label: "ORCID", href: "https://orcid.org/0009-0000-1970-9480" },
-    { label: "Email", href: `mailto:${emails[0]}` },
+    { label: "Email", href: "#contact" },
   ];
 
   return (
@@ -650,16 +343,35 @@ function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
       <div className="flex justify-center lg:justify-start">
         <div className="group relative">
           <div className="absolute -inset-6 rounded-full bg-cyan-400/20 blur-3xl transition duration-700 group-hover:bg-cyan-300/30" />
+          <div className="absolute -inset-3 rounded-full border border-dashed border-cyan-300/30 motion-safe:animate-[spin_40s_linear_infinite]" />
           <div className="relative rounded-full border border-cyan-300/20 bg-slate-900/80 p-2 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl">
             <Image
-              src="/Me1.jpg"
-              alt="Nahiduzzaman portrait"
-              width={520}
-              height={520}
+              key={PORTRAITS[main].src}
+              src={PORTRAITS[main].src}
+              alt={PORTRAITS[main].alt}
+              width={700}
+              height={700}
               priority
-              className="h-[270px] w-[270px] rounded-full object-cover transition duration-700 group-hover:scale-[1.035] sm:h-[340px] sm:w-[340px] lg:h-[400px] lg:w-[400px]"
+              className={`h-[270px] w-[270px] rounded-full object-cover ${PORTRAITS[main].pos} transition duration-700 motion-safe:animate-[fadeUp_0.5s_ease] group-hover:scale-[1.035] sm:h-[340px] sm:w-[340px] lg:h-[400px] lg:w-[400px]`}
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setMain(other)}
+            aria-label={`Show photo: ${PORTRAITS[other].alt}`}
+            className="absolute -bottom-2 right-0 rounded-full border-2 border-cyan-300/60 bg-slate-950 p-1 shadow-xl shadow-cyan-950/40 transition hover:scale-110 hover:border-cyan-300 sm:right-4"
+          >
+            <Image
+              src={PORTRAITS[other].src}
+              alt=""
+              width={200}
+              height={200}
+              className={`h-20 w-20 rounded-full object-cover ${PORTRAITS[other].pos} sm:h-24 sm:w-24`}
+            />
+            <span className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-cyan-300 px-2 py-0.5 text-[10px] font-black text-slate-950">
+              Swap
+            </span>
+          </button>
         </div>
       </div>
 
@@ -668,6 +380,10 @@ function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
         <h1 className="mx-auto mt-4 max-w-3xl text-2xl font-black leading-tight text-white sm:text-3xl md:text-4xl">
           Microbiology researcher connecting laboratory evidence with computational biology.
         </h1>
+        <p className="mx-auto mt-5 inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-bold text-cyan-100">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+          PhD student, College of Veterinary Medicine, University of Minnesota Twin Cities
+        </p>
         <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
           His work brings together veterinary microbiology, infectious disease investigation, molecular
           epidemiology, microbial genomics, public health, and data-driven research.
@@ -700,6 +416,83 @@ function HeroSection({ onEducationClick }: { onEducationClick: () => void }) {
   );
 }
 
+function WaterfallVideo({ className }: { className: string }) {
+  const reduced = usePrefersReducedMotion();
+  return (
+    <video
+      className={className}
+      src="/waterfall.mp4"
+      poster="/waterfall-poster.jpg"
+      autoPlay={!reduced}
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      aria-label="Waterfall in an autumn forest"
+    />
+  );
+}
+
+function CurrentPosition() {
+  const [ref, inView] = useInView<HTMLDivElement>(0.2);
+  return (
+    <section className="mt-16">
+      <SectionHeading
+        eyebrow="Now"
+        title="PhD research at the University of Minnesota"
+        subtitle="College of Veterinary Medicine, University of Minnesota Twin Cities, Minnesota, USA"
+      />
+      <div
+        ref={ref}
+        className="group relative overflow-hidden rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-10"
+      >
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl transition duration-700 group-hover:bg-cyan-300/20" />
+        <div className="relative grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <p className="text-base leading-8 text-slate-300 md:text-lg md:leading-9">
+              I am currently pursuing my PhD in the College of Veterinary Medicine at the University of Minnesota,
+              Twin Cities. I am a member of the{" "}
+              <span className="font-bold text-cyan-200">V-EPI Lab (Veterinary Epidemiology &amp; Pathogen Informatics)</span>{" "}
+              in the Department of Veterinary Population Medicine, where I work on swine pathogen epidemiology,
+              genomics and data-driven disease surveillance.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {["Veterinary Population Medicine", "Swine health", "Pathogen informatics", "Molecular epidemiology"].map((tag, i) => (
+                <span
+                  key={tag}
+                  style={{ transitionDelay: `${i * 80}ms` }}
+                  className={`rounded-full border border-cyan-300/20 bg-cyan-300/5 px-4 py-2 text-sm font-bold text-slate-200 transition-all duration-500 hover:-translate-y-1 hover:border-cyan-300/60 ${
+                    inView ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+                  }`}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            {[
+              { src: "/vepi-lab-logo.jpg", alt: "V-EPI Lab: Veterinary Epidemiology and Pathogen Informatics", w: 922, h: 477, note: "Member, V-EPI Lab" },
+              { src: "/umn-swine-group-logo.png", alt: "Swine Group, University of Minnesota", w: 1807, h: 709, note: "Swine Group, University of Minnesota" },
+            ].map((logo, i) => (
+              <figure
+                key={logo.src}
+                style={{ transitionDelay: `${150 + i * 150}ms` }}
+                className={`rounded-2xl border border-cyan-300/20 bg-white p-4 shadow-xl shadow-cyan-950/30 transition-all duration-700 hover:-translate-y-1 hover:shadow-cyan-500/20 ${
+                  inView ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
+                }`}
+              >
+                <Image src={logo.src} alt={logo.alt} width={logo.w} height={logo.h} className="mx-auto h-24 w-auto object-contain md:h-28" />
+                <figcaption className="mt-2 text-center text-xs font-bold text-slate-600">{logo.note}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MotivationSection() {
   const bullets = [
     "Nature’s calm beauty inspires curiosity and careful observation.",
@@ -711,9 +504,9 @@ function MotivationSection() {
   return (
     <section className="mt-16 overflow-hidden rounded-[2rem] border border-cyan-300/15 bg-slate-900/72 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
       <div className="grid lg:grid-cols-[0.66fr_1.34fr]">
-        <div className="relative min-h-[320px] overflow-hidden bg-gradient-to-br from-cyan-300/12 via-slate-950 to-emerald-400/10 p-8 text-center md:p-10">
-          <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-cyan-300/20 blur-3xl" />
-          <div className="absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-emerald-300/12 blur-3xl" />
+        <div className="group relative min-h-[360px] overflow-hidden p-8 text-center md:p-10">
+          <WaterfallVideo className="absolute inset-0 h-full w-full object-cover transition duration-1000 group-hover:scale-105" />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/75 via-slate-950/25 to-slate-950/70" />
           <div className="relative flex h-full flex-col justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">About Me</p>
@@ -1029,14 +822,14 @@ function MetricsSection() {
   const [hovered, setHovered] = useState<string | null>(null);
   const [activeStat, setActiveStat] = useState(researchStats[0]);
   const [ref, inView] = useInView<HTMLDivElement>(0.3);
-  const max = useMemo(() => Math.max(...yearlyCitations.map((i) => i.citations)), []);
+  const max = useMemo(() => Math.max(...paperBars.map((i) => i.citations)), []);
 
   return (
     <section className="mt-24" ref={ref}>
       <SectionHeading
         eyebrow="Research Metrics"
         title="Research profile at a glance"
-        subtitle="Updated profile summary with citations, h-index, i10-index, and journal-ranking distribution."
+        subtitle="Citations, h-index, i10-index and journal ranking, updated from Google Scholar."
       />
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -1066,41 +859,48 @@ function MetricsSection() {
         <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h3 className="text-2xl font-black text-white">Citation Growth</h3>
-              <p className="mt-1 text-sm text-slate-400">Yearly citation trend</p>
+              <h3 className="text-2xl font-black text-white">Citations per paper</h3>
+              <p className="mt-1 text-sm text-slate-400">Hover or tap a bar to see the paper</p>
             </div>
             <div className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100">
-              Total: 17
+              Total: {TOTAL_CITATIONS}
             </div>
           </div>
-          <div className="mt-6 flex h-52 items-end justify-center gap-10 border-b border-l border-slate-700/70 px-4 pb-3">
-            {yearlyCitations.map((item) => (
+          <div className="mt-6 flex h-52 items-end justify-between gap-2 border-b border-l border-slate-700/70 px-3 pb-3 sm:gap-4">
+            {paperBars.map((item) => (
               <button
-                key={item.year}
+                key={item.title}
                 type="button"
-                onMouseEnter={() => setHovered(item.year)}
-                onMouseLeave={() => setHovered(null)}
-                onFocus={() => setHovered(item.year)}
-                onBlur={() => setHovered(null)}
-                className="group flex h-full flex-col items-center justify-end focus-visible:outline-none"
+                aria-label={`${item.citations} citations: ${item.title}`}
+                onMouseEnter={() => setHovered(item.title)}
+                onFocus={() => setHovered(item.title)}
+                onClick={() => setHovered(item.title)}
+                className="group flex h-full flex-1 flex-col items-center justify-end focus-visible:outline-none"
               >
-                <div className="mb-2 text-xs font-bold text-cyan-300 opacity-0 transition group-hover:opacity-100 group-focus:opacity-100">
+                <div className={`mb-2 text-xs font-bold text-cyan-300 transition ${hovered === item.title ? "opacity-100" : "opacity-60"}`}>
                   {item.citations}
                 </div>
                 <div
-                  className="relative w-20 overflow-hidden rounded-t-xl bg-gradient-to-t from-blue-700 via-sky-400 to-cyan-200 shadow-lg shadow-cyan-500/20 transition-all duration-700 group-hover:scale-105 group-focus:scale-105"
-                  style={{ height: inView ? `${(item.citations / max) * 150}px` : "0px" }}
-                >
-                  <div className="absolute inset-0 bg-white/20 opacity-0 transition group-hover:opacity-100" />
-                </div>
-                <div className="mt-3 text-sm font-bold text-slate-300">{item.year}</div>
+                  className={`w-full max-w-14 rounded-t-xl bg-gradient-to-t from-blue-700 via-sky-400 to-cyan-200 shadow-lg shadow-cyan-500/20 transition-all duration-700 ${
+                    hovered === item.title ? "brightness-125" : ""
+                  }`}
+                  style={{ height: inView ? `${Math.max((item.citations / max) * 150, 4)}px` : "0px" }}
+                />
               </button>
             ))}
           </div>
-          <div className="mt-4 min-h-11 rounded-xl border border-cyan-300/10 bg-cyan-300/5 p-3 text-sm text-cyan-100">
-            {hovered
-              ? `${hovered}: ${yearlyCitations.find((i) => i.year === hovered)?.citations} citations`
-              : "Hover over a bar to inspect yearly citations."}
+          <div className="mt-4 min-h-16 rounded-xl border border-cyan-300/10 bg-cyan-300/5 p-3 text-sm text-cyan-100">
+            {(() => {
+              const p = paperBars.find((i) => i.title === hovered);
+              return p ? (
+                <a href={p.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                  <span className="font-black text-cyan-300">{p.citations} citations.</span> {p.title}{" "}
+                  <span className="text-slate-400">({p.venue}, {p.year})</span>
+                </a>
+              ) : (
+                "Hover over a bar to see which paper it is."
+              );
+            })()}
           </div>
         </div>
 
@@ -1108,15 +908,11 @@ function MetricsSection() {
           <h3 className="text-2xl font-black text-white">Journal Ranking</h3>
           <p className="mt-1 text-sm text-slate-400">Current ranking distribution</p>
           <div className="mt-7 space-y-5">
-            {[
-              { label: "Q1", value: 60 },
-              { label: "Q3", value: 20 },
-              { label: "NA", value: 20 },
-            ].map((item) => (
+            {rankingSplit.map((item) => (
               <div key={item.label}>
                 <div className="mb-2 flex justify-between text-xs font-bold text-slate-300">
                   <span>{item.label}</span>
-                  <span>{item.value}%</span>
+                  <span>{item.count} paper{item.count === 1 ? "" : "s"} ({item.value}%)</span>
                 </div>
                 <div className="h-4 overflow-hidden rounded-full bg-slate-800">
                   <div
@@ -1127,7 +923,7 @@ function MetricsSection() {
               </div>
             ))}
           </div>
-          <p className="mt-6 text-xs leading-6 text-slate-400">Based on the current publication profile summary.</p>
+          <p className="mt-6 text-xs leading-6 text-slate-400">SJR quartiles of the journals, as listed on Google Scholar.</p>
         </div>
       </div>
     </section>
@@ -1136,7 +932,7 @@ function MetricsSection() {
 
 function ContactSection() {
   return (
-    <section className="mt-24">
+    <section id="contact" className="mt-24 scroll-mt-40">
       <SectionHeading
         eyebrow="Connect"
         title="Academic profiles and contact"
@@ -1166,14 +962,13 @@ function ContactSection() {
         <div className="rounded-[2rem] border border-cyan-300/15 bg-slate-900/75 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl md:p-8">
           <h3 className="text-2xl font-black text-white">Email</h3>
           <div className="mt-6 space-y-3">
-            {emails.map((email) => (
-              <a
-                key={email}
-                href={`mailto:${email}`}
-                className="group flex items-center gap-3 rounded-xl border border-cyan-300/12 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
+            {Array.from({ length: EMAIL_COUNT }, (_, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 rounded-xl border border-cyan-300/12 bg-white/[0.035] p-4 text-sm font-bold text-slate-200"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -1181,12 +976,12 @@ function ContactSection() {
                     />
                   </svg>
                 </span>
-                <span className="break-all text-sm font-bold text-slate-200 group-hover:text-white">{email}</span>
-              </a>
+                <ProtectedEmail index={i} withButton={i === 0} />
+              </div>
             ))}
           </div>
           <p className="mt-6 text-sm leading-7 text-slate-400">
-            Open to academic collaboration, research discussion, and computational biology projects.
+            Hold the button to show my email addresses. This keeps them away from spam bots.
           </p>
         </div>
       </div>
@@ -1202,7 +997,7 @@ export default function About() {
   const [showEducation, setShowEducation] = useState(false);
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden bg-slate-950 text-white">
+    <div className="relative overflow-x-hidden text-white">
       {/* local keyframe for the pipeline panel transition */}
       <style>{`
         @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
@@ -1211,13 +1006,12 @@ export default function About() {
         }
       `}</style>
 
-      <EnhancedResearchBackground />
       <EducationModal isOpen={showEducation} onClose={() => setShowEducation(false)} />
 
-      <div className="pointer-events-none fixed inset-0 z-[1] bg-[radial-gradient(circle_at_70%_5%,rgba(34,211,238,0.16),transparent_34%),linear-gradient(to_bottom,rgba(2,6,23,0.06),rgba(2,6,23,0.94))]" />
 
       <div className="relative z-10 mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-20">
         <HeroSection onEducationClick={() => setShowEducation(true)} />
+        <CurrentPosition />
         <MotivationSection />
         <ResearchAreaBand />
         <ResearchPipeline />
@@ -1246,11 +1040,7 @@ export default function About() {
 
         <ContactSection />
 
-        <footer className="mt-16 border-t border-cyan-300/15 py-7 text-center">
-          <p className="text-sm text-slate-400">© 2026 Nahiduzzaman. All rights reserved.</p>
-          <p className="mt-1 text-sm font-bold text-cyan-300">Developed by Nahiduzzaman</p>
-        </footer>
       </div>
-    </main>
+    </div>
   );
 }

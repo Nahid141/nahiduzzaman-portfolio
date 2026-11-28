@@ -1,0 +1,22 @@
+[Unit]
+Description=Private Connect backend (connect-backend)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+User=connect
+Group=connect
+WorkingDirectory=/opt/connect-backend
+EnvironmentFile=/etc/connect-backend.env
+ExecStart=/usr/bin/node --import tsx src/server.ts
+Restart=on-failure
+RestartSec=3
+MemoryMax=1G
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/connect-backend
+
+[Install]
+WantedBy=multi-user.target

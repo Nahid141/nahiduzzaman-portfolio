@@ -1,0 +1,49 @@
+{
+  "name": "connect-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node --import tsx src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "db:verify": "node --env-file=.env --import tsx scripts/verify-db.ts",
+    "db:migrate": "node --env-file=.env --import tsx scripts/verify-db.ts --migrate",
+    "storage:setup": "node --env-file=.env --import tsx scripts/setup-storage.ts",
+    "services:check": "node --env-file=.env --import tsx scripts/check-services.ts",
+    "admin:bootstrap": "node --env-file=.env --import tsx scripts/bootstrap-admin.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.6.1",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/cors": "^11.4.3",
+    "@fastify/helmet": "^13.2.0",
+    "@node-rs/argon2": "^2.2.2",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.8",
+    "ioredis": "^5.11.1",
+    "livekit-server-sdk": "^2.20.1",
+    "nodemailer": "^10.6.1",
+    "otplib": "^13.6.0",
+    "pg": "^8.23.1",
+    "socket.io": "^4.8.4",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.7",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "socket.io-client": "^4.8.4",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.2"
+  }
+}
