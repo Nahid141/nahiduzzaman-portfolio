@@ -2,6 +2,17 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-28, meeting full screen, chat popup, HD screen share, Play together
+
+Browser run (headless Chrome, production build, local backend on a throwaway Supabase database, real LiveKit
+Cloud): 10/10, no browser errors. One "Play together" menu entry and both old links redirect; LiveKit's chat button
+hidden; native full screen fills the viewport (1366x860) with chat and exit reachable; the fallback for browsers
+without element full screen covers the window at 0,0 and Escape exits; a member's message shows an unread badge and
+a preview for the host, the popup keeps the typing box inside its border, the reply arrives; on a 390x844 phone the
+popup stays inside the call area and the emoji bar no longer overlaps the buttons; screen share: the sharer captures
+1920x1080 and a full-screen 1920x1080 viewer receives 1920x1080 (a 1366-wide viewer received the 1280x720 layer, as
+designed). Not tested: real iPhone/Android devices.
+
 ## 2026-11-27 (evening), owner feature round
 
 **Backend:** 100/100 tests on PGlite (new `social.test.ts`: retention of files and channel messages, YouTube link

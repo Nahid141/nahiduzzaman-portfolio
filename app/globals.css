@@ -102,3 +102,8 @@ body {
   .watch-float, .buzz-shake, .confetti-bit { animation: none; }
   .watch-float, .confetti-bit { display: none; }
 }
+
+/* Private Connect meetings: LiveKit's own chat panel overflowed the frame; our popup replaces it. */
+.connect-stage .lk-chat-toggle,
+.connect-stage .lk-chat { display: none !important; }
+.connect-stage .lk-video-conference { height: 100%; }

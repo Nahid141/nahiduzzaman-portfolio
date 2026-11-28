@@ -1,11 +1,11 @@
 "use client";
 
 import "@livekit/components-styles";
-import { LiveKitRoom, RoomAudioRenderer, useDataChannel, VideoConference } from "@livekit/components-react";
 import { useCallback, useEffect, useState } from "react";
 import Workspace from "../_components/Workspace";
 import { api, errorMessage, type ConnectUser } from "../_lib/api";
 import { getSocket } from "../_lib/realtime";
+import MeetingStage from "./MeetingStage";
 
 type Participant = {
   userId: string;
@@ -91,40 +91,6 @@ function CreateMeeting({ me, onCreated }: { me: ConnectUser; onCreated: (m: Meet
       <button type="submit" className="rounded-xl bg-cyan-300 px-4 py-2 font-black text-slate-950 hover:bg-cyan-200">Start meeting</button>
       <p className="text-xs text-slate-500">Up to 15 people, with screen sharing. Audio and video go through LiveKit Cloud and are encrypted in transit; recording is off.</p>
     </form>
-  );
-}
-
-const EMOJI = ["👍", "👏", "😂", "🎉", "❤️", "🙌"];
-
-/** Meeting reactions over LiveKit's data channel; they float for a few seconds and are not stored. */
-function Reactions() {
-  const [floating, setFloating] = useState<{ id: number; emoji: string; from: string }[]>([]);
-  const show = useCallback((emoji: string, from: string) => {
-    const id = Math.random();
-    setFloating((f) => [...f, { id, emoji, from }]);
-    window.setTimeout(() => setFloating((f) => f.filter((x) => x.id !== id)), 3500);
-  }, []);
-  const { send } = useDataChannel("reactions", (msg) => {
-    const emoji = new TextDecoder().decode(msg.payload);
-    if (EMOJI.includes(emoji)) show(emoji, msg.from?.name ?? "");
-  });
-  return (
-    <>
-      <div className="pointer-events-none absolute bottom-24 right-6 flex flex-col items-end gap-1">
-        {floating.map((f) => (
-          <span key={f.id} className="animate-bounce rounded-full bg-slate-900/80 px-3 py-1 text-2xl">
-            {f.emoji} <span className="text-xs text-slate-300">{f.from}</span>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-1" role="group" aria-label="Send a reaction">
-        {EMOJI.map((e) => (
-          <button key={e} type="button" className="rounded-lg px-2 py-1 text-lg hover:bg-white/10" aria-label={`React ${e}`} onClick={() => { void send(new TextEncoder().encode(e), { reliable: true }); show(e, "You"); }}>
-            {e}
-          </button>
-        ))}
-      </div>
-    </>
   );
 }
 
@@ -256,33 +222,17 @@ function Conference({ me }: { me: ConnectUser }) {
             )}
           </div>
         </div>
-        <div className="relative h-[70vh] overflow-hidden rounded-3xl border border-white/10" data-lk-theme="default">
-          <LiveKitRoom
-            serverUrl={joined.url}
-            token={joined.token}
-            connect
-            audio
-            video={!active.audioOnly}
-            options={{
-              adaptiveStream: true,
-              dynacast: true,
-              audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-            }}
-            onDisconnected={() => {
-              setJoined(null);
-              setActive(null);
-              load();
-            }}
-            onError={(e) => setNotice(e.message)}
-            style={{ height: "100%" }}
-          >
-            <VideoConference />
-            <RoomAudioRenderer />
-            <div className="absolute left-3 top-3 z-10 rounded-xl bg-slate-950/70 px-2 py-1">
-              <Reactions />
-            </div>
-          </LiveKitRoom>
-        </div>
+        <MeetingStage
+          url={joined.url}
+          token={joined.token}
+          audioOnly={active.audioOnly}
+          onLeft={() => {
+            setJoined(null);
+            setActive(null);
+            load();
+          }}
+          onError={setNotice}
+        />
         {isHost && <HostPanel m={active} meId={me.id} />}
         {notice && <p className="text-sm text-rose-200">{notice}</p>}
       </div>

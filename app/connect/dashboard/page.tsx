@@ -22,7 +22,7 @@ const ACTIVITY: Record<string, (a: Activity) => string> = {
   "lounge.playing": (a) => `Now playing in the lounge: ${a.payload.title}`,
   "presentation.started": (a) => `@${a.actor} started presenting ${a.payload.title}`,
   "task.done": (a) => `@${a.actor} ticked off “${a.payload.title}” 🎉`,
-  "watch.started": (a) => `@${a.actor} started a watch party: ${a.payload.title}`,
+  "watch.started": (a) => `@${a.actor} is playing “${a.payload.title}” for everyone`,
 };
 
 function Card({ title, href, children }: { title: string; href?: string; children: React.ReactNode }) {
@@ -50,7 +50,6 @@ function Dashboard({ me }: { me: ConnectUser }) {
   const [files, setFiles] = useState<SharedFile[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [todo, setTodo] = useState<Task[]>([]);
-  const lounge = useSharedState<{ status: string; title: string }>("lounge").value?.state;
   const presentation = useSharedState<{ active: boolean; title: string }>("presentation").value?.state;
   const watch = useSharedState<{ youtubeId: string | null; status: string; title: string }>("watch").value?.state;
 
@@ -132,9 +131,6 @@ function Dashboard({ me }: { me: ConnectUser }) {
             </ul>
           )}
         </Card>
-        <Card title="Music lounge" href="/connect/music">
-          <p className="text-sm text-slate-200">{lounge?.status === "playing" ? `Playing: ${lounge.title}` : lounge?.status === "paused" ? `Paused: ${lounge.title}` : "Nothing playing."}</p>
-        </Card>
         <Card title="To-do list" href="/connect/tasks">
           {todo.length === 0 ? (
             <p className="text-sm text-slate-500">Nothing to do right now.</p>
@@ -150,8 +146,8 @@ function Dashboard({ me }: { me: ConnectUser }) {
             </ul>
           )}
         </Card>
-        <Card title="Watch together" href="/connect/watch">
-          <p className="text-sm text-slate-200">{watch?.youtubeId && watch.status !== "stopped" ? `Watching: ${watch.title}` : "No watch party running. Start one with a YouTube link."}</p>
+        <Card title="Play together" href="/connect/play">
+          <p className="text-sm text-slate-200">{watch?.youtubeId && watch.status !== "stopped" ? `Playing: ${watch.title}` : "Nothing playing. Start music or a video with a YouTube link."}</p>
         </Card>
         <Card title="Presentation" href="/connect/present">
           <p className="text-sm text-slate-200">{presentation?.active ? `Showing ${presentation.title}` : "Nothing being presented."}</p>

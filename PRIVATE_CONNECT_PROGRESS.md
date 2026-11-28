@@ -2,6 +2,20 @@
 
 Resumable checkpoint for future sessions. Update after every major phase.
 
+## 2026-11-28: meeting and Play together fixes (owner feedback)
+
+- **Full screen:** a Full screen button on the call uses the browser's real full-screen mode for the whole call
+  (video grid, controls, reactions and chat stay usable); on iPhone Safari, which only allows `<video>` elements to go
+  full screen, it covers the whole browser window instead. Escape or the button exits.
+- **Meeting chat:** LiveKit's built-in chat panel overflowed the frame and is hidden; a popup chat over the call
+  (same LiveKit chat channel) shows an unread count and a 5-second preview of new messages while closed. It is
+  rendered into the call area, so it fits on phones and works in full screen.
+- **Play together:** the music lounge and Watch together are one page, `/connect/play` (YouTube, synced for everyone);
+  `/connect/music` and `/connect/watch` redirect there. The lounge API remains in the backend but is unused.
+- **HD screen sharing:** captured at 1080p, sent at up to 3.5 Mbps / 15 fps (sharper text than LiveKit's 2.5 Mbps
+  default) with a 720p layer for weaker connections; each viewer receives the layer that fits their screen.
+  Bandwidth note: one HD share costs roughly 1.5 GB per viewer-hour of LiveKit Cloud data transfer.
+
 ## 2026-11-27 (evening): owner feature round
 
 Requested by the owner and built:
