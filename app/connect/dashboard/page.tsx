@@ -59,11 +59,13 @@ function Dashboard({ me }: { me: ConnectUser }) {
       setOnline(new Set(m.filter((x) => x.online).map((x) => x.id)));
     }).catch(() => undefined);
     api<Announcement[]>("/announcements").then(setNotes).catch(() => undefined);
-    api<Activity[]>("/activity").then(setFeed).catch(() => undefined);
     api<{ meetings: MeetingSummary[] }>("/meetings").then((r) => setMeetings(r.meetings)).catch(() => undefined);
     api<SharedFile[]>("/files?limit=5").then(setFiles).catch(() => undefined);
     api<Task[]>("/tasks").then((t) => setTodo(t.filter((x) => !x.doneAt))).catch(() => undefined);
-    if (me.role === "admin") api<Stats>("/admin/stats").then(setStats).catch(() => undefined);
+    if (me.role === "admin") {
+      api<Stats>("/admin/stats").then(setStats).catch(() => undefined);
+      api<Activity[]>("/activity").then(setFeed).catch(() => undefined);
+    }
   }, [me.role]);
 
   useEffect(() => {
@@ -176,20 +178,22 @@ function Dashboard({ me }: { me: ConnectUser }) {
             ))}
           </div>
         </Card>
-        <Card title="Activity">
-          {feed.length === 0 ? (
-            <p className="text-sm text-slate-500">Nothing has happened yet.</p>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {feed.slice(0, 8).map((a) => (
-                <li key={a.id} className="text-slate-300">
-                  {(ACTIVITY[a.kind] ?? (() => a.kind))(a)}
-                  <span className="ml-2 text-xs text-slate-600">{new Date(a.createdAt).toLocaleTimeString()}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+        {me.role === "admin" && (
+          <Card title="Activity (admins only)">
+            {feed.length === 0 ? (
+              <p className="text-sm text-slate-500">Nothing has happened yet.</p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {feed.slice(0, 8).map((a) => (
+                  <li key={a.id} className="text-slate-300">
+                    {(ACTIVITY[a.kind] ?? (() => a.kind))(a)}
+                    <span className="ml-2 text-xs text-slate-600">{new Date(a.createdAt).toLocaleTimeString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
       </div>
       <div className="mt-8 rounded-3xl border border-amber-300/20 bg-amber-300/[0.05] p-5">
         <CreditNote />

@@ -160,7 +160,7 @@ function FollowHost({ pathname, meId }: { pathname: string; meId: string }) {
 function DefaultAside() {
   return (
     <div>
-      <h2 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-300">Activity</h2>
+      <h2 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-300">Live chat</h2>
       <p className="mt-3 text-sm leading-6 text-slate-400">
         Open General chat or Direct messages to see live conversations here.
       </p>

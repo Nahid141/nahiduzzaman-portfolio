@@ -46,7 +46,7 @@ export async function meetingRoutes(app: FastifyInstance, deps: AppDeps, rt: Rea
     await audit(deps.db, { actorId: me(request).id, action: "meeting.created", targetType: "meeting", targetId: meeting.id, metadata: { inviteOnly: meeting.inviteOnly } });
     if (!meeting.inviteOnly) {
       await deps.db.insert(activity).values({ actorId: me(request).id, kind: "meeting.started", payload: { meetingId: meeting.id, title: meeting.title } });
-      rt.emit("workspace", "activity:new", { kind: "meeting.started" });
+      rt.emit("admins", "activity:new", { kind: "meeting.started" });
     }
     for (const uid of invitees) rt.emit(`user:${uid}`, "notification:new", { kind: "meeting_invite", meetingId: meeting.id });
     changed(meeting.id, [me(request).id, ...invitees]);

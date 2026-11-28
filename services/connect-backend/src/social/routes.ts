@@ -106,7 +106,7 @@ export async function socialRoutes(app: FastifyInstance, deps: AppDeps, rt: Real
     const { before, after } = await updateTask(db, me(request), id, taskUpdateSchema.parse(request.body), now());
     if (!before.doneAt && after.doneAt && after.visibility === "public") {
       await db.insert(activity).values({ actorId: me(request).id, kind: "task.done", payload: { title: after.title }, createdAt: now() });
-      rt.emit("workspace", "activity:new", { kind: "task.done" });
+      rt.emit("admins", "activity:new", { kind: "task.done" });
     }
     tasksChanged();
     return after;
