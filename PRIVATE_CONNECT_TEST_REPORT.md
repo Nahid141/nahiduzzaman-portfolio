@@ -2,6 +2,17 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-28, meetings in the background and unread counts
+
+**Browser run** (production build, local backend on a throwaway Supabase database, real LiveKit Cloud): 12/12, no
+browser errors. Admin and member in a call with the member sharing their screen; the admin opens the Dashboard and
+the same room keeps running in a 400 px corner window with the share still showing; the sharer moves to General chat
+and keeps sharing; mute/unmute and move from the corner window; a General chat message gives "1" beside General
+chat, a pop-up and "(1) Private Connect", cleared on opening the chat with the call still running; a direct message
+gives "1" beside Direct messages and the pop-up opens that conversation; back on Meetings the same call fills the
+page; the corner window fits a 390 px phone; Leave ends it for one person; the host ending the meeting closes it.
+Not covered: real phones (a phone browser may pause the camera when the screen turns off).
+
 ## 2026-11-28, background player and games room
 
 **Backend:** 116/116 on PGlite (new `games-rules.test.ts`: every game's rules, wins, draws, illegal moves, Ludo

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { MeetingDockProvider } from "./_components/MeetingDock";
 import { PlayDockProvider } from "./_components/PlayDock";
 
 // Private application: keep it out of search results. This is not a security control;
@@ -11,5 +12,9 @@ export const metadata: Metadata = {
 };
 
 export default function ConnectLayout({ children }: { children: React.ReactNode }) {
-  return <PlayDockProvider>{children}</PlayDockProvider>;
+  return (
+    <PlayDockProvider>
+      <MeetingDockProvider>{children}</MeetingDockProvider>
+    </PlayDockProvider>
+  );
 }

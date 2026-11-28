@@ -2,6 +2,20 @@
 
 Resumable checkpoint for future sessions. Update after every major phase.
 
+## 2026-11-28: meetings keep running on other pages; unread message counts (owner request)
+
+- **Meetings no longer end when you open another page.** The call lives in the `/connect` layout
+  (`_components/MeetingDock.tsx`): on Meetings it fills the page as before; on any other Connect page the same LiveKit
+  room (not reconnected) shrinks into a corner window with the meeting title, Open, Move to another corner, Mute
+  mic, Stop camera, Stop sharing (while sharing) and Leave. Camera, microphone and screen share all carry on. The
+  navigation shows "In call" beside Meetings. The call ends only on Leave, the host ending or removing you, signing
+  out, or leaving Private Connect. LiveKit is downloaded only once someone joins a call.
+- **Unread messages:** a count beside General chat (all channels) and Direct messages (muted conversations left
+  out), a dot on the phone Menu button, the total in the browser tab title ("(3) Private Connect"), and a 6-second
+  pop-up for each new message in a chat that is not open, linking straight to it. Uses the read positions the
+  server already keeps; no backend change. Messages that arrive while the tab is in the background now count as read
+  once you look at that chat again.
+
 ## 2026-11-28: background player and games room (owner request)
 
 - **Play together keeps playing in the background.** The player lives in the `/connect` layout: on Play together it

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import ChatView from "../_components/ChatView";
 import Workspace from "../_components/Workspace";
 import { api } from "../_lib/api";
@@ -49,9 +50,16 @@ function Search({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function ChatPage() {
+function Chat() {
+  const wanted = useSearchParams().get("c");
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [active, setActive] = useState<string | null>(null);
+  const [active, setActive] = useState<string | null>(wanted);
+  const [lastWanted, setLastWanted] = useState(wanted);
+  // A notice link to another channel while this page is already open.
+  if (wanted !== lastWanted) {
+    setLastWanted(wanted);
+    if (wanted) setActive(wanted);
+  }
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
@@ -63,14 +71,23 @@ export default function ChatPage() {
         })
         .catch(() => undefined);
     load();
+    // Unread counts beside the other channels stay current (a short delay batches bursts of messages).
+    let t: number | undefined;
+    const soon = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(load, 600);
+    };
     const s = getSocket();
     s.on("channel:new", load);
+    s.on("chat:message", soon);
     return () => {
+      window.clearTimeout(t);
       s.off("channel:new", load);
+      s.off("chat:message", soon);
     };
   }, []);
 
-  const current = channels.find((c) => c.id === active);
+  const current = channels.find((c) => c.id === active) ?? channels[0];
 
   return (
     <Workspace
@@ -95,20 +112,20 @@ export default function ChatPage() {
                 <li key={c.id}>
                   <button
                     type="button"
-                    aria-current={c.id === active}
+                    aria-current={c.id === current?.id}
                     onClick={() => {
                       setActive(c.id);
                       setChannels((prev) => prev.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)));
                     }}
                     className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold ${
-                      c.id === active ? "bg-cyan-300/15 text-cyan-100" : "text-slate-300 hover:bg-white/5"
+                      c.id === current?.id ? "bg-cyan-300/15 text-cyan-100" : "text-slate-300 hover:bg-white/5"
                     }`}
                   >
                     <span>
                       # {c.name}
                       {c.kind === "restricted" && <span className="ml-1 text-xs text-slate-500">(private)</span>}
                     </span>
-                    {c.unread > 0 && c.id !== active && (
+                    {c.unread > 0 && c.id !== current?.id && (
                       <span className="rounded-full bg-cyan-300 px-2 text-xs font-black text-slate-950">{c.unread}</span>
                     )}
                   </button>
@@ -133,5 +150,13 @@ export default function ChatPage() {
         )
       }
     </Workspace>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense>
+      <Chat />
+    </Suspense>
   );
 }

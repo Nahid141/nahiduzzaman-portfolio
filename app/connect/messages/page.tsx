@@ -116,6 +116,12 @@ function Messages() {
   const initial = useSearchParams().get("c");
   const [list, setList] = useState<Conversation[]>([]);
   const [active, setActive] = useState<string | null>(initial);
+  const [lastInitial, setLastInitial] = useState(initial);
+  // A notice link to another conversation while this page is already open.
+  if (initial !== lastInitial) {
+    setLastInitial(initial);
+    if (initial) setActive(initial);
+  }
   const [composing, setComposing] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 

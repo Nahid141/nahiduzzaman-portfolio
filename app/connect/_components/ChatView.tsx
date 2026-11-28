@@ -7,6 +7,7 @@ import { emit, getSocket, newClientId, REACTIONS, sameTarget, type ChatMessage, 
 import { ACCEPT, uploadFile, type SharedFile } from "../_lib/files";
 import { AttachmentChip, FilePreview } from "./FileBits";
 import Polls from "./Polls";
+import { notifyRead, setViewing } from "../_lib/unread";
 
 const ERRORS: Record<string, string> = {
   rate_limited: "You are sending messages too fast. Wait a few seconds.",
@@ -55,10 +56,27 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
   const markRead = useCallback(
     (list: ChatMessage[]) => {
       const last = [...list].reverse().find((m) => !m.id.startsWith("pending:"));
-      if (last) void emit("chat:read", { target, messageId: last.id });
+      if (last) void emit("chat:read", { target, messageId: last.id }).then(notifyRead);
     },
     [target]
   );
+
+  // This chat is open: its messages are not counted as unread or announced while it stays on screen.
+  useEffect(() => {
+    setViewing(target);
+    return () => setViewing(null);
+  }, [target]);
+
+  // Messages that arrived while the tab was in the background count as read once it is visible again.
+  const latestList = useRef<ChatMessage[]>([]);
+  useEffect(() => {
+    latestList.current = messages;
+  }, [messages]);
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === "visible" && markRead(latestList.current);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [markRead]);
 
   // Initial page of history.
   useEffect(() => {
@@ -87,7 +105,7 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
       setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
       const el = listRef.current;
       if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 160) scrollToEnd();
-      if (document.visibilityState === "visible") void emit("chat:read", { target, messageId: m.id });
+      if (document.visibilityState === "visible") void emit("chat:read", { target, messageId: m.id }).then(notifyRead);
     };
     const onUpdated = (m: ChatMessage) => {
       if (sameTarget(m.target, target)) setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
