@@ -91,7 +91,8 @@ const MESSAGES: Record<string, string> = {
 
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.code === "config") return connectConfigProblem() ?? MESSAGES.network;
+    // The notice at the top of the page already explains the problem and links to the right address.
+    if (err.code === "config") return "Sign-in is not available at this address. Use the link above.";
     if (err.code === "invalid_input" && err.issues?.length) return err.issues.map((i) => i.message).join(" ");
     return MESSAGES[err.code] ?? "Something went wrong. Try again.";
   }
