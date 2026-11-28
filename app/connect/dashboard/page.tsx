@@ -23,6 +23,7 @@ const ACTIVITY: Record<string, (a: Activity) => string> = {
   "presentation.started": (a) => `@${a.actor} started presenting ${a.payload.title}`,
   "task.done": (a) => `@${a.actor} ticked off “${a.payload.title}” 🎉`,
   "watch.started": (a) => `@${a.actor} is playing “${a.payload.title}” for everyone`,
+  "game.finished": (a) => (a.payload.winners ? `@${a.payload.winners} won a game of ${a.payload.game}` : `A game of ${a.payload.game} ended in a draw`),
 };
 
 function Card({ title, href, children }: { title: string; href?: string; children: React.ReactNode }) {

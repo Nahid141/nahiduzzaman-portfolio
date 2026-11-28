@@ -2,6 +2,28 @@
 
 Resumable checkpoint for future sessions. Update after every major phase.
 
+## 2026-11-28: background player and games room (owner request)
+
+- **Play together keeps playing in the background.** The player lives in the `/connect` layout: on Play together it
+  sits in the page; on every other Connect page it moves to a corner (same YouTube player, not reloaded), with the
+  title, Open, Move to another corner, Mute for me / Join with sound, and Close. Sound continues unless the member
+  mutes it; closing stops it on that device only (Play together offers "Open the player" again). It stops on sign-out
+  or when leaving Private Connect.
+- **Games room with ten multiplayer games:** chess, Ludo (2-4), tic-tac-toe, four in a row, checkers, reversi, five in
+  a row, dots and boxes (2-4), snakes and ladders (2-4), rock-paper-scissors. Open a table from Play together; others
+  join from the lobby; two-player games start when the second player sits down, the others when the creator starts
+  them; anyone can watch. Resign, open a new table, confetti for the winner; results go to the administrator-only
+  activity feed.
+- **Fair play:** every move is checked on the server (`services/connect-backend/src/games`, chess rules by chess.js),
+  dice are rolled on the server with a cryptographic source, rock-paper-scissors picks stay hidden from the opponent
+  and spectators until both have chosen. Limits: 3 open tables per person, 10 new tables and 150 actions a minute.
+  Tables nobody joins close after a day, idle games after a week; results are deleted after 30 days.
+- **Fix found while testing:** starting a video at the moment a page loaded could leave that page showing the old
+  (stopped) state, because the first snapshot replaced the newer live update. Snapshots no longer override newer
+  versions.
+
+Migration `0005_games` (one table, RLS on, Data API revoked) applied to production.
+
 ## 2026-11-28: meeting and Play together fixes (owner feedback)
 
 - **Full screen:** a Full screen button on the call uses the browser's real full-screen mode for the whole call

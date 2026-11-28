@@ -35,6 +35,8 @@ export async function testApp(opts: { scanner?: HashScanner; noStorage?: boolean
   const clock = { now: new Date() };
   const files = new MemoryFileStore();
   const livekit = new FakeLiveKit();
+  /** Dice the games will roll next (1-6); after the queue runs out every roll is a 4. */
+  const dice: number[] = [];
   const config = loadConfig({ NODE_ENV: "test", CONNECT_SITE_ORIGIN: ORIGIN });
   const app = await buildApp({
     config,
@@ -48,6 +50,7 @@ export async function testApp(opts: { scanner?: HashScanner; noStorage?: boolean
     scanner: opts.scanner,
     livekit,
     // Never call YouTube from tests: ids starting with "x" behave as private/removed videos.
+    random: () => ((dice.length ? dice.shift()! : 4) - 1) / 6 + 0.01,
     youtube: async (id) => (id.startsWith("x") ? null : { title: `Video ${id}` }),
   });
 
@@ -122,7 +125,7 @@ export async function testApp(opts: { scanner?: HashScanner; noStorage?: boolean
 
   const totp = (secret: string) => generateSync({ secret, epoch: Math.floor(clock.now.getTime() / 1000) });
 
-  return { app, db: handle.db, close: handle.close, email, clock, files, livekit, call, cookieOf, tokenFrom, advance, registerMember, activeMember, adminSession, totp };
+  return { app, db: handle.db, close: handle.close, email, clock, files, livekit, dice, call, cookieOf, tokenFrom, advance, registerMember, activeMember, adminSession, totp };
 }
 
 export type TestApp = Awaited<ReturnType<typeof testApp>>;

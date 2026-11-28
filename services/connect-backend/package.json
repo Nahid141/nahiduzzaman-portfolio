@@ -26,6 +26,7 @@
     "@fastify/helmet": "^13.2.0",
     "@node-rs/argon2": "^2.2.2",
     "@socket.io/redis-adapter": "^8.3.0",
+    "chess.js": "^1.4.0",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.8",
     "ioredis": "^5.11.1",

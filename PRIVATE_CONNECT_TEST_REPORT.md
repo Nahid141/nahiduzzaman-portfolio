@@ -2,6 +2,22 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-28, background player and games room
+
+**Backend:** 116/116 on PGlite (new `games-rules.test.ts`: every game's rules, wins, draws, illegal moves, Ludo
+captures/sixes/exact home, checkers forced and multi-jumps, fool's mate, hidden RPS picks; `games.test.ts`: lobby,
+auto-start, turn enforcement, spectators, resign, server dice, table limits, cleanup, admin-only activity). The games
+and social files on Supabase (`connect_test`): 25/25.
+
+**Browser run** (production build, local backend on a throwaway Supabase database, real YouTube): 14/14, no browser
+errors. Video starts and plays on Play together; moving to General chat keeps the same player (same iframe, not
+reloaded) in the corner and unmuted; mute/unmute; move to another corner; close on one device only and reopen;
+corner player on a 390 px phone (no sideways scroll); the host ending the session removes it everywhere.
+Tic-tac-toe played to a win with both screens updating live; chess with move hints and fool's mate; Ludo started by
+the creator with server dice; a first move in four in a row, reversi, five in a row, checkers (board flipped for the
+second player) and dots and boxes; snakes and ladders roll; rock-paper-scissors with the pick hidden from the
+opponent; lobby and Ludo board on a phone. Not covered: real phones, background audio when the phone screen is off.
+
 ## 2026-11-28, meeting full screen, chat popup, HD screen share, Play together
 
 Browser run (headless Chrome, production build, local backend on a throwaway Supabase database, real LiveKit

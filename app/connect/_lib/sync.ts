@@ -51,7 +51,7 @@ export function useSharedState<T>(key: "lounge" | "presentation" | "follow" | "w
   const refresh = useCallback(async () => {
     const snap = await api<Record<string, unknown>>(fetchPath);
     const v = (fetchPath === "/state" ? snap[key] : snap.state) as Versioned<T>;
-    latest.current = 0;
+    // A snapshot that left the server before a newer live update arrived must not replace it.
     accept(v);
   }, [accept, fetchPath, key]);
 

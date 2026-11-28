@@ -59,12 +59,15 @@ export default function YouTubeSync({
   onDuration,
   onEnded,
   title,
+  compact = false,
 }: {
   videoId: string;
   state: SyncedState;
   onDuration?: (ms: number) => void;
   onEnded?: () => void;
   title: string;
+  /** The small corner player: just the sound button. */
+  compact?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
@@ -157,7 +160,7 @@ export default function YouTubeSync({
         <div ref={host} className="absolute inset-0 [&>div]:h-full [&>div]:w-full [&_iframe]:h-full [&_iframe]:w-full" aria-label={`YouTube video: ${title}`} />
         {!ready && <p className="absolute inset-0 grid place-items-center text-sm text-slate-400">Loading the YouTube player…</p>}
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+      <div className={`flex flex-wrap items-center gap-3 text-xs text-slate-400 ${compact ? "mt-2" : "mt-3"}`}>
         {ready && muted && (
           <button
             type="button"
@@ -184,7 +187,7 @@ export default function YouTubeSync({
             Mute for me
           </button>
         )}
-        <span>{driftMs === null ? "In sync with everyone" : `In sync (±${Math.abs(driftMs)} ms)`}. Playback is controlled by the host for everyone.</span>
+        {!compact && <span>{driftMs === null ? "In sync with everyone" : `In sync (±${Math.abs(driftMs)} ms)`}. Playback is controlled by the host for everyone.</span>}
       </div>
     </div>
   );

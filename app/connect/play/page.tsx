@@ -1,21 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sessionKey, usePlayDock, type Watch } from "../_components/PlayDock";
 import Workspace from "../_components/Workspace";
-import YouTubeSync from "../_components/YouTubeSync";
 import { api, errorMessage, type ConnectUser } from "../_lib/api";
-import { getSocket } from "../_lib/realtime";
-import { syncClock, targetPosition, useSharedState } from "../_lib/sync";
-
-type Watch = {
-  youtubeId: string | null;
-  title: string;
-  status: "stopped" | "playing" | "paused";
-  anchorMs: number | null;
-  positionMs: number;
-  hostId: string | null;
-};
-type Floating = { id: number; emoji: string; left: number };
+import { targetPosition, useSharedState } from "../_lib/sync";
+import GamesLobby from "./_games/Lobby";
 
 const REACTIONS = ["❤️", "😂", "😮", "👏", "🔥", "🎉", "😢", "🍿"];
 const btn = "rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-slate-200 transition hover:border-cyan-300/50 disabled:opacity-40";
@@ -26,25 +16,17 @@ function PlayTogether({ me }: { me: ConnectUser }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [canControl, setCanControl] = useState(false);
-  const [floating, setFloating] = useState<Floating[]>([]);
+  const { attachSlot, height: dockHeight, closedKey, close, reopen } = usePlayDock();
   const s = value?.state ?? null;
   const live = Boolean(s?.youtubeId && s.status !== "stopped");
   const isHost = live && s?.hostId === me.id;
   const control = isHost || canControl;
 
   useEffect(() => {
-    void syncClock().catch(() => undefined);
     api<{ canControl: boolean }>("/state").then((x) => setCanControl(x.canControl)).catch(() => undefined);
-    const sock = getSocket();
-    let n = 0;
-    const onReaction = (r: { emoji: string }) => {
-      const id = ++n;
-      setFloating((f) => [...f.slice(-30), { id, emoji: r.emoji, left: 10 + Math.random() * 80 }]);
-      window.setTimeout(() => setFloating((f) => f.filter((x) => x.id !== id)), 2600);
-    };
-    sock.on("watch:reaction", onReaction);
-    return () => void sock.off("watch:reaction", onReaction);
   }, []);
+  const key = sessionKey(s);
+  const closed = key !== null && closedKey === key;
 
   const run = async (body: Record<string, unknown>) => {
     setError("");
@@ -64,21 +46,25 @@ function PlayTogether({ me }: { me: ConnectUser }) {
       <div>
         <h1 className="text-3xl font-black text-white">Play together</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-400">
-          Music or videos from YouTube, playing at the same moment for everyone. Whoever starts it is the host; the host or an administrator controls playback.
+          Music or videos from YouTube, playing at the same moment for everyone, and ten games to play with each other. The player keeps going in the
+          corner while you chat or play; mute it or close it there.
         </p>
       </div>
 
       {live && s?.youtubeId ? (
         <section className="relative">
           <p className="mb-2 text-sm font-bold text-cyan-200">{s.status === "paused" ? "Paused" : "Now showing"}: {s.title}</p>
-          <YouTubeSync videoId={s.youtubeId} title={s.title} state={s} />
-          <div className="pointer-events-none absolute inset-x-0 bottom-16 top-8 overflow-hidden" aria-hidden>
-            {floating.map((f) => (
-              <span key={f.id} className="watch-float absolute bottom-0 text-3xl" style={{ left: `${f.left}%` }}>
-                {f.emoji}
-              </span>
-            ))}
-          </div>
+          {closed ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+              You closed the player on this device. Everyone else is still watching.
+              <button type="button" onClick={reopen} className="rounded-xl bg-cyan-300 px-4 py-2 font-black text-slate-950">
+                Open the player
+              </button>
+            </div>
+          ) : (
+            // The player itself lives in the Connect layout and is laid over this spot, so it keeps playing on other pages.
+            <div ref={attachSlot} className="aspect-video w-full" style={dockHeight ? { height: dockHeight, aspectRatio: "auto" } : undefined} />
+          )}
           <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Reactions">
             {REACTIONS.map((e) => (
               <button key={e} type="button" onClick={() => api("/watch/react", { body: { emoji: e } }).catch(() => undefined)} className="rounded-full bg-white/5 px-3 py-1.5 text-xl transition hover:scale-110 hover:bg-white/10" aria-label={`React ${e}`}>
@@ -86,6 +72,11 @@ function PlayTogether({ me }: { me: ConnectUser }) {
               </button>
             ))}
           </div>
+          {!closed && key && (
+            <button type="button" className={`${btn} mt-4`} onClick={() => close(key)}>
+              Close the player for me
+            </button>
+          )}
           {control && (
             <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Playback controls">
               {s.status === "playing" ? (
@@ -117,6 +108,8 @@ function PlayTogether({ me }: { me: ConnectUser }) {
         </section>
       )}
       {error && <p className="text-sm text-rose-200">{error}</p>}
+
+      <GamesLobby me={me} />
 
       <section className="rounded-3xl border border-white/10 p-5 text-sm leading-6 text-slate-400">
         <h2 className="font-black text-slate-200">Netflix, Prime Video and other subscriptions</h2>

@@ -116,6 +116,15 @@ recovery codes, cookie values, private message bodies, file contents.
 - `GET /api/v1/activity` requires an administrator with MFA (members get 403); `activity:new` signals go only to an
   `admins` socket room; the dashboard shows the Activity card to administrators only.
 
+## Games room (2026-11-28)
+
+- Server-authoritative rules: browsers send only intended moves; the server checks turn, seat and legality inside a
+  row lock. Dice use `crypto.randomInt`; a client cannot choose a roll.
+- Hidden information (rock-paper-scissors picks) is filtered per viewer; realtime signals carry only the game id and
+  version, and clients refetch their own view.
+- Abuse limits: 3 open tables per person, 10 new tables and 150 game actions per minute; idle tables are closed and
+  results deleted after 30 days. `games` table has RLS on and no Data API grants.
+
 ## Residual risks (current)
 
 - Render Free restarts or sleeps the single instance; in-memory rate limits and presence reset then.

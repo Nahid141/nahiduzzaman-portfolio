@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type ConnectUser } from "../_lib/api";
 import { useSharedState } from "../_lib/sync";
+import { usePlayDock } from "./PlayDock";
 import { Avatar, BuzzReceiver, CreditNote } from "./Social";
 import { ConnectionNotice, Skeleton, useMe } from "./ui";
 
@@ -44,7 +45,14 @@ export default function Workspace({
     window.setTimeout(() => setShaking(false), 1300);
   }, []);
 
+  // The Play together player keeps running across Connect pages once someone is signed in.
+  const { setSignedIn } = usePlayDock();
+  useEffect(() => {
+    if (me) setSignedIn(true);
+  }, [me, setSignedIn]);
+
   async function signOut() {
+    setSignedIn(false);
     await api("/auth/logout", { body: {} }).catch(() => undefined);
     router.replace("/connect");
   }

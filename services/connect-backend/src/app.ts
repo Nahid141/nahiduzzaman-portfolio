@@ -20,6 +20,8 @@ import { LIVEKIT_WEBHOOK_PATH, meetingRoutes } from "./meetings/routes.js";
 import type { YoutubeLookup } from "./collab/youtube.js";
 import { socialRoutes } from "./social/routes.js";
 import { collabRoutes } from "./collab/routes.js";
+import { gameRoutes } from "./games/routes.js";
+import { GameError } from "./games/types.js";
 import { VersionConflict } from "./collab/state.js";
 
 declare module "fastify" {
@@ -43,6 +45,8 @@ export type AppDeps = {
   livekit?: LiveKitApi | null;
   /** YouTube title lookup; defaults to YouTube's public oEmbed endpoint. */
   youtube?: YoutubeLookup;
+  /** Dice for games; defaults to a cryptographic source. Tests pass a fixed sequence. */
+  random?: () => number;
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -90,7 +94,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof VersionConflict) return reply.code(409).send({ error: error.code, current: error.current });
-    if (error instanceof ChatError) return reply.code(error.status).send({ error: error.code });
+    if (error instanceof ChatError || error instanceof GameError) return reply.code(error.status).send({ error: error.code });
     if (error instanceof ZodError) {
       return reply.code(400).send({
         error: "invalid_input",
@@ -114,5 +118,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await meetingRoutes(app, deps, realtime);
   await collabRoutes(app, deps, realtime);
   await socialRoutes(app, deps, realtime);
+  await gameRoutes(app, deps, realtime);
   return app;
 }

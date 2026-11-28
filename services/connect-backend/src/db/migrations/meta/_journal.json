@@ -36,6 +36,13 @@
       "when": 1795830282390,
       "tag": "0004_profiles_tasks_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795842874044,
+      "tag": "0005_games",
+      "breakpoints": true
     }
   ]
 }
