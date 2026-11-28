@@ -48,7 +48,7 @@ export async function collabRoutes(app: FastifyInstance, deps: AppDeps, rt: Real
   const broadcast = (v: Versioned<StateKey>) => rt.emit("workspace", "state:update", v);
   const log = async (actorId: string, kind: string, payload: Record<string, unknown>) => {
     await db.insert(activity).values({ actorId, kind, payload, createdAt: now() });
-    rt.emit("workspace", "activity:new", { kind });
+    rt.emit("admins", "activity:new", { kind });
   };
 
   /** Clock sync: clients sample this to estimate their offset from server time. */
@@ -233,7 +233,8 @@ export async function collabRoutes(app: FastifyInstance, deps: AppDeps, rt: Real
     return { ok: true };
   });
 
-  app.get("/api/v1/activity", guard, async () => listActivity(db));
+  // The activity feed is for administrators only.
+  app.get("/api/v1/activity", admin, async () => listActivity(db));
 
   /* --------------------------- System monitoring --------------------------- */
 

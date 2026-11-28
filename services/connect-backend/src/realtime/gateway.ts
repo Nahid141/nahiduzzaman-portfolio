@@ -61,7 +61,7 @@ export function attachGateway(app: FastifyInstance, deps: AppDeps): Realtime {
     if (auth.user.role === "admin" && !auth.session.mfaPassed) return next(new Error("mfa_enrollment_required"));
     const data: SocketData = { userId: auth.user.id, sessionId: auth.session.id, role: auth.user.role, username: auth.user.username };
     // Rooms are resolved here, before the client sees "connect", so nothing sent right after connecting is missed.
-    data.rooms = [`user:${data.userId}`, `session:${data.sessionId}`, "workspace", ...(await accessibleRooms(deps.db, actor(data)))];
+    data.rooms = [`user:${data.userId}`, `session:${data.sessionId}`, "workspace", ...(data.role === "admin" ? ["admins"] : []), ...(await accessibleRooms(deps.db, actor(data)))];
     socket.data = data;
     next();
   });

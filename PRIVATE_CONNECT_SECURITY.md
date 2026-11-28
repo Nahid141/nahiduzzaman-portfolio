@@ -111,6 +111,11 @@ recovery codes, cookie values, private message bodies, file contents.
 - Retention deletes public channel messages after 10 days and files after 5 days (both configurable); direct
   messages are kept.
 
+## Activity feed is administrator-only (2026-11-27)
+
+- `GET /api/v1/activity` requires an administrator with MFA (members get 403); `activity:new` signals go only to an
+  `admins` socket room; the dashboard shows the Activity card to administrators only.
+
 ## Residual risks (current)
 
 - Render Free restarts or sleeps the single instance; in-memory rate limits and presence reset then.

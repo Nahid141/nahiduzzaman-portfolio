@@ -47,7 +47,7 @@ export async function fileRoutes(app: FastifyInstance, deps: AppDeps, rt: Realti
     rt.emit(roomOf(file.target), "file:new", file);
     if (file.target.kind === "channel") {
       await deps.db.insert(activity).values({ actorId: me(request).id, kind: "file.shared", payload: { fileId: file.id, name: file.name, channelId: file.target.id } });
-      rt.emit("workspace", "activity:new", { kind: "file.shared" });
+      rt.emit("admins", "activity:new", { kind: "file.shared" });
     }
     return file;
   });

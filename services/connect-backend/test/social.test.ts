@@ -172,7 +172,8 @@ describe("to-do list", () => {
     expect((await t.call("GET", "/api/v1/tasks", undefined, { cookie: admin.cookie })).json()).toHaveLength(2);
 
     expect((await t.call("DELETE", `/api/v1/tasks/${pub.id}`, undefined, { cookie: b.cookie })).statusCode).toBe(200);
-    const activity = (await t.call("GET", "/api/v1/activity", undefined, { cookie: a.cookie })).json();
+    expect((await t.call("GET", "/api/v1/activity", undefined, { cookie: a.cookie })).statusCode).toBe(403);
+    const activity = (await t.call("GET", "/api/v1/activity", undefined, { cookie: admin.cookie })).json();
     expect(activity.some((x: { kind: string }) => x.kind === "task.done")).toBe(true);
   });
 });
