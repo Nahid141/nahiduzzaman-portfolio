@@ -107,3 +107,6 @@ body {
 .connect-stage .lk-chat-toggle,
 .connect-stage .lk-chat { display: none !important; }
 .connect-stage .lk-video-conference { height: 100%; }
+/* Small call window on other Connect pages: compact controls replace LiveKit's bar. */
+.connect-stage-mini .lk-control-bar { display: none !important; }
+.connect-stage-mini .lk-participant-name { font-size: 0.7rem; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { LiveKitRoom, RoomAudioRenderer, useChat, useDataChannel, VideoConference } from "@livekit/components-react";
+import { LiveKitRoom, RoomAudioRenderer, useChat, useDataChannel, useLocalParticipant, useRoomContext, VideoConference } from "@livekit/components-react";
 import { ScreenSharePresets } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -13,18 +13,21 @@ const pill = "rounded-xl bg-slate-950/75 px-3 py-1.5 text-sm font-bold text-whit
 /**
  * The call area: LiveKit's grid and controls, plus our own full-screen button and chat popup. Both live inside the
  * element that goes full screen, so they keep working there. LiveKit's built-in chat panel is hidden (CSS), because it
- * overflowed the frame; ours uses the same LiveKit chat channel.
+ * overflowed the frame; ours uses the same LiveKit chat channel. In `mini` mode (the small window shown on other Connect
+ * pages) the same room stays connected; only the frame shrinks and compact controls replace LiveKit's bar.
  */
 export default function MeetingStage({
   url,
   token,
   audioOnly,
+  mini = false,
   onLeft,
   onError,
 }: {
   url: string;
   token: string;
   audioOnly: boolean;
+  mini?: boolean;
   onLeft: () => void;
   onError: (message: string) => void;
 }) {
@@ -46,6 +49,16 @@ export default function MeetingStage({
       window.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  // Moving to another page while in full screen: leave full screen, the call carries on in the small window.
+  const [wasMini, setWasMini] = useState(mini);
+  if (mini !== wasMini) {
+    setWasMini(mini);
+    if (mini && full === "window") setFull("off");
+  }
+  useEffect(() => {
+    if (mini && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  }, [mini]);
 
   // While the in-window fallback covers the page, stop the page behind it from scrolling.
   useEffect(() => {
@@ -76,8 +89,9 @@ export default function MeetingStage({
     setFull("window");
   }, [full]);
 
-  const frame =
-    full === "off"
+  const frame = mini
+    ? "connect-stage-mini relative h-[190px] overflow-hidden rounded-xl sm:h-[225px]"
+    : full === "off"
       ? "relative h-[70vh] min-h-[420px] overflow-hidden rounded-3xl border border-white/10"
       : full === "native"
         ? "relative h-screen w-screen overflow-hidden bg-black"
@@ -108,17 +122,53 @@ export default function MeetingStage({
       >
         <VideoConference />
         <RoomAudioRenderer />
-        <div className="absolute left-3 top-3 z-20 rounded-xl bg-slate-950/70 px-2 py-1">
+        <div className={`absolute left-3 top-3 z-20 rounded-xl bg-slate-950/70 px-2 py-1 ${mini ? "hidden" : ""}`}>
           <Reactions />
         </div>
-        <div className="absolute right-3 top-3 z-20 flex gap-2">
-          <MeetingChat stage={stageEl} />
+        {mini && <MiniControls />}
+        <div className={`absolute right-3 top-3 z-20 flex gap-2 ${mini ? "hidden" : ""}`}>
+          <MeetingChat stage={mini ? null : stageEl} />
           <button type="button" onClick={() => void toggleFull()} className={pill} aria-pressed={full !== "off"} aria-label={full === "off" ? "Full screen" : "Exit full screen"}>
             {full === "off" ? "⛶" : "✕"}
             <span className="hidden sm:inline">{full === "off" ? " Full screen" : " Exit full screen"}</span>
           </button>
         </div>
       </LiveKitRoom>
+    </div>
+  );
+}
+
+/** Microphone, camera, screen share and leave for the small call window. */
+function MiniControls() {
+  const room = useRoomContext();
+  const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
+  const b = "rounded-lg px-2.5 py-1.5 text-xs font-bold text-white backdrop-blur transition";
+  return (
+    <div className="absolute inset-x-2 bottom-2 z-20 flex flex-wrap items-center justify-center gap-1.5" role="group" aria-label="Call controls">
+      <button
+        type="button"
+        aria-pressed={!isMicrophoneEnabled}
+        onClick={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+        className={`${b} ${isMicrophoneEnabled ? "bg-slate-950/75 hover:bg-slate-800" : "bg-rose-500/90"}`}
+      >
+        {isMicrophoneEnabled ? "Mute mic" : "Unmute mic"}
+      </button>
+      <button
+        type="button"
+        aria-pressed={!isCameraEnabled}
+        onClick={() => void localParticipant.setCameraEnabled(!isCameraEnabled)}
+        className={`${b} ${isCameraEnabled ? "bg-slate-950/75 hover:bg-slate-800" : "bg-slate-700/90"}`}
+      >
+        {isCameraEnabled ? "Stop camera" : "Start camera"}
+      </button>
+      {isScreenShareEnabled && (
+        <button type="button" onClick={() => void localParticipant.setScreenShareEnabled(false)} className={`${b} bg-amber-400/90 text-slate-950`}>
+          Stop sharing
+        </button>
+      )}
+      <button type="button" onClick={() => void room.disconnect()} className={`${b} bg-rose-600 hover:bg-rose-500`}>
+        Leave
+      </button>
     </div>
   );
 }

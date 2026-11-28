@@ -1,40 +1,12 @@
 "use client";
 
-import "@livekit/components-styles";
 import { useCallback, useEffect, useState } from "react";
+import { useMeetingDock, type Meeting } from "../_components/MeetingDock";
 import Workspace from "../_components/Workspace";
 import { api, errorMessage, type ConnectUser } from "../_lib/api";
 import { getSocket } from "../_lib/realtime";
-import MeetingStage from "./MeetingStage";
 
-type Participant = {
-  userId: string;
-  username: string;
-  fullName: string;
-  state: "invited" | "waiting" | "admitted" | "denied" | "removed";
-  online: boolean;
-  handRaised: boolean;
-  shareRequested: boolean;
-  canScreenShare: boolean;
-};
-type Meeting = {
-  id: string;
-  title: string;
-  hostId: string | null;
-  audioOnly: boolean;
-  inviteOnly: boolean;
-  waitingRoom: boolean;
-  locked: boolean;
-  screenShare: "host" | "all" | "approved";
-  maxParticipants: number;
-  status: "scheduled" | "live" | "ended";
-  connected: number;
-  me: Participant["state"] | null;
-  participants: Participant[];
-  private?: boolean;
-};
 type Member = { id: string; username: string; fullName: string };
-type Joined = { meetingId: string; token: string; url: string };
 
 const btn = "rounded-xl border border-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:border-cyan-300/50 disabled:opacity-40";
 
@@ -150,58 +122,22 @@ function HostPanel({ m, meId }: { m: Meeting; meId: string }) {
 
 function Conference({ me }: { me: ConnectUser }) {
   const [list, setList] = useState<{ meetings: Meeting[]; configured: boolean; usage: { usedMinutes: number; capMinutes: number } } | null>(null);
-  const [active, setActive] = useState<Meeting | null>(null);
-  const [joined, setJoined] = useState<Joined | null>(null);
-  const [waiting, setWaiting] = useState<string | null>(null);
-  const [notice, setNotice] = useState("");
+  // The call itself lives in the Connect layout, so it keeps running on other pages; this page gives it room.
+  const { joined, active, waiting, notice, setNotice, join, attachSlot, height } = useMeetingDock();
 
   const load = useCallback(() => {
     api<typeof list>("/meetings").then(setList).catch((e) => setNotice(errorMessage(e)));
-  }, []);
-  const loadActive = useCallback((id: string) => api<Meeting>(`/meetings/${id}`).then(setActive).catch(() => setActive(null)), []);
-
-  const join = useCallback(async (id: string) => {
-    setNotice("");
-    try {
-      const r = await api<{ state: "admitted" | "waiting"; token?: string; url?: string }>(`/meetings/${id}/join`, { body: {} });
-      if (r.state === "waiting") setWaiting(id);
-      else {
-        setWaiting(null);
-        setJoined({ meetingId: id, token: r.token!, url: r.url! });
-        void loadActive(id);
-      }
-    } catch (e) {
-      setNotice(errorMessage(e));
-    }
-  }, [loadActive]);
+  }, [setNotice]);
 
   useEffect(() => {
     const t = window.setTimeout(load, 0);
     const s = getSocket();
-    const onList = () => load();
-    const onChanged = (p: { id: string }) => {
-      if (joined?.meetingId === p.id) void loadActive(p.id);
-      if (waiting === p.id) void join(p.id); // admitted (or denied) by the host
-    };
-    const onGone = (p: { id: string }) => {
-      if (joined?.meetingId === p.id) {
-        setJoined(null);
-        setActive(null);
-        setNotice("The meeting ended or the host removed you.");
-      }
-    };
-    s.on("meetings:changed", onList);
-    s.on("meeting:changed", onChanged);
-    s.on("meeting:ended", onGone);
-    s.on("meeting:removed", onGone);
+    s.on("meetings:changed", load);
     return () => {
       window.clearTimeout(t);
-      s.off("meetings:changed", onList);
-      s.off("meeting:changed", onChanged);
-      s.off("meeting:ended", onGone);
-      s.off("meeting:removed", onGone);
+      s.off("meetings:changed", load);
     };
-  }, [load, loadActive, join, joined, waiting]);
+  }, [load, joined]);
 
   if (joined && active) {
     const mine = active.participants.find((p) => p.userId === me.id);
@@ -212,7 +148,7 @@ function Conference({ me }: { me: ConnectUser }) {
           <div>
             <h1 className="text-2xl font-black text-white">{active.title}</h1>
             <p className="text-xs text-slate-400">
-              {active.connected} of {active.maxParticipants} connected{active.locked ? ", locked" : ""}
+              {active.connected} of {active.maxParticipants} connected{active.locked ? ", locked" : ""}. The call keeps running if you open another page.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -222,17 +158,7 @@ function Conference({ me }: { me: ConnectUser }) {
             )}
           </div>
         </div>
-        <MeetingStage
-          url={joined.url}
-          token={joined.token}
-          audioOnly={active.audioOnly}
-          onLeft={() => {
-            setJoined(null);
-            setActive(null);
-            load();
-          }}
-          onError={setNotice}
-        />
+        <div ref={attachSlot} style={{ height: height || 420 }} />
         {isHost && <HostPanel m={active} meId={me.id} />}
         {notice && <p className="text-sm text-rose-200">{notice}</p>}
       </div>

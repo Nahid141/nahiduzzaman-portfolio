@@ -4,7 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, type ConnectUser } from "../_lib/api";
+import type { ChatMessage } from "../_lib/realtime";
 import { useSharedState } from "../_lib/sync";
+import { useIncoming, useUnread, type Unread } from "../_lib/unread";
+import { useMeetingDock } from "./MeetingDock";
 import { usePlayDock } from "./PlayDock";
 import { Avatar, BuzzReceiver, CreditNote } from "./Social";
 import { ConnectionNotice, Skeleton, useMe } from "./ui";
@@ -47,12 +50,22 @@ export default function Workspace({
 
   // The Play together player keeps running across Connect pages once someone is signed in.
   const { setSignedIn } = usePlayDock();
+  const meeting = useMeetingDock();
   useEffect(() => {
     if (me) setSignedIn(true);
   }, [me, setSignedIn]);
 
+  // Unread messages: a count beside General chat and Direct messages, in the tab title, and a short pop-up notice.
+  const unread = useUnread(Boolean(me));
+  const badges: Record<string, number> = { "/connect/chat": unread.channels, "/connect/messages": unread.messages };
+  const total = unread.channels + unread.messages;
+  useEffect(() => {
+    document.title = total > 0 ? `(${total > 99 ? "99+" : total}) Private Connect` : "Private Connect";
+  }, [total, pathname]);
+
   async function signOut() {
     setSignedIn(false);
+    meeting.leave();
     await api("/auth/logout", { body: {} }).catch(() => undefined);
     router.replace("/connect");
   }
@@ -64,6 +77,7 @@ export default function Workspace({
   return (
     <div className={`mx-auto grid max-w-[1500px] gap-4 px-3 py-6 lg:grid-cols-[240px_minmax(0,1fr)_300px] lg:px-6 ${shaking ? "buzz-shake" : ""}`}>
       {me && <BuzzReceiver meId={me.id} onShake={shake} />}
+      {me && <MessageNotices meId={me.id} unread={unread} />}
       {/* Left: navigation and profile */}
       <aside className="rounded-3xl border border-white/10 bg-slate-950/85 p-4 backdrop-blur-xl lg:sticky lg:top-28 lg:h-[calc(100vh-8rem)]">
         <div className="flex items-center justify-between lg:block">
@@ -91,14 +105,18 @@ export default function Workspace({
             type="button"
             onClick={() => setNavOpen((v) => !v)}
             aria-expanded={navOpen}
-            className="rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-slate-200 lg:hidden"
+            aria-label={total > 0 ? `Menu, ${total} unread ${total === 1 ? "message" : "messages"}` : "Menu"}
+            className="relative rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-slate-200 lg:hidden"
           >
             Menu
+            {total > 0 && !navOpen && <span className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full bg-rose-500" aria-hidden />}
           </button>
         </div>
         <nav aria-label="Private Connect" className={`${navOpen ? "block" : "hidden"} mt-5 space-y-1 lg:block`}>
           {NAV.filter((n) => !n.adminOnly || me?.role === "admin").map((n) => {
             const active = pathname === n.href;
+            const count = badges[n.href] ?? 0;
+            const live = n.href === "/connect/conference" && meeting.joined;
             return (
               <Link
                 key={n.href}
@@ -108,7 +126,16 @@ export default function Workspace({
                   active ? "bg-cyan-300/15 text-cyan-200" : "text-slate-300 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                {n.label}
+                <span>
+                  {n.label}
+                  {count > 0 && <span className="sr-only">, {count} unread</span>}
+                </span>
+                {count > 0 && (
+                  <span className="min-w-[1.5rem] rounded-full bg-rose-500 px-1.5 text-center text-xs font-black text-white" aria-hidden>
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
+                {live && <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] font-black text-emerald-200">In call</span>}
                 {n.phase && <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-bold text-slate-500">soon</span>}
               </Link>
             );
@@ -135,6 +162,45 @@ export default function Workspace({
       <aside className="space-y-4 rounded-3xl border border-white/10 bg-slate-950/80 p-4 backdrop-blur-xl lg:sticky lg:top-28 lg:h-[calc(100vh-8rem)] lg:overflow-y-auto">
         {me ? aside?.(me) ?? <DefaultAside /> : <Skeleton className="h-40" />}
       </aside>
+    </div>
+  );
+}
+
+type Notice = { id: string; who: string; where: string; text: string; href: string };
+
+/** A short notice for a message in a chat that is not open; it links straight to that chat and fades after 6 s. */
+function MessageNotices({ meId, unread }: { meId: string; unread: Unread }) {
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const dismiss = useCallback((id: string) => setNotices((n) => n.filter((x) => x.id !== id)), []);
+  useIncoming(meId, unread, (m: ChatMessage) => {
+    const t = m.target;
+    const c = t.kind === "conversation" ? unread.conversation(t.id) : undefined;
+    const notice: Notice = {
+      id: m.id,
+      who: m.author?.fullName ?? "Someone",
+      where: t.kind === "channel" ? `# ${unread.channelName(t.id) ?? "channel"}` : c?.isGroup ? (c.title ?? "Group") : "Direct message",
+      text: m.body.trim() || (m.attachments?.length ? "Sent a file" : "New message"),
+      href: t.kind === "channel" ? `/connect/chat?c=${t.id}` : `/connect/messages?c=${t.id}`,
+    };
+    setNotices((n) => [...n.filter((x) => x.id !== m.id).slice(-2), notice]);
+    window.setTimeout(() => dismiss(m.id), 6000);
+  });
+  if (!notices.length) return null;
+  return (
+    <div className="fixed right-3 top-20 z-[60] flex w-80 max-w-[calc(100vw-1.5rem)] flex-col gap-2" role="status" aria-live="polite">
+      {notices.map((n) => (
+        <div key={n.id} className="flex items-start gap-2 rounded-2xl border border-cyan-300/30 bg-slate-950/95 p-3 shadow-2xl backdrop-blur">
+          <Link href={n.href} onClick={() => dismiss(n.id)} className="min-w-0 flex-1">
+            <p className="truncate text-xs font-black text-cyan-200">
+              {n.who} <span className="font-semibold text-slate-400">in {n.where}</span>
+            </p>
+            <p className="mt-0.5 line-clamp-2 break-words text-sm text-slate-100">{n.text}</p>
+          </Link>
+          <button type="button" onClick={() => dismiss(n.id)} aria-label="Dismiss" className="rounded-lg px-1.5 text-slate-400 hover:bg-white/10">
+            ✕
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
