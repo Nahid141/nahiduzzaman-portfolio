@@ -119,13 +119,20 @@ export function useMe(opts: { admin?: boolean } = {}) {
         if (e instanceof ApiError && e.status === 401) router.replace(opts.admin ? "/connect/admin/login" : "/connect/login");
         else setError("Cannot reach Private Connect right now.");
       });
+    // The profile page announces edits so the sidebar shows the new name, status and photo at once.
+    const onChanged = (e: Event) => setMe((e as CustomEvent<ConnectUser>).detail);
+    window.addEventListener(ME_CHANGED, onChanged);
     return () => {
       alive = false;
+      window.removeEventListener(ME_CHANGED, onChanged);
     };
   }, [router, opts.admin]);
 
   return { me, error };
 }
+
+const ME_CHANGED = "connect:me-changed";
+export const announceMe = (u: ConnectUser) => window.dispatchEvent(new CustomEvent(ME_CHANGED, { detail: u }));
 
 export function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-white/5 ${className}`} />;

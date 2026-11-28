@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Avatar } from "./Social";
 import { api, errorMessage, type ConnectUser } from "../_lib/api";
 import { emit, getSocket, newClientId, REACTIONS, sameTarget, type ChatMessage, type Target } from "../_lib/realtime";
 import { ACCEPT, uploadFile, type SharedFile } from "../_lib/files";
@@ -145,7 +146,7 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
     const pending: ChatMessage = {
       id: `pending:${clientId}`,
       target,
-      author: { id: me.id, username: me.username, fullName: me.fullName },
+      author: { id: me.id, username: me.username, fullName: me.fullName, avatarKey: me.avatarKey },
       body,
       replyToId: replyTo?.id ?? null,
       forwardedFromId: null,
@@ -254,7 +255,8 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
                   ↳ {parent.author?.fullName ?? "Deleted user"}: {parent.deletedAt ? "deleted message" : parent.body}
                 </p>
               )}
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-center gap-2">
+                {m.author && <Avatar user={m.author} size="sm" />}
                 <span className="font-bold text-white">{m.author?.fullName ?? "Deleted user"}</span>
                 <time className="text-xs text-slate-500" dateTime={m.createdAt}>
                   {time(m.createdAt)}
@@ -395,6 +397,9 @@ export default function ChatView({ target, me, title, subtitle }: { target: Targ
           {editing ? "Save" : "Send"}
         </button>
       </form>
+      {target.kind === "channel" && (
+        <p className="mt-2 text-center text-[11px] text-slate-500">Messages in channels are deleted automatically after 10 days. Direct messages are kept.</p>
+      )}
     </div>
   );
 }

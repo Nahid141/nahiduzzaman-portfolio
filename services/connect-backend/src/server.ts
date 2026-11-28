@@ -5,6 +5,7 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { Redis } from "ioredis";
 import { ConsoleEmailSender, HttpEmailSender, MemoryRateLimitStore, SmtpEmailSender, type EmailSender } from "./lib/services.js";
 import { createEvents, MemoryPresenceStore, RedisPresenceStore, RedisRateLimitStore } from "./lib/stores.js";
+import { cleanupChannelMessages } from "./chat/service.js";
 import { cleanupFiles, VirusTotalHashScanner } from "./files/service.js";
 import { SupabaseFileStore } from "./files/storage.js";
 import { LiveKitCloud } from "./meetings/livekit.js";
@@ -60,6 +61,7 @@ const housekeeping = setInterval(() => {
   const deps = { db: handle.db, files, now: () => new Date(), livekit: null };
   cleanupFiles(deps).catch((err) => app.log.error({ err }, "file cleanup failed"));
   sweepMeetings(deps).catch((err) => app.log.error({ err }, "meeting sweep failed"));
+  cleanupChannelMessages(deps.db, deps.now()).catch((err) => app.log.error({ err }, "message cleanup failed"));
 }, 10 * 60_000);
 housekeeping.unref();
 

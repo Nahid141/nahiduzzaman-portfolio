@@ -23,6 +23,9 @@ export async function createDb(
     // With a CA the certificate chain and host name are verified (verify-full); never rejectUnauthorized: false.
     const ssl = opts.ca ? { ca: opts.ca, rejectUnauthorized: true } : undefined;
     const pool = new pg.Pool({ connectionString: opts.url, max: opts.max ?? 5, ssl, idleTimeoutMillis: 30_000 });
+    // The server may end an idle connection (pooler restart, failover, maintenance). Without a listener that
+    // error would crash the process; the pool already discards the broken client and reconnects on next use.
+    pool.on("error", (err) => console.warn(`database connection closed by the server: ${err.message}`));
     const db = drizzlePg(pool, { schema });
     await migratePg(db, { migrationsFolder: MIGRATIONS });
     return { db: db as unknown as Db, close: () => pool.end() };

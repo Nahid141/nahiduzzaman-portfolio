@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client.js";
 import {
@@ -15,7 +15,7 @@ import {
 } from "../db/schema.js";
 import { canAccess, ChatError, targetSchema, type Target } from "../chat/service.js";
 import { getSettings } from "../settings.js";
-import { readState, writeState, type LoungeState, type PresentationState } from "./state.js";
+import { readState, writeState, type LoungeState, type PresentationState, type WatchState } from "./state.js";
 
 type Actor = Pick<User, "id" | "role">;
 
@@ -79,19 +79,35 @@ export async function listDjs(db: Db, now: Date) {
 
 /* --------------------------------- Music lounge --------------------------------- */
 
-export async function requestTrack(db: Db, user: Actor, fileId: string, note: string, now: Date) {
+export type TrackSource = { fileId: string } | { youtubeId: string; title: string };
+
+export async function requestTrack(db: Db, user: Actor, source: TrackSource, note: string, now: Date) {
   const s = await getSettings(db);
   if (!s.musicRequestsEnabled && user.role !== "admin") throw new ChatError("music_requests_disabled", 403);
-  const f = await sharedFile(db, user, fileId);
-  if (f.kind !== "audio") throw new ChatError("not_audio", 422);
+  if ("fileId" in source) {
+    const f = await sharedFile(db, user, source.fileId);
+    if (f.kind !== "audio") throw new ChatError("not_audio", 422);
+  }
   const pending = await db
     .select({ n: sql<string>`count(*)` })
     .from(musicRequests)
     .where(and(eq(musicRequests.requestedBy, user.id), eq(musicRequests.status, "pending")));
   if (Number(pending[0]!.n) >= 5) throw new ChatError("too_many_pending_requests", 429);
-  const [r] = await db.insert(musicRequests).values({ fileId, requestedBy: user.id, note, createdAt: now }).returning();
+  const [r] = await db
+    .insert(musicRequests)
+    .values({
+      ...("fileId" in source ? { fileId: source.fileId } : { youtubeId: source.youtubeId, title: source.title }),
+      requestedBy: user.id,
+      note,
+      createdAt: now,
+    })
+    .returning();
   return r!;
 }
+
+/** A queued track is playable while its file still exists (files expire) or when it is a YouTube video. */
+const playable = or(eq(files.status, "ready"), isNotNull(musicRequests.youtubeId));
+const trackTitle = sql<string>`coalesce(${files.name}, ${musicRequests.title})`;
 
 export async function queueView(db: Db) {
   const rows = await db
@@ -101,15 +117,16 @@ export async function queueView(db: Db) {
       position: musicRequests.position,
       note: musicRequests.note,
       createdAt: musicRequests.createdAt,
-      fileId: files.id,
-      title: files.name,
+      fileId: musicRequests.fileId,
+      youtubeId: musicRequests.youtubeId,
+      title: trackTitle,
       sizeBytes: files.sizeBytes,
       requestedBy: users.username,
     })
     .from(musicRequests)
-    .innerJoin(files, eq(files.id, musicRequests.fileId))
+    .leftJoin(files, eq(files.id, musicRequests.fileId))
     .leftJoin(users, eq(users.id, musicRequests.requestedBy))
-    .where(and(inArray(musicRequests.status, ["pending", "queued", "played"]), eq(files.status, "ready")))
+    .where(and(inArray(musicRequests.status, ["pending", "queued", "played"]), playable))
     .orderBy(asc(musicRequests.position), asc(musicRequests.createdAt))
     .limit(200);
   return {
@@ -163,10 +180,10 @@ const positionAt = (s: { status: string; anchorMs: number | null; positionMs: nu
 
 async function pickNext(db: Db, shuffle: boolean) {
   const queued = await db
-    .select({ id: musicRequests.id, fileId: musicRequests.fileId, title: files.name })
+    .select({ id: musicRequests.id, fileId: musicRequests.fileId, youtubeId: musicRequests.youtubeId, title: trackTitle })
     .from(musicRequests)
-    .innerJoin(files, eq(files.id, musicRequests.fileId))
-    .where(and(eq(musicRequests.status, "queued"), eq(files.status, "ready")))
+    .leftJoin(files, eq(files.id, musicRequests.fileId))
+    .where(and(eq(musicRequests.status, "queued"), playable))
     .orderBy(asc(musicRequests.position));
   if (!queued.length) return null;
   return shuffle ? queued[Math.floor(Math.random() * queued.length)]! : queued[0]!;
@@ -252,8 +269,8 @@ async function advance(db: Db, user: Actor, expected: number, s: LoungeState, no
     "lounge",
     (c): LoungeState =>
       next
-        ? { ...c, requestId: next.id, fileId: next.fileId, title: next.title, status: "playing", anchorMs: nowMs + START_LEAD_MS, positionMs: 0, durationMs: null, controllerId: user.id, history }
-        : { ...c, requestId: null, fileId: null, title: "", status: "stopped", anchorMs: null, positionMs: 0, durationMs: null, controllerId: user.id, history },
+        ? { ...c, requestId: next.id, fileId: next.fileId, youtubeId: next.youtubeId, title: next.title, status: "playing", anchorMs: nowMs + START_LEAD_MS, positionMs: 0, durationMs: null, controllerId: user.id, history }
+        : { ...c, requestId: null, fileId: null, youtubeId: null, title: "", status: "stopped", anchorMs: null, positionMs: 0, durationMs: null, controllerId: user.id, history },
     { by: user.id, expected, now }
   );
 }
@@ -424,3 +441,41 @@ export async function listPolls(db: Db, user: Actor, target: Target, now: Date) 
   return Promise.all(rows.map((p) => pollDto(db, user, p, now)));
 }
 
+
+/* --------------------------------- Watch Together --------------------------------- */
+
+export const watchControlSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("start"), youtubeId: z.string().regex(/^[A-Za-z0-9_-]{11}$/), title: z.string().max(200), expectedVersion: z.number().int() }),
+  z.object({ action: z.literal("play"), expectedVersion: z.number().int() }),
+  z.object({ action: z.literal("pause"), expectedVersion: z.number().int() }),
+  z.object({ action: z.literal("seek"), positionMs: z.number().min(0).max(24 * 3600_000), expectedVersion: z.number().int() }),
+  z.object({ action: z.literal("stop"), expectedVersion: z.number().int() }),
+]);
+
+/** Anyone may start a session when none is running; the host and admins/DJs control it. */
+export async function watchControl(db: Db, user: Actor, input: z.infer<typeof watchControlSchema>, now: Date) {
+  const cur = await readState(db, "watch");
+  const running = cur.state.youtubeId !== null && cur.state.status !== "stopped";
+  const isHost = running && cur.state.hostId === user.id;
+  if (!(input.action === "start" && !running) && !isHost) await assertControl(db, user, now);
+  const nowMs = now.getTime();
+  return writeState(
+    db,
+    "watch",
+    (s): WatchState => {
+      switch (input.action) {
+        case "start":
+          return { youtubeId: input.youtubeId, title: input.title, status: "playing", anchorMs: nowMs + START_LEAD_MS, positionMs: 0, hostId: user.id };
+        case "play":
+          return s.status === "playing" || !s.youtubeId ? s : { ...s, status: "playing", anchorMs: nowMs + START_LEAD_MS - s.positionMs };
+        case "pause":
+          return s.status !== "playing" ? s : { ...s, status: "paused", positionMs: positionAt(s, nowMs), anchorMs: null };
+        case "seek":
+          return s.status === "playing" ? { ...s, anchorMs: nowMs + START_LEAD_MS - input.positionMs } : { ...s, positionMs: input.positionMs };
+        case "stop":
+          return { ...s, youtubeId: null, title: "", status: "stopped", anchorMs: null, positionMs: 0, hostId: null };
+      }
+    },
+    { by: user.id, expected: input.expectedVersion, now }
+  );
+}

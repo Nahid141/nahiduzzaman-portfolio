@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -33,7 +34,10 @@ export const users = pgTable(
     email: text("email").notNull(),
     fullName: text("full_name").notNull(),
     bio: text("bio"),
+    /** Cache-busting version of the profile photo in user_avatars (null = no photo). */
     avatarKey: text("avatar_key"),
+    statusEmoji: text("status_emoji"),
+    statusText: text("status_text"),
     passwordHash: text("password_hash").notNull(),
     role: roleEnum("role").notNull().default("member"),
     status: statusEnum("status").notNull().default("pending_verification"),
@@ -369,7 +373,7 @@ export const meetings = pgTable(
     locked: boolean("locked").notNull().default(false),
     /** "host": only the host shares; "all": anyone; "approved": the host grants it per person. */
     screenShare: text("screen_share").notNull().default("all"),
-    maxParticipants: integer("max_participants").notNull().default(10),
+    maxParticipants: integer("max_participants").notNull().default(15),
     status: meetingStatusEnum("status").notNull().default("live"),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true, precision: 3 }),
     startedAt: timestamp("started_at", { withTimezone: true, precision: 3 }),
@@ -420,9 +424,11 @@ export const musicRequests = pgTable(
   "music_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    fileId: uuid("file_id")
-      .notNull()
-      .references(() => files.id, { onDelete: "cascade" }),
+    /** Exactly one of fileId (uploaded audio) and youtubeId is set (CHECK music_requests_one_source). */
+    fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
+    youtubeId: text("youtube_id"),
+    /** Title for YouTube tracks (from YouTube's oEmbed); file tracks use the file name. */
+    title: text("title").notNull().default(""),
     requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
     status: musicRequestStatusEnum("status").notNull().default("pending"),
     note: text("note").notNull().default(""),
@@ -508,4 +514,65 @@ export const pollVotes = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.pollId, t.userId, t.option] }), index("poll_votes_user_idx").on(t.userId)]
+);
+
+/* --------------------------- Profiles, to-dos, meeting requests --------------------------- */
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** Profile photos (at most 200 KB each, compressed in the browser), served by the backend. */
+export const userAvatars = pgTable("user_avatars", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull(),
+  data: bytea("data").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+});
+
+export const taskVisibilityEnum = pgEnum("task_visibility", ["public", "admin"]);
+
+/** Shared to-do list: public items are visible to and editable by every member; admin items only by admins. */
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull(),
+    visibility: taskVisibilityEnum("visibility").notNull().default("public"),
+    highlight: boolean("highlight").notNull().default(false),
+    dueAt: timestamp("due_at", { withTimezone: true, precision: 3 }),
+    doneAt: timestamp("done_at", { withTimezone: true, precision: 3 }),
+    doneBy: uuid("done_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    meetingRequestId: uuid("meeting_request_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+  },
+  (t) => [index("tasks_visibility_idx").on(t.visibility, t.doneAt), index("tasks_created_by_idx").on(t.createdBy)]
+);
+
+export const meetingRequestKindEnum = pgEnum("meeting_request_kind", ["meeting", "coffee"]);
+export const meetingRequestStatusEnum = pgEnum("meeting_request_status", ["pending", "approved", "declined", "cancelled"]);
+
+/** A member asks the administrator for a meeting or a coffee at a time picked on the calendar. */
+export const meetingRequests = pgTable(
+  "meeting_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestedBy: uuid("requested_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: meetingRequestKindEnum("kind").notNull().default("meeting"),
+    topic: text("topic").notNull(),
+    message: text("message").notNull().default(""),
+    startsAt: timestamp("starts_at", { withTimezone: true, precision: 3 }).notNull(),
+    durationMin: integer("duration_min").notNull(),
+    status: meetingRequestStatusEnum("status").notNull().default("pending"),
+    decisionNote: text("decision_note").notNull().default(""),
+    decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true, precision: 3 }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+  },
+  (t) => [index("meeting_requests_status_idx").on(t.status, t.startsAt), index("meeting_requests_user_idx").on(t.requestedBy)]
 );

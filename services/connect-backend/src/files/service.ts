@@ -117,7 +117,8 @@ export async function requestUpload(deps: FileDeps, user: Actor, input: z.infer<
         kind: rule.kind,
         folder: input.folder,
         sizeBytes: input.size,
-        expiresAt: input.expiresInDays ? new Date(now.getTime() + input.expiresInDays * 86_400_000) : null,
+        // Every file expires within the retention period; a shorter expiry chosen by the uploader wins.
+        expiresAt: new Date(now.getTime() + Math.min(input.expiresInDays ?? Infinity, settings.fileRetentionDays) * 86_400_000),
         createdAt: now,
       })
       .returning();
@@ -284,13 +285,16 @@ export async function deleteFile(deps: FileDeps, user: Actor, id: string) {
 export async function cleanupFiles(deps: FileDeps) {
   if (!deps.files) return { removed: 0 };
   const now = deps.now();
+  const retentionCutoff = new Date(now.getTime() - (await getSettings(deps.db)).fileRetentionDays * 86_400_000);
   const stale = await deps.db
     .select()
     .from(files)
     .where(
       or(
         and(eq(files.status, "pending"), lt(files.createdAt, new Date(now.getTime() - PENDING_TTL_MS))),
-        and(ne(files.status, "deleted"), lt(files.expiresAt, now))
+        and(ne(files.status, "deleted"), lt(files.expiresAt, now)),
+        // Also covers files uploaded before the retention rule existed (no expiry recorded).
+        and(ne(files.status, "deleted"), lt(files.createdAt, retentionCutoff))
       )
     )
     .limit(200);

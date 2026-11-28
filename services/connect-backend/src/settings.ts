@@ -26,11 +26,15 @@ export const settingsSchema = z.object({
   /* Phase 5: LiveKit Cloud Build plan is 5,000 participant-minutes a month. */
   meetingsEnabled: z.boolean(),
   meetingMinutesMonthly: z.number().int().min(0).max(1_000_000),
-  maxMeetingParticipants: z.number().int().min(2).max(10),
+  /* LiveKit Build allows 100 concurrent connections; 15 per meeting leaves room for parallel meetings. */
+  maxMeetingParticipants: z.number().int().min(2).max(15),
   membersCanCreateMeetings: z.boolean(),
   /* Phase 6 */
   musicRequestsEnabled: z.boolean(),
   followHostMode: z.boolean(),
+  /* Retention: shared files and public channel messages are deleted automatically. Direct messages are kept. */
+  fileRetentionDays: z.number().int().min(1).max(365),
+  channelMessageRetentionDays: z.number().int().min(1).max(3650),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -50,10 +54,12 @@ export const DEFAULT_SETTINGS: Settings = {
   uploadsEnabled: true,
   meetingsEnabled: true,
   meetingMinutesMonthly: 4500,
-  maxMeetingParticipants: 10,
+  maxMeetingParticipants: 15,
   membersCanCreateMeetings: true,
   musicRequestsEnabled: true,
   followHostMode: false,
+  fileRetentionDays: 5,
+  channelMessageRetentionDays: 10,
 };
 
 export async function getSettings(db: Db): Promise<Settings> {

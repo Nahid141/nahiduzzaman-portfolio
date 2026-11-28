@@ -134,6 +134,8 @@ export default function AdminOps() {
               for (const [k, , max] of SIZES) patch[k] = Math.round(Math.min(max, Math.max(0, Number(fd.get(k)))) * MB);
               patch.meetingMinutesMonthly = Number(fd.get("meetingMinutesMonthly"));
               patch.maxMeetingParticipants = Number(fd.get("maxMeetingParticipants"));
+              patch.fileRetentionDays = Number(fd.get("fileRetentionDays"));
+              patch.channelMessageRetentionDays = Number(fd.get("channelMessageRetentionDays"));
               void save(patch);
             }}
           >
@@ -148,8 +150,16 @@ export default function AdminOps() {
               <input name="meetingMinutesMonthly" type="number" min={0} max={100000} defaultValue={Number(settings.meetingMinutesMonthly)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
             </label>
             <label className="text-xs text-slate-400">
-              People per meeting (max 10)
-              <input name="maxMeetingParticipants" type="number" min={2} max={10} defaultValue={Number(settings.maxMeetingParticipants)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+              People per meeting (max 15)
+              <input name="maxMeetingParticipants" type="number" min={2} max={15} defaultValue={Number(settings.maxMeetingParticipants)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+            </label>
+            <label className="text-xs text-slate-400">
+              Delete shared files after (days)
+              <input name="fileRetentionDays" type="number" min={1} max={365} defaultValue={Number(settings.fileRetentionDays ?? 5)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
+            </label>
+            <label className="text-xs text-slate-400">
+              Delete channel messages after (days)
+              <input name="channelMessageRetentionDays" type="number" min={1} max={3650} defaultValue={Number(settings.channelMessageRetentionDays ?? 10)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" />
             </label>
             <div className="flex items-end">
               <button type="submit" className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950">Save limits</button>

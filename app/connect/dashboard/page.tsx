@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { BuzzButton, CreditNote } from "../_components/Social";
 import Workspace from "../_components/Workspace";
 import { api, type ConnectUser } from "../_lib/api";
 import { formatBytes, type SharedFile } from "../_lib/files";
@@ -12,6 +13,7 @@ type Stats = { totalMembers: number; byStatus: Record<string, number> };
 type Member = { id: string; username: string; fullName: string; online: boolean };
 type Announcement = { id: string; body: string; createdAt: string; author: string | null };
 type Activity = { id: string; kind: string; payload: Record<string, string>; createdAt: string; actor: string | null };
+type Task = { id: string; title: string; visibility: "public" | "admin"; highlight: boolean; dueAt: string | null; doneAt: string | null };
 type MeetingSummary = { id: string; title: string; connected: number; maxParticipants: number; private?: boolean };
 
 const ACTIVITY: Record<string, (a: Activity) => string> = {
@@ -19,6 +21,8 @@ const ACTIVITY: Record<string, (a: Activity) => string> = {
   "meeting.started": (a) => `@${a.actor} started the meeting “${a.payload.title}”`,
   "lounge.playing": (a) => `Now playing in the lounge: ${a.payload.title}`,
   "presentation.started": (a) => `@${a.actor} started presenting ${a.payload.title}`,
+  "task.done": (a) => `@${a.actor} ticked off “${a.payload.title}” 🎉`,
+  "watch.started": (a) => `@${a.actor} started a watch party: ${a.payload.title}`,
 };
 
 function Card({ title, href, children }: { title: string; href?: string; children: React.ReactNode }) {
@@ -45,8 +49,10 @@ function Dashboard({ me }: { me: ConnectUser }) {
   const [meetings, setMeetings] = useState<MeetingSummary[]>([]);
   const [files, setFiles] = useState<SharedFile[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [todo, setTodo] = useState<Task[]>([]);
   const lounge = useSharedState<{ status: string; title: string }>("lounge").value?.state;
   const presentation = useSharedState<{ active: boolean; title: string }>("presentation").value?.state;
+  const watch = useSharedState<{ youtubeId: string | null; status: string; title: string }>("watch").value?.state;
 
   const load = useCallback(() => {
     api<Member[]>("/members").then((m) => {
@@ -57,6 +63,7 @@ function Dashboard({ me }: { me: ConnectUser }) {
     api<Activity[]>("/activity").then(setFeed).catch(() => undefined);
     api<{ meetings: MeetingSummary[] }>("/meetings").then((r) => setMeetings(r.meetings)).catch(() => undefined);
     api<SharedFile[]>("/files?limit=5").then(setFiles).catch(() => undefined);
+    api<Task[]>("/tasks").then((t) => setTodo(t.filter((x) => !x.doneAt))).catch(() => undefined);
     if (me.role === "admin") api<Stats>("/admin/stats").then(setStats).catch(() => undefined);
   }, [me.role]);
 
@@ -72,11 +79,11 @@ function Dashboard({ me }: { me: ConnectUser }) {
       });
     const reload = () => load();
     s.on("presence:update", presence);
-    for (const e of ["announcement:new", "activity:new", "meetings:changed", "file:new", "connect"]) s.on(e, reload);
+    for (const e of ["announcement:new", "activity:new", "meetings:changed", "file:new", "tasks:changed", "members:changed", "connect"]) s.on(e, reload);
     return () => {
       window.clearTimeout(t);
       s.off("presence:update", presence);
-      for (const e of ["announcement:new", "activity:new", "meetings:changed", "file:new", "connect"]) s.off(e, reload);
+      for (const e of ["announcement:new", "activity:new", "meetings:changed", "file:new", "tasks:changed", "members:changed", "connect"]) s.off(e, reload);
     };
   }, [load]);
 
@@ -89,6 +96,11 @@ function Dashboard({ me }: { me: ConnectUser }) {
       <p className="mt-2 text-sm text-slate-400">
         {onlineMembers.length} of {members.length} members online. Everything here updates live.
       </p>
+      {me.role === "admin" && (
+        <div className="mt-3">
+          <BuzzButton everyone label="Buzz everyone" />
+        </div>
+      )}
 
       {notes[0] && (
         <div className="mt-6 rounded-3xl border border-cyan-300/30 bg-cyan-300/10 p-5">
@@ -122,6 +134,24 @@ function Dashboard({ me }: { me: ConnectUser }) {
         </Card>
         <Card title="Music lounge" href="/connect/music">
           <p className="text-sm text-slate-200">{lounge?.status === "playing" ? `Playing: ${lounge.title}` : lounge?.status === "paused" ? `Paused: ${lounge.title}` : "Nothing playing."}</p>
+        </Card>
+        <Card title="To-do list" href="/connect/tasks">
+          {todo.length === 0 ? (
+            <p className="text-sm text-slate-500">Nothing to do right now.</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {todo.slice(0, 5).map((t) => (
+                <li key={t.id} className={`truncate ${t.visibility === "admin" ? "font-bold text-amber-200" : t.highlight ? "text-cyan-200" : "text-slate-200"}`}>
+                  ☐ {t.title}
+                  {t.dueAt && <span className="ml-2 text-xs text-slate-500">{new Date(t.dueAt).toLocaleDateString()}</span>}
+                </li>
+              ))}
+              {todo.length > 5 && <li className="text-xs text-slate-500">and {todo.length - 5} more</li>}
+            </ul>
+          )}
+        </Card>
+        <Card title="Watch together" href="/connect/watch">
+          <p className="text-sm text-slate-200">{watch?.youtubeId && watch.status !== "stopped" ? `Watching: ${watch.title}` : "No watch party running. Start one with a YouTube link."}</p>
         </Card>
         <Card title="Presentation" href="/connect/present">
           <p className="text-sm text-slate-200">{presentation?.active ? `Showing ${presentation.title}` : "Nothing being presented."}</p>
@@ -164,6 +194,12 @@ function Dashboard({ me }: { me: ConnectUser }) {
             </ul>
           )}
         </Card>
+      </div>
+      <div className="mt-8 rounded-3xl border border-amber-300/20 bg-amber-300/[0.05] p-5">
+        <CreditNote />
+        <a href="/connect/calendar" className="mt-3 inline-block rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-slate-950 hover:bg-white">
+          ☕ Request a coffee chat
+        </a>
       </div>
     </div>
   );

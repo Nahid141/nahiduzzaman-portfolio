@@ -113,7 +113,7 @@ if (tables.length) {
       and not exists (select 1 from pg_index i where i.indrelid = c.conrelid and a.attnum = i.indkey[0])`);
   console.log(`INFO  foreign-key columns without a leading index: ${fkNoIndex.length ? fkNoIndex.map((r) => `${r.table_name}.${r.fk_column}`).join(", ") : "none"}`);
   const checks = await q<{ conname: string }>("select conname from pg_constraint where contype = 'c' and connamespace = 'public'::regnamespace");
-  const want = ["messages_one_target", "files_one_target", "polls_one_target", "files_size_positive", "meetings_max_participants_range", "meetings_screen_share_policy"];
+  const want = ["messages_one_target", "files_one_target", "polls_one_target", "files_size_positive", "meetings_max_participants_range", "meetings_screen_share_policy", "music_requests_one_source", "music_requests_youtube_id_format", "tasks_title_length", "meeting_requests_duration_range", "user_avatars_size"];
   const haveChecks = new Set(checks.map((r) => r.conname));
   check("CHECK constraints present", want.every((w) => haveChecks.has(w)), want.filter((w) => !haveChecks.has(w)).join(", "));
   const idx = await q<{ n: string }>("select count(*) as n from pg_indexes where schemaname = 'public'");

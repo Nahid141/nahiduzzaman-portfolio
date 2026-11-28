@@ -138,6 +138,7 @@ function Files({ me }: { me: ConnectUser }) {
           <input ref={input} type="file" multiple accept={ACCEPT} hidden onChange={(e) => e.target.files && void start(e.target.files)} />
           <p className="text-sm text-slate-500">or drop them here</p>
         </div>
+        <p className="mt-3 text-xs font-semibold text-amber-200/90">Shared files are deleted automatically 5 days after upload. Keep your own copy.</p>
         {usage && (
           <p className="mt-3 text-xs text-slate-500">
             Limits: images {formatBytes(usage.limits.image)}, documents {formatBytes(usage.limits.document)}, audio {formatBytes(usage.limits.audio)}, video{" "}

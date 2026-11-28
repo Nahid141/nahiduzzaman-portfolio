@@ -38,7 +38,7 @@ export type Versioned<T> = { key: string; version: number; state: T; updatedAt: 
  * Server-authoritative state for one key. The snapshot is refetched on every (re)connect, so a client
  * that missed events while offline recovers; older versions arriving late are ignored.
  */
-export function useSharedState<T>(key: "lounge" | "presentation" | "follow", fetchPath = "/state") {
+export function useSharedState<T>(key: "lounge" | "presentation" | "follow" | "watch", fetchPath = "/state") {
   const [value, setValue] = useState<Versioned<T> | null>(null);
   const latest = useRef(0);
 

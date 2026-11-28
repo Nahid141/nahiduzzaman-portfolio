@@ -2,6 +2,24 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-27 (evening), owner feature round
+
+**Backend:** 100/100 tests on PGlite (new `social.test.ts`: retention of files and channel messages, YouTube link
+parsing and lounge/watch control, profile and photo rules, buzz rules, to-do visibility, meeting-request approval,
+overlap refusal, calendar privacy, notifications; meetings now 16 simultaneous joins -> exactly 15 admitted).
+On Supabase (`connect_test`): full run 93/100 with the meetings file lost to a native crash of the Windows test
+worker (exit 0xC0000409, no assertion failure); the meetings, social and new pool-resilience files re-run: 19/19.
+
+**Browser run** (headless Chrome, production build, local backend on a throwaway Supabase database, real Supabase
+Storage, real LiveKit Cloud, real YouTube): 14/14, no browser errors. Gateway credit text; admin MFA enrolment; member
+registration -> verification -> approval; 5.2 MB photo compressed to 51 KB and displayed; name/status shown in the
+sidebar; buzz delivered with `navigator.vibrate([220,90,220,90,420])`, alert and shake, buzz back; shared to-do added
+by the member and ticked off by the admin live; coffee request approved into a highlighted admin-only to-do that the
+member cannot see; YouTube track requested, approved and playing on both screens (measured drift 125 ms to 1.5 s
+across runs; the player re-seeks above 1.5 s); watch party with reactions and pause for everyone; **real LiveKit call:
+two live camera tiles and the member's screen share received by the admin**; retention notices; dashboard cards and
+buzz everyone. Not covered: real phones (vibration on a physical Android device), audio output quality, 15 real people.
+
 ## 2026-11-27, production backend and frontend connectivity
 
 **Deployed backend** (`scripts/check-production.ts` against `https://connect-api.fnunahiduzzaman.com`): 19/19 passed.

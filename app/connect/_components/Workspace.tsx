@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api, type ConnectUser } from "../_lib/api";
 import { useSharedState } from "../_lib/sync";
+import { Avatar, BuzzReceiver, CreditNote } from "./Social";
 import { ConnectionNotice, Skeleton, useMe } from "./ui";
 
 /* Modules that exist today are links; the rest show which build phase adds them. */
@@ -14,7 +15,10 @@ const NAV: { href: string; label: string; phase?: number; adminOnly?: boolean }[
   { href: "/connect/messages", label: "Direct messages" },
   { href: "/connect/conference", label: "Meetings" },
   { href: "/connect/files", label: "Files" },
+  { href: "/connect/tasks", label: "To-do list" },
+  { href: "/connect/calendar", label: "Calendar & coffee" },
   { href: "/connect/music", label: "Music lounge" },
+  { href: "/connect/watch", label: "Watch together" },
   { href: "/connect/present", label: "Presentation" },
   { href: "/connect/members", label: "Members" },
   { href: "/connect/settings", label: "Settings" },
@@ -34,6 +38,12 @@ export default function Workspace({
   const pathname = usePathname();
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
+  const [shaking, setShaking] = useState(false);
+  const shake = useCallback(() => {
+    setShaking(false);
+    window.requestAnimationFrame(() => setShaking(true));
+    window.setTimeout(() => setShaking(false), 1300);
+  }, []);
 
   async function signOut() {
     await api("/auth/logout", { body: {} }).catch(() => undefined);
@@ -45,14 +55,13 @@ export default function Workspace({
   }
 
   return (
-    <div className="mx-auto grid max-w-[1500px] gap-4 px-3 py-6 lg:grid-cols-[240px_minmax(0,1fr)_300px] lg:px-6">
+    <div className={`mx-auto grid max-w-[1500px] gap-4 px-3 py-6 lg:grid-cols-[240px_minmax(0,1fr)_300px] lg:px-6 ${shaking ? "buzz-shake" : ""}`}>
+      {me && <BuzzReceiver meId={me.id} onShake={shake} />}
       {/* Left: navigation and profile */}
       <aside className="rounded-3xl border border-white/10 bg-slate-950/85 p-4 backdrop-blur-xl lg:sticky lg:top-28 lg:h-[calc(100vh-8rem)]">
         <div className="flex items-center justify-between lg:block">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-300/15 font-black text-cyan-200">
-              {me ? me.fullName.slice(0, 1).toUpperCase() : "·"}
-            </span>
+            {me ? <Avatar user={me} /> : <span className="h-10 w-10 rounded-full bg-white/5" />}
             <div className="min-w-0">
               {me ? (
                 <>
@@ -60,6 +69,11 @@ export default function Workspace({
                   <p className="truncate text-xs text-slate-400">
                     @{me.username} · {me.role === "admin" ? "Administrator" : "Member"}
                   </p>
+                  {(me.statusEmoji || me.statusText) && (
+                    <p className="truncate text-xs text-slate-300">
+                      {me.statusEmoji} {me.statusText}
+                    </p>
+                  )}
                 </>
               ) : (
                 <Skeleton className="h-8 w-32" />
@@ -99,6 +113,7 @@ export default function Workspace({
           >
             Sign out
           </button>
+          <CreditNote className="mt-6 border-t border-white/10 pt-4" />
         </nav>
       </aside>
 
@@ -124,6 +139,7 @@ const PANEL_HREF: Record<string, string> = {
   meetings: "/connect/conference",
   lounge: "/connect/music",
   presentation: "/connect/present",
+  watch: "/connect/watch",
 };
 
 /** Follow Host Mode: offers (never forces) a move to what the administrator is showing. */

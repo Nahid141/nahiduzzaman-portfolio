@@ -17,6 +17,8 @@ import type { HashScanner } from "./files/service.js";
 import type { FileStore } from "./files/storage.js";
 import type { LiveKitApi } from "./meetings/livekit.js";
 import { LIVEKIT_WEBHOOK_PATH, meetingRoutes } from "./meetings/routes.js";
+import type { YoutubeLookup } from "./collab/youtube.js";
+import { socialRoutes } from "./social/routes.js";
 import { collabRoutes } from "./collab/routes.js";
 import { VersionConflict } from "./collab/state.js";
 
@@ -39,6 +41,8 @@ export type AppDeps = {
   scanner?: HashScanner;
   /** LiveKit server API; null when not configured (meeting routes answer 503). */
   livekit?: LiveKitApi | null;
+  /** YouTube title lookup; defaults to YouTube's public oEmbed endpoint. */
+  youtube?: YoutubeLookup;
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -67,7 +71,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(helmet, { contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } });
 
   app.addHook("onSend", async (_request, reply) => {
-    reply.header("cache-control", "no-store");
+    // Versioned profile photos set their own short private cache; everything else is never cached.
+    if (!reply.hasHeader("cache-control")) reply.header("cache-control", "no-store");
     reply.header("x-robots-tag", "noindex, nofollow");
   });
 
@@ -108,5 +113,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await fileRoutes(app, deps, realtime);
   await meetingRoutes(app, deps, realtime);
   await collabRoutes(app, deps, realtime);
+  await socialRoutes(app, deps, realtime);
   return app;
 }

@@ -99,6 +99,18 @@ recovery codes, cookie values, private message bodies, file contents.
   technically see it; LiveKit E2EE would need per-meeting key distribution through this backend, which
   would then know the key, so it is not enabled. Background blur is not implemented.
 
+## Owner feature round (2026-11-27)
+
+- Profile photos: <= 200 KB enforced server-side (and by a CHECK), only JPEG/PNG/WebP magic bytes accepted (SVG and
+  HTML refused), served with `Cross-Origin-Resource-Policy: same-site` to signed-in members only.
+- Administrator-only to-do items and other members' meeting topics never leave the server for members; realtime
+  signals for to-dos and requests carry no content.
+- Buzz is rate-limited (6/min, 20 s per pair), respects blocks, and only administrators can buzz everyone.
+- YouTube: only an 11-character video id and title are stored; the id is validated before use; playback runs in
+  YouTube's privacy-enhanced (`youtube-nocookie.com`) player in each browser, so YouTube sees viewers' IP addresses.
+- Retention deletes public channel messages after 10 days and files after 5 days (both configurable); direct
+  messages are kept.
+
 ## Residual risks (current)
 
 - Render Free restarts or sleeps the single instance; in-memory rate limits and presence reset then.

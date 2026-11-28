@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CreditNote } from "./_components/Social";
 
 const DOORS = [
   {
@@ -43,6 +44,7 @@ export default function ConnectGateway() {
           Request an account
         </Link>
       </p>
+      <CreditNote className="mx-auto mt-12 max-w-md text-center" />
     </div>
   );
 }

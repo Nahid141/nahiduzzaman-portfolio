@@ -2,6 +2,39 @@
 
 Resumable checkpoint for future sessions. Update after every major phase.
 
+## 2026-11-27 (evening): owner feature round
+
+Requested by the owner and built:
+
+- **Retention:** shared files expire within 5 days (`fileRetentionDays`), public channel messages are deleted after 10
+  days (`channelMessageRetentionDays`); direct messages are kept. Both are admin settings; housekeeping runs every
+  10 minutes. Notices on the Files page and under channel chat.
+- **YouTube:** music-lounge requests take a YouTube link (title checked through YouTube oEmbed, no API key; private or
+  non-embeddable videos are refused) and play in YouTube's visible embedded player, synced to the server timeline
+  (muted autoplay, "Join with sound"). **Watch together** page: one shared YouTube video hosted by whoever starts it
+  (host or admin/DJ controls), floating emoji reactions. Netflix and other subscriptions cannot be relayed (DRM and
+  their terms); the page says so and points to Teleparty (each viewer's own account).
+- **Meetings:** limit raised to 15 (setting max 15, CHECK 2..15, LiveKit room cap follows). Screen sharing already
+  existed and was verified in a real LiveKit call.
+- **Buzz:** vibrate (Android browsers; iPhones do not expose vibration to web pages), chime, screen shake and a
+  "Buzz back" notice; member-to-member with a 20 s per-pair cooldown and 6/min; only admins buzz everyone; blocked
+  members cannot buzz each other; mute per device in Settings.
+- **To-do list:** shared, everyone can add/edit/tick/delete, live updates, confetti; administrator-only items are
+  amber and never sent to members (clients refetch on a content-free signal).
+- **Calendar & coffee:** members request a meeting or coffee at a chosen time (30 min to 120 days ahead, 15-240 min,
+  max 3 pending); members see others' approved slots as "Busy"; approval refuses overlaps and creates a highlighted
+  admin-only to-do with the date; the requester is notified; cancelling removes the to-do.
+- **Profile:** edit display name, bio, status emoji + text; profile photo cropped square and compressed in the
+  browser to <= 200 KB (WebP/JPEG), checked server-side (size, real image type), stored in Postgres and served to
+  signed-in members only with a versioned private cache.
+- **Extras:** "Designed and developed by Nahiduzzaman. You are all invited to take a cup of coffee with me, upon
+  availability" on the gateway, sidebar and dashboard with a "Request a coffee chat" button; dashboard to-do and
+  watch cards; activity entries for completed tasks and watch parties.
+- **Robustness fix found while testing:** an idle database connection ended by the server (failover, maintenance)
+  crashed the backend (unhandled pool `error`). The pool now logs and reconnects; regression test added.
+
+Migration `0004_profiles_tasks_requests` applied to production (31 tables, RLS on all, Data API 403 on the new ones).
+
 ## Last verified checkpoint: 2026-11-27, Supabase live; Render, DNS, Vercel and LiveKit webhook not done yet
 
 ### Done against the real services (2026-11-27, second session)

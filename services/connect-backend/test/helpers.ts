@@ -47,6 +47,8 @@ export async function testApp(opts: { scanner?: HashScanner; noStorage?: boolean
     files: opts.noStorage ? null : files,
     scanner: opts.scanner,
     livekit,
+    // Never call YouTube from tests: ids starting with "x" behave as private/removed videos.
+    youtube: async (id) => (id.startsWith("x") ? null : { title: `Video ${id}` }),
   });
 
   type Opts = { cookie?: string; csrf?: boolean; origin?: string; ip?: string };
