@@ -576,3 +576,23 @@ export const meetingRequests = pgTable(
   },
   (t) => [index("meeting_requests_status_idx").on(t.status, t.startsAt), index("meeting_requests_user_idx").on(t.requestedBy)]
 );
+
+export const gameStatusEnum = pgEnum("game_status", ["waiting", "active", "finished", "abandoned"]);
+
+/** A table in the games room. Rules run on the server (src/games); `state` is null until the game starts. */
+export const games = pgTable(
+  "games",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").notNull(),
+    status: gameStatusEnum("status").notNull().default("waiting"),
+    players: jsonb("players").$type<{ id: string; username: string; fullName: string }[]>().notNull().default([]),
+    state: jsonb("state"),
+    version: integer("version").notNull().default(0),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true, precision: 3 }),
+  },
+  (t) => [index("games_status_idx").on(t.status, t.updatedAt)]
+);

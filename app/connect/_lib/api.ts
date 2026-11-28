@@ -104,6 +104,22 @@ const MESSAGES: Record<string, string> = {
   music_requests_disabled: "Music requests are turned off.",
   follow_host_disabled: "Turn on Follow Host Mode in the admin settings first.",
   poll_closed: "This poll is closed.",
+  unknown_game: "That game is not available.",
+  too_many_tables: "You already have three open tables. Start or leave one first.",
+  game_started: "This game has already started.",
+  table_full: "This table is full.",
+  already_joined: "You are already at this table.",
+  need_more_players: "Wait for more players to join.",
+  game_not_active: "This game is not being played right now.",
+  not_a_player: "Only the players at this table can do that.",
+  not_your_turn: "It is not your turn yet.",
+  illegal_move: "That move is not allowed.",
+  cell_taken: "That square is already taken.",
+  column_full: "That column is full.",
+  line_taken: "That line is already drawn.",
+  move_a_token: "Move a token first.",
+  roll_first: "Roll the dice first.",
+  already_picked: "You have already picked this round.",
 };
 
 export function errorMessage(err: unknown): string {
