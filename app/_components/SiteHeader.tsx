@@ -9,8 +9,8 @@ const NAV = [
   { name: "Publications", href: "/publications" },
   { name: "Tools", href: "/tools" },
   { name: "Blog", href: "/blog" },
-  { name: "About", href: "/about" },
   { name: "Connect", href: "/connect" },
+  { name: "About", href: "/about" },
 ];
 
 export default function SiteHeader() {

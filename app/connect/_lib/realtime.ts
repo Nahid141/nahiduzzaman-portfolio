@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import { CONNECT_API } from "./api";
+import { CONNECT_API, connectConfigProblem } from "./api";
 
 export type Target = { kind: "channel"; id: string } | { kind: "conversation"; id: string };
 
@@ -37,6 +37,8 @@ export function getSocket(): Socket {
     withCredentials: true,
     transports: ["websocket", "polling"],
     reconnectionDelayMax: 10_000,
+    // On a deployment that can never connect (preview, missing build setting) do not retry forever.
+    autoConnect: !connectConfigProblem(),
   });
   return shared;
 }

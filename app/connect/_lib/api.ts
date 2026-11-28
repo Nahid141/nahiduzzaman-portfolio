@@ -1,7 +1,23 @@
 /* Client for the Private Connect backend. Every authorization decision happens there;
    this file only shapes requests and turns error codes into plain sentences. */
 
-export const CONNECT_API = process.env.NEXT_PUBLIC_CONNECT_API_URL || "http://localhost:8020";
+const CONFIGURED_API = process.env.NEXT_PUBLIC_CONNECT_API_URL;
+export const CONNECT_API = CONFIGURED_API || "http://localhost:8020";
+export const CONNECT_HOME = "https://www.fnunahiduzzaman.com/connect";
+
+/** A reason this page can never reach the backend (wrong deployment or build), or null. */
+export function connectConfigProblem(): string | null {
+  if (typeof window === "undefined") return null;
+  const host = window.location.hostname;
+  if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(host)) return null;
+  if (!CONFIGURED_API) {
+    return "This copy of the site was built without the Private Connect server address (NEXT_PUBLIC_CONNECT_API_URL). Set it in Vercel and redeploy.";
+  }
+  if (host.endsWith(".vercel.app")) {
+    return `Private Connect only works at ${CONNECT_HOME}. Preview deployments are not allowed to sign in, by design.`;
+  }
+  return null;
+}
 
 export type ConnectUser = {
   id: string;
@@ -40,7 +56,9 @@ const MESSAGES: Record<string, string> = {
   invalid_transition: "That change is not possible from the account's current status.",
   csrf: "The request was blocked for security reasons. Reload the page and try again.",
   server_error: "Something went wrong on the server. Try again in a moment.",
-  network: "Cannot reach Private Connect. The free server sleeps when idle and takes about a minute to wake. Try again shortly.",
+  network: "Cannot reach the Private Connect server. Check your internet connection and try again.",
+  blocked: `The browser blocked the request to the Private Connect server. Open Private Connect at ${CONNECT_HOME} and turn off extensions that block requests on this site.`,
+  timeout: "The Private Connect server did not answer in time. Try again.",
   not_found: "That item does not exist or you do not have access to it.",
   storage_unavailable: "File storage is not configured yet.",
   uploads_disabled: "Uploads are turned off by the administrator.",
@@ -73,25 +91,49 @@ const MESSAGES: Record<string, string> = {
 
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
+    if (err.code === "config") return connectConfigProblem() ?? MESSAGES.network;
     if (err.code === "invalid_input" && err.issues?.length) return err.issues.map((i) => i.message).join(" ");
     return MESSAGES[err.code] ?? "Something went wrong. Try again.";
   }
   return MESSAGES.network;
 }
 
-/* The free backend sleeps after 15 idle minutes; while it wakes, requests fail before reaching it.
-   Those network-level failures are retried for about a minute (nothing was processed yet). */
-const WAKE_DELAYS = [1500, 3000, 6000, 10000, 15000, 20000];
-let waking = false;
+/* Network failures are diagnosed instead of all being blamed on a sleeping server:
+   - a wrong deployment or build is reported at once (connectConfigProblem);
+   - a request that is merely slow shows the "starting" notice after 4 s. Render holds requests to a sleeping
+     service until it has started, so a cold start is a slow answer, not an error; the limit is 75 s;
+   - a request that fails outright is followed by a cookie-less probe of /health. If the server answers it, the
+     browser blocked the real request (an extension, for example): report that. If it does not, the server or
+     the connection is down: retry for about 10 s, which is safe because the request never reached the server. */
+const SLOW_NOTICE_MS = 4000;
+const REQUEST_TIMEOUT_MS = 75_000;
+const RETRY_DELAYS = [1000, 3000, 6000];
+let slowRequests = 0;
 const wakeListeners = new Set<(w: boolean) => void>();
 export const onWaking = (fn: (w: boolean) => void) => (wakeListeners.add(fn), () => void wakeListeners.delete(fn));
-const setWaking = (w: boolean) => {
-  if (w !== waking) wakeListeners.forEach((fn) => fn((waking = w)));
+const bumpSlow = (d: number) => {
+  const before = slowRequests > 0;
+  slowRequests = Math.max(0, slowRequests + d);
+  if (before !== slowRequests > 0) wakeListeners.forEach((fn) => fn(slowRequests > 0));
 };
 
+async function serverAnswers(): Promise<boolean> {
+  try {
+    // A plain CORS request without cookies: it succeeds from an allowed origin whenever the server is up.
+    // (A no-cors probe would not work: the API sends Cross-Origin-Resource-Policy: same-origin.)
+    const r = await fetch(`${CONNECT_API}/api/v1/health`, { credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(8000) });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  if (connectConfigProblem()) throw new ApiError(0, "config");
   let res: Response | null = null;
   for (let attempt = 0; ; attempt++) {
+    let slow = false;
+    const notice = setTimeout(() => ((slow = true), bumpSlow(1)), SLOW_NOTICE_MS);
     try {
       res = await fetch(`${CONNECT_API}/api/v1${path}`, {
         method: init.method ?? (init.body ? "POST" : "GET"),
@@ -99,16 +141,17 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
         cache: "no-store",
         headers: { "content-type": "application/json", "x-connect-csrf": "1" },
         body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-      setWaking(false);
       break;
-    } catch {
-      if (attempt >= WAKE_DELAYS.length) {
-        setWaking(false);
-        throw new ApiError(0, "network");
-      }
-      setWaking(true);
-      await new Promise((r) => setTimeout(r, WAKE_DELAYS[attempt]));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "TimeoutError") throw new ApiError(0, "timeout");
+      if (await serverAnswers()) throw new ApiError(0, "blocked");
+      if (attempt >= RETRY_DELAYS.length) throw new ApiError(0, "network");
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+    } finally {
+      clearTimeout(notice);
+      if (slow) bumpSlow(-1);
     }
   }
   const data = await res.json().catch(() => ({}));

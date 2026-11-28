@@ -2,6 +2,37 @@
 
 Only tests that were actually executed are listed as passing.
 
+## 2026-11-27, production backend and frontend connectivity
+
+**Deployed backend** (`scripts/check-production.ts` against `https://connect-api.fnunahiduzzaman.com`): 19/19 passed.
+TLS (Google Trust Services, expires 2027-02-26); health; HSTS/CSP/no-store; server clock within 0.5 s; Render URL
+health; 401 for me/members/files/meetings/admin-stats without a session; CORS preflight allowed for
+`https://www.fnunahiduzzaman.com` with credentials and refused for a foreign origin; POST without the CSRF header 403;
+unknown login generic 401; WebSocket without a session refused. LiveKit webhook: unsigned 401, tampered 401, valid
+signature 200, and **real delivery**: a test meeting row was created, its LiveKit room created and deleted, LiveKit
+Cloud sent `room_finished` to the production webhook and the backend ended the meeting (row deleted afterwards).
+
+**Root cause of "cannot reach / server sleeping"**: `/connect` is not on the production site yet (main not merged), so
+the pages were opened on a Vercel preview. A `*.vercel.app` origin is not allowed by the API (by design) and could not
+hold the `__Host-` SameSite=Strict cookie anyway; a preview built before `NEXT_PUBLIC_CONNECT_API_URL` existed also
+falls back to `http://localhost:8020`. The client then retried every network failure for ~55 s and blamed a
+sleeping server. Fixed in the client (`app/connect/_lib/api.ts`): wrong deployment or missing build setting is
+reported immediately; a slow answer (cold start; Render holds requests while starting) shows a notice after 4 s with
+a 75 s limit; an outright failure is followed by a cookie-less `/health` probe that separates "blocked by the browser"
+from "server unreachable" (short 10 s retry only for the latter). The socket no longer retries on such deployments.
+
+**Browser check of the new client against the production API** (this build served under the production origin via a
+local mapping inside headless Chrome): wrong credentials → correct message in 0.9 s (member) and 0.4 s (admin); a
+request blocked by the client → "blocked" message in 0.4 s; API unreachable → "cannot reach" after 10.2 s; 7 s
+delayed answer → "starting up" notice, then the real result; preview host → explanation at load, zero API requests;
+navigation Home | Research | Publications | Tools | Blog | Connect | About.
+
+**Website regression** (merged build, phone 390, tablet 820, desktop 1366; all public pages + /tools/prrsloom +
+/connect): 24/24 after one fix: the redesigned home page overflowed phones by 49 px (photo deck fan and glow); the
+hero now clips horizontally. PRRSLooM, QI-Genex and EGStat-N APIs return the same status and response shape from
+the merged build as from the live site. ESLint reports 236 errors in four pre-existing tool files; main has the
+identical counts, so none are new (left untouched).
+
 ## 2026-11-27, against the real services (Supabase, Resend; LiveKit pending)
 
 **Automated suite on Supabase PostgreSQL 17.12** (isolated `connect_test` database through the session pooler,

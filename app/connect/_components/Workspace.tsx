@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { api, onWaking, type ConnectUser } from "../_lib/api";
+import { useState } from "react";
+import { api, type ConnectUser } from "../_lib/api";
 import { useSharedState } from "../_lib/sync";
-import { Skeleton, useMe } from "./ui";
+import { ConnectionNotice, Skeleton, useMe } from "./ui";
 
 /* Modules that exist today are links; the rest show which build phase adds them. */
 const NAV: { href: string; label: string; phase?: number; adminOnly?: boolean }[] = [
@@ -34,8 +34,6 @@ export default function Workspace({
   const pathname = usePathname();
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
-  const [waking, setWaking] = useState(false);
-  useEffect(() => onWaking(setWaking), []);
 
   async function signOut() {
     await api("/auth/logout", { body: {} }).catch(() => undefined);
@@ -106,11 +104,7 @@ export default function Workspace({
 
       {/* Center: the current module */}
       <main className="min-w-0 rounded-3xl border border-white/10 bg-slate-950/80 p-5 backdrop-blur-xl md:p-7">
-        {waking && (
-          <p role="status" className="mb-4 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100">
-            Waking the server up. The free hosting plan sleeps when nobody is using it; this takes about a minute.
-          </p>
-        )}
+        <ConnectionNotice />
         {me && <FollowHost pathname={pathname} meId={me.id} />}
         {me ? children(me) : <Skeleton className="h-64" />}
       </main>

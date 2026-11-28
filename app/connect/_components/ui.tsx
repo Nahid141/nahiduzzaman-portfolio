@@ -2,12 +2,35 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { api, ApiError, type ConnectUser } from "../_lib/api";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { api, ApiError, connectConfigProblem, onWaking, type ConnectUser } from "../_lib/api";
+
+let slowNow = false;
+const subscribeSlow = (cb: () => void) => onWaking((w) => ((slowNow = w), cb()));
+
+/** Says why the server cannot be reached from this page, or that a request is taking a while (cold start). */
+export function ConnectionNotice() {
+  const slow = useSyncExternalStore(subscribeSlow, () => slowNow, () => false);
+  const problem = useSyncExternalStore(() => () => undefined, connectConfigProblem, () => null);
+  if (problem) {
+    return (
+      <p role="alert" className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm text-amber-100">
+        {problem}
+      </p>
+    );
+  }
+  if (!slow) return null;
+  return (
+    <p role="status" className="mb-4 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100">
+      Connecting to the server. If nobody has used it for a while it is starting up, which can take up to a minute.
+    </p>
+  );
+}
 
 export function AuthCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div className="mx-auto w-full max-w-md px-4 py-16 sm:py-24">
+      <ConnectionNotice />
       <div className="relative overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-slate-950/85 p-7 shadow-2xl shadow-cyan-950/40 backdrop-blur-xl sm:p-9">
         <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-300/10 blur-3xl" />
         <p className="relative text-xs font-black uppercase tracking-[0.3em] text-cyan-300">Private Connect</p>
